@@ -26,6 +26,10 @@ export function captureKeyboard(dotNetRef) {
                 if (key === 'Tab' && activeElement?.classList.contains('path-bar-input')) {
                     e.preventDefault();
                 }
+                // Ctrl/Cmd+A sulle righe del browser a selezione multipla seleziona i file, non il testo della pagina
+                if ((e.ctrlKey || e.metaKey) && key.toLowerCase() === 'a' && activeElement?.closest('.browse-table-multiple')) {
+                    e.preventDefault();
+                }
                 return;
             }
             // Overlay modale proprietario della tastiera, come la dialog di precisione EditMap
@@ -41,7 +45,7 @@ export function captureKeyboard(dotNetRef) {
             return;
         }
 
-        var isFKey = key.startsWith('F') && key.length <= 3 && !isNaN(key.substring(1));
+        var isFKey = /^F\d{1,2}$/.test(key);
         var isMetadataClearShortcut = ctrl && key.toLowerCase() === 'l';
 
         // Se un campo editabile ha focus, lascia passare solo i comandi UI espliciti
@@ -64,6 +68,18 @@ export function captureKeyboard(dotNetRef) {
         if (isCtrlShortcut && isTextSelectionAllowed(e.target)) {
             return;
         }
+        // Invio sul link Home lo segue come un link qualsiasi, senza passare dai comandi della card
+        if (key === 'Enter' && activeElement?.closest('.rf-home-link')) {
+            return;
+        }
+        // Nelle pagine dei tool Invio, Spazio e frecce restano dei controlli a fuoco: i comandi dei tool usano solo tasti funzione e Ctrl
+        if ((isNavigation || key === 'Enter' || key === ' ') && activeElement?.closest('.rf-tool-page')) {
+            return;
+        }
+        // Nella home frecce e tasti di pagina scorrono la griglia come in una pagina qualsiasi: nessun comando li usa
+        if (isNavigation && document.querySelector('.rf-toolbox-home')) {
+            return;
+        }
         if (!isFKey && !isNavigation && !isSpecial && !isCtrlShortcut && !alt) {
             return;
         }
@@ -77,6 +93,16 @@ export function captureKeyboard(dotNetRef) {
     };
 
     document.addEventListener('keydown', window._rfKeyHandler, true);
+}
+
+// Ridà il fuoco a una card della home; il browser la porta in vista se la griglia scorre
+export function focusToolboxCard(cardId) {
+    document.querySelector('.rf-toolbox-card[data-card-id="' + CSS.escape(cardId) + '"]')?.focus();
+}
+
+// Ridà il fuoco a un controllo di una pagina dei tool dopo un ridisegno, ad esempio al pulsante che ha appena spostato una riga
+export function focusToolControl(selector) {
+    document.querySelector('.rf-tool-page ' + selector)?.focus();
 }
 
 // Porta una riga episodio in vista senza delegare lo scroll alle frecce del browser

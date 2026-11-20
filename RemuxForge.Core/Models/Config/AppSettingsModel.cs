@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 
 namespace RemuxForge.Core.Models
@@ -315,7 +316,7 @@ namespace RemuxForge.Core.Models
         public UiConfig()
         {
             this.Theme = "material-dark";
-            this.LastMode = Options.MODE_REMUX;
+            this.LastMode = "";
             this.Language = "en";
         }
 
@@ -329,7 +330,7 @@ namespace RemuxForge.Core.Models
         public string Theme { get; set; }
 
         /// <summary>
-        /// Ultima modalità selezionata nella UI
+        /// Ultima card aperta dalla home, evidenziata al rientro; vuoto se nessuna
         /// </summary>
         public string LastMode { get; set; }
 
@@ -418,6 +419,20 @@ namespace RemuxForge.Core.Models
             this.EncodingProfiles = new List<EncodingProfile>();
             this.RemuxPresets = new List<RemuxPreset>();
             this.Advanced = new AdvancedConfig();
+        }
+
+        #endregion
+
+        #region Metodi pubblici
+
+        /// <summary>
+        /// Indica se un tema è scuro: "dark" e le varianti con suffisso "-dark"
+        /// </summary>
+        /// <param name="theme">Nome del tema, anche null</param>
+        /// <returns>True per un tema scuro</returns>
+        public static bool IsDarkTheme(string theme)
+        {
+            return theme == "dark" || (theme ?? "").EndsWith("-dark", StringComparison.Ordinal);
         }
 
         #endregion

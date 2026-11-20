@@ -133,7 +133,7 @@ namespace RemuxForge.Core.Splitting.Subtitles
             }
             else
             {
-                foreach (AssSubtitleDialogue dialogue in AssSubtitleDocument.Parse(content).ReadDialogues())
+                foreach (AssSubtitleDialogue dialogue in AssSubtitleDocument.Parse(content).ReadDialogues(false))
                 {
                     result.Events.Add(new MkvSplitTextSubtitleEvent
                     {

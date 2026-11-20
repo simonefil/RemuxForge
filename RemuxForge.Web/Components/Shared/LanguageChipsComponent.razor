@@ -11,10 +11,10 @@
 }
 else
 {
-    <RadzenDropDown TValue="string" Data="@Catalog" TextProperty="Label" ValueProperty="Code" Value="@Value"
+    <RadzenDropDown TValue="string" class="rf-language-single" Data="@Catalog" TextProperty="Label" ValueProperty="Code" Value="@Value"
                     Change="@ChangeSingle" Disabled="@IsBlocked" AllowClear="false" AllowFiltering="true"
                     FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" FilterOperator="StringFilterOperator.Contains"
-                    Placeholder="@AppText.T("web.remux.searchLanguage")" aria-label="@Label" Style="width:100%">
+                    Placeholder="@(Placeholder ?? AppText.T("web.remux.searchLanguage"))" aria-label="@Label" Style="width:100%">
         @* Niente AllowClear: con il valore impostato Radzen tratta il tasto Canc nel filtro come "svuota il valore"; si rimuove con la X del chip *@
         <ValueTemplate Context="language">
             <span @onclick:stopPropagation="true">
@@ -32,6 +32,7 @@ else
     [Parameter] public string Value { get; set; } = "";
     [Parameter] public EventCallback<string> ValueChanged { get; set; }
     [Parameter] public string Label { get; set; } = "";
+    [Parameter] public string Placeholder { get; set; }
     [Parameter] public bool Disabled { get; set; }
     [Parameter] public Func<bool> IsReadOnly { get; set; }
     private bool IsBlocked => Disabled || (IsReadOnly?.Invoke() ?? false);
@@ -53,11 +54,20 @@ else
         _catalogExtraCodes = extraCodes;
         Catalog = selectable.Concat(extra).Select(code => new LanguageItem(code, Presentation(code))).ToList();
     }
+    /// <summary>
+    /// Nome di una lingua nella lingua dell'interfaccia
+    /// </summary>
+    /// <param name="code">Codice ISO 639-2</param>
+    /// <returns>Nome, null se la lingua non ha nome</returns>
+    public static string LocalizedName(string code)
+    {
+        string name;
+        return AppText.TryT("web.remux.language." + code, out name) ? name : null;
+    }
     private static string Presentation(string code)
     {
-        string key = "web.remux.language." + code;
-        string name = AppText.T(key);
-        return name == "[" + key + "]" ? code : name + " · " + code;
+        string name = LocalizedName(code);
+        return name == null ? code : name + " · " + code;
     }
     private Task ChangeMultiple(object value)
     {

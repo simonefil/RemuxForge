@@ -1,0 +1,2024 @@
+@using Microsoft.AspNetCore.Components.Rendering
+@using RemuxForge.Core.Toolbox.SubtitleTranslation
+@using RemuxForge.Web.Services.Toolbox
+@using System.Globalization
+@using System.IO
+@using System.Text.RegularExpressions
+@inherits ToolboxListPageBase<SubtitleTranslationOrchestrator, TranslationFileRecord>
+
+@{
+    TranslationProject project = Orchestrator.Project;
+    bool busy = Orchestrator.IsBusy;
+}
+<div class="rf-panel rf-tool-page rf-translation">
+    @if (project == null)
+    {
+        @* Elenco dei progetti salvati *@
+        <RadzenText TextStyle="TextStyle.Subtitle2" TagName="TagName.H2" class="rf-translation-heading">@AppText.T("web.toolbox.subtitleTranslation.projectsTitle")</RadzenText>
+        @if (_projects.Count == 0)
+        {
+            <RadzenStack AlignItems="AlignItems.Center" JustifyContent="JustifyContent.Center" Gap="0.5rem" class="rf-tool-empty">
+                <RadzenText TextStyle="TextStyle.H6" TagName="TagName.H3">@AppText.T("web.toolbox.subtitleTranslation.projectsEmpty")</RadzenText>
+            </RadzenStack>
+        }
+        else
+        {
+            <RadzenDataGrid TItem="TranslationProject"
+                            Data="@_projects"
+                            class="rf-data-grid rf-tool-grid"
+                            AllowAlternatingRows="false"
+                            AllowColumnResize="false"
+                            AllowPaging="false"
+                            AllowSorting="false"
+                            Density="Density.Compact"
+                            GridLines="DataGridGridLines.Horizontal"
+                            SelectionMode="DataGridSelectionMode.Single"
+                            Value="@(SelectedProject != null ? new List<TranslationProject> { SelectedProject } : new List<TranslationProject>())"
+                            RowSelect="@((TranslationProject selected) => SelectProject(selected))"
+                            RowDoubleClick="@((DataGridRowMouseEventArgs<TranslationProject> args) => OpenProject(args.Data))">
+                <Columns>
+                    <RadzenDataGridColumn TItem="TranslationProject" Title="@AppText.T("web.toolbox.subtitleTranslation.project")" Width="30%">
+                        <Template Context="item"><CellText Text="@SubtitleTranslationOrchestrator.DisplayName(item)" /></Template>
+                    </RadzenDataGridColumn>
+                    <RadzenDataGridColumn TItem="TranslationProject" Title="@AppText.T("web.toolbox.subtitleTranslation.languages")" Width="22%">
+                        <Template Context="item"><CellText Text="@(LanguageName(item.SourceLanguage) + " → " + LanguageName(item.TargetLanguage))" /></Template>
+                    </RadzenDataGridColumn>
+                    <RadzenDataGridColumn TItem="TranslationProject" Title="@AppText.T("web.toolbox.subtitleTranslation.episodes")" Width="8%" TextAlign="TextAlign.Right">
+                        <Template Context="item"><CellText Text="@item.Files.Count.ToString(CultureInfo.CurrentCulture)" /></Template>
+                    </RadzenDataGridColumn>
+                    <RadzenDataGridColumn TItem="TranslationProject" Title="@AppText.T("web.toolbox.subtitleTranslation.step")" Width="22%">
+                        <Template Context="item">
+                            @if (_jobs.TryGetValue(item.Id, out TranslationJob itemJob))
+                            {
+                                <RadzenBadge IsPill="true" BadgeStyle="@(itemJob.Status == TranslationJobStatus.Paused ? BadgeStyle.Warning : itemJob.Phase == TranslationJobPhase.UserReview ? BadgeStyle.Success : BadgeStyle.Info)" Text="@JobStateText(itemJob)" />
+                            }
+                            else if (item.Analysis != null && item.Analysis.Status != TranslationAnalysisStatus.Completed)
+                            {
+                                <RadzenBadge IsPill="true" BadgeStyle="BadgeStyle.Warning" Text="@AppText.T("web.toolbox.subtitleTranslation.stepAnalysisStopped")" />
+                            }
+                            else if (item.Glossary != null && item.Glossary.Status == GlossaryStatus.Approved)
+                            {
+                                <RadzenBadge IsPill="true" BadgeStyle="BadgeStyle.Success" Text="@AppText.T("web.toolbox.subtitleTranslation.stepGlossaryApproved")" />
+                            }
+                            else if (item.Glossary != null)
+                            {
+                                <RadzenBadge IsPill="true" BadgeStyle="BadgeStyle.Info" Text="@AppText.T("web.toolbox.subtitleTranslation.steps.glossary")" />
+                            }
+                            else
+                            {
+                                <RadzenBadge IsPill="true" BadgeStyle="BadgeStyle.Base" Text="@AppText.T("web.toolbox.subtitleTranslation.steps.project")" />
+                            }
+                        </Template>
+                    </RadzenDataGridColumn>
+                    <RadzenDataGridColumn TItem="TranslationProject" Title="@AppText.T("web.toolbox.subtitleTranslation.updatedAt")" Width="18%">
+                        <Template Context="item"><CellText Text="@item.UpdatedAt.ToLocalTime().ToString("g", CultureInfo.CurrentCulture)" /></Template>
+                    </RadzenDataGridColumn>
+                </Columns>
+            </RadzenDataGrid>
+        }
+    }
+    else
+    {
+        bool languagesLocked = busy || project.Analysis != null || project.Glossary != null;
+        bool filesLocked = busy || Orchestrator.FilesLocked;
+        List<TranslationFileRecord> files = Orchestrator.GetRecords();
+        Dictionary<string, string> fileNames = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (TranslationProjectFile projectFile in project.Files)
+            fileNames[projectFile.Id] = System.IO.Path.GetFileName(projectFile.Path);
+
+        <RadzenSteps class="rf-translation-steps" ShowStepsButtons="false" AllowStepSelect="@(!busy)" SelectedIndex="@_step" SelectedIndexChanged="@((int index) => SelectStep(index))">
+            <Steps>
+                <RadzenStepsItem Text="@AppText.T("web.toolbox.subtitleTranslation.steps.project")" />
+                <RadzenStepsItem Text="@AppText.T("web.toolbox.subtitleTranslation.steps.glossary")" Disabled="@(project.ReachedStep < TranslationProjectStep.Glossary)" />
+                <RadzenStepsItem Text="@AppText.T("web.toolbox.subtitleTranslation.steps.translation")" Disabled="@(project.ReachedStep < TranslationProjectStep.Translation)" />
+                <RadzenStepsItem Text="@AppText.T("web.toolbox.subtitleTranslation.steps.review")" Disabled="@(project.ReachedStep < TranslationProjectStep.Review)" />
+                <RadzenStepsItem Text="@AppText.T("web.toolbox.subtitleTranslation.steps.export")" Disabled="@(project.ReachedStep < TranslationProjectStep.Export)" />
+            </Steps>
+        </RadzenSteps>
+
+        <div class="rf-translation-body">
+            @if (_step == 0)
+            {
+                <div class="rf-tool-options">
+                    <div class="rf-tool-options-row">
+                        <div class="rf-tool-field">
+                            <RadzenLabel class="rf-tool-label" Text="@AppText.T("web.toolbox.subtitleTranslation.name")" Component="TranslationName" />
+                            <RadzenTextBox Name="TranslationName" class="rf-translation-name" Disabled="@busy" Value="@project.Name"
+                                           Change="@((string value) => Orchestrator.SetProjectData(value, project.SourceLanguage, project.TargetLanguage, project.Context))" />
+                        </div>
+                        <div class="rf-tool-field">
+                            <span class="rf-tool-label">@AppText.T("web.toolbox.subtitleTranslation.source")</span>
+                            <div class="rf-translation-language">
+                                <LanguageChipsComponent Multiple="false" Value="@project.SourceLanguage" Label="@AppText.T("web.toolbox.subtitleTranslation.source")" Disabled="@languagesLocked"
+                                                        Placeholder="@AppText.T("web.toolbox.subtitleTranslation.sourcePlaceholder")"
+                                                        ValueChanged="@((string value) => Orchestrator.SetProjectData(project.Name, value, project.TargetLanguage, project.Context))" />
+                            </div>
+                        </div>
+                        <div class="rf-tool-field">
+                            <span class="rf-tool-label">@AppText.T("web.toolbox.subtitleTranslation.target")</span>
+                            <div class="rf-translation-language">
+                                <LanguageChipsComponent Multiple="false" Value="@project.TargetLanguage" Label="@AppText.T("web.toolbox.subtitleTranslation.target")" Disabled="@languagesLocked"
+                                                        Placeholder="@AppText.T("web.toolbox.subtitleTranslation.targetPlaceholder")"
+                                                        ValueChanged="@((string value) => Orchestrator.SetProjectData(project.Name, project.SourceLanguage, value, project.Context))" />
+                            </div>
+                        </div>
+                    </div>
+                    <div class="rf-tool-options-row">
+                        <div class="rf-tool-field rf-translation-context">
+                            <RadzenLabel class="rf-tool-label" Text="@AppText.T("web.toolbox.subtitleTranslation.context")" Component="TranslationContext" />
+                            <RadzenTextArea Name="TranslationContext" Rows="2" Disabled="@busy" Value="@project.Context"
+                                            Change="@((string value) => Orchestrator.SetProjectData(project.Name, project.SourceLanguage, project.TargetLanguage, value))" />
+                        </div>
+                    </div>
+                    <div class="rf-tool-options-row">
+                        <div class="rf-tool-field">
+                            <span class="rf-tool-label" id="translation-review-label">@AppText.T("web.toolbox.subtitleTranslation.reviewMode")</span>
+                            <RadzenRadioButtonList TValue="TranslationReviewMode" Value="@project.Options.ReviewMode" Disabled="@(busy || Orchestrator.Job != null)" Orientation="Orientation.Horizontal"
+                                                   aria-labelledby="translation-review-label" Change="@((TranslationReviewMode value) => Orchestrator.SetReviewMode(value))">
+                                <Items>
+                                    <RadzenRadioButtonListItem Text="@AppText.T("web.toolbox.subtitleTranslation.reviewNone")" Value="@TranslationReviewMode.None" />
+                                    <RadzenRadioButtonListItem Text="@AppText.T("web.toolbox.subtitleTranslation.reviewFull")" Value="@TranslationReviewMode.Full" />
+                                </Items>
+                            </RadzenRadioButtonList>
+                        </div>
+                    </div>
+                </div>
+
+                @if (project.ImportedGlossary != null)
+                {
+                    <div class="rf-translation-loaded">
+                        <RadzenIcon Icon="menu_book" IconStyle="IconStyle.Primary" aria-hidden="true" />
+                        <span>
+                            @AppText.T("web.toolbox.subtitleTranslation.loadedGlossary")
+                            <strong>@project.ImportedGlossary.FileName</strong>
+                            · @AppText.Count("web.toolbox.subtitleTranslation.termsCount", project.ImportedGlossary.TermCount)
+                            · @AppText.Count("web.toolbox.subtitleTranslation.charactersCount", project.ImportedGlossary.CharacterCount)
+                        </span>
+                        <RadzenButton class="rf-translation-loaded-remove" Icon="close" Size="ButtonSize.ExtraSmall" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base"
+                                      Disabled="@(busy || !Orchestrator.CanImportGlossary)" title="@AppText.T("web.toolbox.subtitleTranslation.removeGlossary")"
+                                      aria-label="@AppText.T("web.toolbox.subtitleTranslation.removeGlossary")" Click="@Orchestrator.RemoveImportedGlossary" />
+                    </div>
+                }
+
+                @if (files.Count == 0)
+                {
+                    <RadzenStack AlignItems="AlignItems.Center" JustifyContent="JustifyContent.Center" Gap="0.5rem" class="rf-tool-empty">
+                        <RadzenText TextStyle="TextStyle.H6" TagName="TagName.H3">@AppText.T("web.toolbox.subtitleTranslation.filesEmptyTitle")</RadzenText>
+                        <RadzenText TextStyle="TextStyle.Body2">@AppText.T("web.toolbox.subtitleTranslation.filesEmptyDescription")</RadzenText>
+                    </RadzenStack>
+                }
+                else
+                {
+                    <RadzenDataGrid TItem="TranslationFileRecord"
+                                    Data="@files"
+                                    class="rf-data-grid rf-tool-grid rf-translation-files"
+                                    AllowAlternatingRows="false"
+                                    AllowColumnResize="false"
+                                    AllowPaging="false"
+                                    AllowSorting="false"
+                                    Density="Density.Compact"
+                                    GridLines="DataGridGridLines.Horizontal">
+                        <Columns>
+                            <RadzenDataGridColumn TItem="TranslationFileRecord" Title="@AppText.T("web.dashboard.file")" Width="43%">
+                                <Template Context="file">
+                                    <span class="rf-translation-file" title="@file.InputPath">@System.IO.Path.GetFileName(file.InputPath)</span>
+                                    @if (!string.IsNullOrEmpty(file.File.RejectedReason))
+                                    {
+                                        <span class="rf-translation-rejected">@AppText.T("web.toolbox.subtitleTranslation.fileRejected." + file.File.RejectedReason)</span>
+                                    }
+                                </Template>
+                            </RadzenDataGridColumn>
+                            <RadzenDataGridColumn TItem="TranslationFileRecord" Title="@AppText.T("web.toolbox.subtitleTranslation.format")" Width="8%">
+                                <Template Context="file"><CellText Text="@file.File.Format.ToString().ToUpperInvariant()" /></Template>
+                            </RadzenDataGridColumn>
+                            <RadzenDataGridColumn TItem="TranslationFileRecord" Title="@AppText.T("web.toolbox.subtitleTranslation.encoding")" Width="22%">
+                                <Template Context="file">
+                                    <RadzenDropDown TValue="string" class="rf-translation-encoding" Data="@SubtitleCharsets.Choices" TextProperty="Value" ValueProperty="Key"
+                                                    Value="@file.File.Encoding" Disabled="@filesLocked"
+                                                    aria-label="@(AppText.T("web.toolbox.subtitleTranslation.encoding") + " " + System.IO.Path.GetFileName(file.InputPath))"
+                                                    Change="@((object value) => Orchestrator.SetEncoding(file, (string)value))" />
+                                </Template>
+                            </RadzenDataGridColumn>
+                            <RadzenDataGridColumn TItem="TranslationFileRecord" Title="@AppText.T("web.toolbox.subtitleTranslation.cues")" Width="9%" TextAlign="TextAlign.Right">
+                                <Template Context="file"><CellText Text="@(string.IsNullOrEmpty(file.File.RejectedReason) ? file.File.Preparation.CueCount.ToString(CultureInfo.CurrentCulture) : "—")" /></Template>
+                            </RadzenDataGridColumn>
+                            <RadzenDataGridColumn TItem="TranslationFileRecord" Title="@AppText.T("web.toolbox.subtitleTranslation.excluded")" Width="9%" TextAlign="TextAlign.Right">
+                                <Template Context="file"><CellText Text="@(string.IsNullOrEmpty(file.File.RejectedReason) ? file.File.Preparation.ExcludedCount.ToString(CultureInfo.CurrentCulture) : "—")" /></Template>
+                            </RadzenDataGridColumn>
+                            <RadzenDataGridColumn TItem="TranslationFileRecord" Width="4rem" TextAlign="TextAlign.Center">
+                                <Template Context="file">
+                                    <RadzenButton Icon="close" Size="ButtonSize.ExtraSmall" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" Disabled="@filesLocked"
+                                                  title="@AppText.T("web.toolbox.list.remove")" aria-label="@(AppText.T("web.toolbox.list.remove") + " " + System.IO.Path.GetFileName(file.InputPath))"
+                                                  Click="@(() => Orchestrator.Remove(file))" />
+                                </Template>
+                            </RadzenDataGridColumn>
+                        </Columns>
+                    </RadzenDataGrid>
+                }
+            }
+            else if (_step == STEP_TRANSLATION)
+            {
+                TranslationJob job = Orchestrator.Job;
+                @if (job == null && busy)
+                {
+                    @Thinking()
+                }
+                else if (job == null)
+                {
+                    <RadzenStack AlignItems="AlignItems.Center" JustifyContent="JustifyContent.Center" Gap="0.5rem" class="rf-tool-empty">
+                        <RadzenText TextStyle="TextStyle.H6" TagName="TagName.H3">@AppText.T("web.toolbox.subtitleTranslation.translationEmpty")</RadzenText>
+                    </RadzenStack>
+                }
+                else
+                {
+                    <RadzenDataGrid TItem="TranslationJobFileRow"
+                                    Data="@Orchestrator.GetTranslationRows()"
+                                    class="rf-data-grid rf-tool-grid rf-translation-job"
+                                    AllowAlternatingRows="false"
+                                    AllowColumnResize="false"
+                                    AllowPaging="false"
+                                    AllowSorting="false"
+                                    Density="Density.Compact"
+                                    GridLines="DataGridGridLines.Horizontal">
+                        <Columns>
+                            <RadzenDataGridColumn TItem="TranslationJobFileRow" Title="@AppText.T("web.dashboard.file")" Width="22%">
+                                <Template Context="row">
+                                    <span class="rf-translation-file" title="@row.FileName">@row.FileName</span>
+                                    @if (row.Status == TranslationFileStatus.Blocked)
+                                    {
+                                        <span class="rf-translation-rejected">@AppText.T("web.toolbox.subtitleTranslation.fileRejected." + row.BlockedReason)</span>
+                                    }
+                                </Template>
+                            </RadzenDataGridColumn>
+                            <RadzenDataGridColumn TItem="TranslationJobFileRow" Title="@AppText.T("web.toolbox.subtitleTranslation.status")" Width="10%">
+                                <Template Context="row"><RadzenBadge IsPill="true" BadgeStyle="@(row.Status == TranslationFileStatus.Completed ? BadgeStyle.Success : row.Status == TranslationFileStatus.Blocked ? BadgeStyle.Danger
+                                                 : row.Status == TranslationFileStatus.InProgress && job.Status == TranslationJobStatus.Paused ? BadgeStyle.Warning
+                                                 : row.Status == TranslationFileStatus.InProgress ? BadgeStyle.Info : BadgeStyle.Base)"
+                                             Text="@(row.Status == TranslationFileStatus.InProgress && job.Status == TranslationJobStatus.Paused ? JobStateText(job)
+                                                 : AppText.T("web.toolbox.subtitleTranslation.fileState." + row.Status))" /></Template>
+                            </RadzenDataGridColumn>
+                            <RadzenDataGridColumn TItem="TranslationJobFileRow" Title="@AppText.T("web.toolbox.subtitleTranslation.blocks")" Width="14%">
+                                <Template Context="row">
+                                    <div class="rf-translation-blocks">
+                                        <span>@(row.BlocksDone.ToString(CultureInfo.CurrentCulture) + "/" + row.BlocksTotal.ToString(CultureInfo.CurrentCulture))</span>
+                                        <RadzenProgressBar class="rf-translation-blocks-bar" ShowValue="false" Value="@(row.BlocksTotal > 0 ? row.BlocksDone * 100.0 / row.BlocksTotal : 0)"
+                                                           aria-label="@(AppText.T("web.toolbox.subtitleTranslation.blocks") + " " + row.FileName)" />
+                                    </div>
+                                </Template>
+                            </RadzenDataGridColumn>
+                            <RadzenDataGridColumn TItem="TranslationJobFileRow" Title="@AppText.T("web.toolbox.subtitleTranslation.cues")" Width="9%" TextAlign="TextAlign.Right">
+                                <Template Context="row"><CellText Text="@(row.CuesDone.ToString(CultureInfo.CurrentCulture) + "/" + row.CuesTotal.ToString(CultureInfo.CurrentCulture))" /></Template>
+                            </RadzenDataGridColumn>
+                            <RadzenDataGridColumn TItem="TranslationJobFileRow" Title="@AppText.T("web.toolbox.subtitleTranslation.retried")" Width="8%" TextAlign="TextAlign.Right">
+                                <Template Context="row"><CellText Text="@row.Retried.ToString(CultureInfo.CurrentCulture)" /></Template>
+                            </RadzenDataGridColumn>
+                            <RadzenDataGridColumn TItem="TranslationJobFileRow" Title="@AppText.T("web.toolbox.subtitleTranslation.toReview")" Width="8%" TextAlign="TextAlign.Right">
+                                <Template Context="row"><CellText Text="@row.ToReview.ToString(CultureInfo.CurrentCulture)" /></Template>
+                            </RadzenDataGridColumn>
+                            <RadzenDataGridColumn TItem="TranslationJobFileRow" Title="@AppText.T("web.toolbox.subtitleTranslation.calls.tokens")" Width="15%" TextAlign="TextAlign.Right">
+                                <Template Context="row"><CellText Text="@(SubtitleTranslationCallsPanel.FormatTokens(row.InputTokens) + " / " + SubtitleTranslationCallsPanel.FormatTokens(row.CachedTokens) + " / " + SubtitleTranslationCallsPanel.FormatTokens(row.OutputTokens))" /></Template>
+                            </RadzenDataGridColumn>
+                            <RadzenDataGridColumn TItem="TranslationJobFileRow" Width="5rem" TextAlign="TextAlign.Center">
+                                <Template Context="row">
+                                    @if (row.Status == TranslationFileStatus.Blocked)
+                                    {
+                                        <span class="rf-translation-actions">
+                                            @if (row.BlockedReason == TranslationFilePreparer.REJECTION_SOURCE_CHANGED && job.Phase == TranslationJobPhase.Translation)
+                                            {
+                                                <RadzenButton Icon="restart_alt" Size="ButtonSize.ExtraSmall" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" Disabled="@busy"
+                                                              title="@AppText.T("web.toolbox.subtitleTranslation.restartFile")" aria-label="@(AppText.T("web.toolbox.subtitleTranslation.restartFile") + " " + row.FileName)"
+                                                              Click="@(() => RestartFileAsync(row))" />
+                                            }
+                                            <RadzenButton Icon="remove_circle_outline" Size="ButtonSize.ExtraSmall" Variant="Variant.Text" ButtonStyle="ButtonStyle.Danger" Disabled="@(busy || job.FileIds.Count < 2 || project.Glossary.Status != GlossaryStatus.Approved)"
+                                                          title="@AppText.T("web.toolbox.subtitleTranslation.excludeFile")" aria-label="@(AppText.T("web.toolbox.subtitleTranslation.excludeFile") + " " + row.FileName)"
+                                                          Click="@(() => ExcludeFile(row))" />
+                                        </span>
+                                    }
+                                </Template>
+                            </RadzenDataGridColumn>
+                        </Columns>
+                    </RadzenDataGrid>
+                }
+            }
+            else if (_step == STEP_REVIEW)
+            {
+                TranslationJob job = Orchestrator.Job;
+                @if (job != null && job.Phase == TranslationJobPhase.UserReview)
+                {
+                    List<TranslationReviewRow> reviewRows = ReviewRows;
+                    int toCheck = reviewRows.FindAll(r => NeedsCheck(r)).Count;
+                    int edited = reviewRows.FindAll(r => r.Signals.Contains(TranslationCueSignal.EditedByUser)).Count;
+                    <div class="rf-tool-options">
+                        <div class="rf-tool-options-row">
+                            <div class="rf-tool-field">
+                                <RadzenLabel class="rf-tool-label" Text="@AppText.T("web.dashboard.file")" Component="TranslationReviewFile" />
+                                <RadzenDropDown TValue="string" Name="TranslationReviewFile" class="rf-translation-review-file" Data="@job.FileIds" Value="@_reviewFileId"
+                                                Change="@((object value) => SelectReviewFile((string)value))">
+                                    <Template Context="fileId">@fileNames[(string)fileId]</Template>
+                                    <ValueTemplate Context="fileId">@fileNames[(string)fileId]</ValueTemplate>
+                                </RadzenDropDown>
+                            </div>
+                            <div class="rf-tool-field">
+                                <span class="rf-tool-label" id="translation-review-filter-label">@AppText.T("web.toolbox.subtitleTranslation.reviewShow")</span>
+                                <RadzenRadioButtonList TValue="int" Value="@_reviewFilter" Orientation="Orientation.Horizontal" aria-labelledby="translation-review-filter-label"
+                                                       Change="@((int value) => { _reviewFilter = value; _reviewView = null; })">
+                                    <Items>
+                                        <RadzenRadioButtonListItem Text="@AppText.T("web.toolbox.subtitleTranslation.reviewAll")" Value="@FILTER_ALL" />
+                                        <RadzenRadioButtonListItem Text="@AppText.F("web.toolbox.subtitleTranslation.reviewToCheck", toCheck)" Value="@FILTER_TO_CHECK" />
+                                        <RadzenRadioButtonListItem Text="@AppText.F("web.toolbox.subtitleTranslation.reviewEdited", edited)" Value="@FILTER_EDITED" />
+                                    </Items>
+                                </RadzenRadioButtonList>
+                            </div>
+                        </div>
+                    </div>
+                    <RadzenDataGrid TItem="TranslationReviewRow"
+                                    Data="@ReviewView"
+                                    class="rf-data-grid rf-tool-grid rf-translation-review"
+                                    AllowAlternatingRows="false"
+                                    AllowColumnResize="false"
+                                    AllowPaging="false"
+                                    AllowSorting="false"
+                                    Density="Density.Compact"
+                                    GridLines="DataGridGridLines.Horizontal"
+                                    EmptyText="@AppText.T("web.toolbox.subtitleTranslation.reviewEmpty")">
+                        <Columns>
+                            <RadzenDataGridColumn TItem="TranslationReviewRow" Title="#" Width="5rem" TextAlign="TextAlign.Right">
+                                <Template Context="row">
+                                    @if (row.SharedStretch.HasValue)
+                                    {
+                                        <RadzenIcon Icon="repeat" IconStyle="IconStyle.Info" class="rf-translation-shared"
+                                                    title="@AppText.F("web.toolbox.subtitleTranslation.sharedStretch", row.SharedStretch.Value)" aria-label="@AppText.F("web.toolbox.subtitleTranslation.sharedStretch", row.SharedStretch.Value)" />
+                                    }
+                                    <CellText Text="@row.Id.ToString(CultureInfo.CurrentCulture)" />
+                                </Template>
+                            </RadzenDataGridColumn>
+                            <RadzenDataGridColumn TItem="TranslationReviewRow" Title="@AppText.T("web.toolbox.subtitleTranslation.times")" Width="8rem">
+                                <Template Context="row"><span class="rf-translation-times">@FormatTime(row.StartMs)<br />@FormatTime(row.EndMs)</span></Template>
+                            </RadzenDataGridColumn>
+                            <RadzenDataGridColumn TItem="TranslationReviewRow" Title="@AppText.T("web.toolbox.subtitleTranslation.original")" Width="36%">
+                                <Template Context="row"><span class="rf-translation-cell">@MarkedText(row.Source)</span></Template>
+                            </RadzenDataGridColumn>
+                            <RadzenDataGridColumn TItem="TranslationReviewRow" Title="@AppText.T("web.toolbox.subtitleTranslation.translation")" Width="40%">
+                                <Template Context="row">
+                                    @if (_editingCue == row.Id)
+                                    {
+                                        <div class="rf-translation-cue-edit">
+                                            <RadzenTextArea class="rf-translation-cue-input" Rows="@Math.Max(2, (_cueDraft ?? "").Split('\n').Length)" @bind-Value="@_cueDraft"
+                                                            aria-label="@AppText.F("web.toolbox.subtitleTranslation.cueEdit", row.Id)" />
+                                            <span class="rf-translation-actions">
+                                                <RadzenButton Icon="check" Size="ButtonSize.ExtraSmall" Variant="Variant.Text" ButtonStyle="ButtonStyle.Success"
+                                                              title="@AppText.T("web.toolbox.subtitleTranslation.editSave")" aria-label="@AppText.T("web.toolbox.subtitleTranslation.editSave")" Click="@(() => SaveCue(row))" />
+                                                <RadzenButton Icon="close" Size="ButtonSize.ExtraSmall" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base"
+                                                              title="@AppText.T("web.common.cancel")" aria-label="@AppText.T("web.common.cancel")" Click="@CancelCueEditing" />
+                                            </span>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <div class="rf-translation-cue">
+                                            @* Il motivo sopra la traduzione: una battuta non rivista dalla revisione AI ha anche il testo *@
+                                            <span class="rf-translation-cell">@if (row.ToReviewReason != null) {<span class="rf-translation-rejected">@row.ToReviewReason</span>}@MarkedText(row.Text ?? "")</span>
+                                            <RadzenButton Icon="edit" Size="ButtonSize.ExtraSmall" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" Disabled="@(busy || !Orchestrator.CanEditCues)"
+                                                          title="@AppText.T("web.toolbox.subtitleTranslation.editEntry")" aria-label="@AppText.F("web.toolbox.subtitleTranslation.cueEdit", row.Id)"
+                                                          Click="@(() => StartCueEditing(row))" />
+                                        </div>
+                                    }
+                                </Template>
+                            </RadzenDataGridColumn>
+                            <RadzenDataGridColumn TItem="TranslationReviewRow" Title="@AppText.T("web.toolbox.subtitleTranslation.warnings")" Width="16%">
+                                <Template Context="row">
+                                    <span class="rf-translation-warnings">
+                                        @if (row.ToReview)
+                                        {
+                                            <RadzenBadge IsPill="true" BadgeStyle="BadgeStyle.Danger" Text="@AppText.T("web.toolbox.subtitleTranslation.warning.toReview")" />
+                                        }
+                                        @if (row.Signals.Contains(TranslationCueSignal.Glossary))
+                                        {
+                                            <RadzenBadge IsPill="true" BadgeStyle="BadgeStyle.Warning" Text="@AppText.T("web.toolbox.subtitleTranslation.warning.glossary")" />
+                                        }
+                                        @if (row.Signals.Contains(TranslationCueSignal.Retried))
+                                        {
+                                            <RadzenBadge IsPill="true" BadgeStyle="BadgeStyle.Info" Text="@AppText.T("web.toolbox.subtitleTranslation.warning.retried")" />
+                                        }
+                                        @if (row.Signals.Contains(TranslationCueSignal.CorrectedByAi))
+                                        {
+                                            <RadzenBadge IsPill="true" BadgeStyle="BadgeStyle.Secondary" Text="@AppText.T("web.toolbox.subtitleTranslation.warning.correctedByAi")"
+                                                         title="@((row.CorrectionBefore != null ? AppText.F("web.toolbox.subtitleTranslation.correctionBefore", row.CorrectionBefore) : "")
+                                                             + (row.CorrectionBefore != null && row.CorrectionReason != null ? "\n" : "")
+                                                             + (row.CorrectionReason != null ? AppText.F("web.toolbox.subtitleTranslation.correctionReason", row.CorrectionReason) : ""))" />
+                                        }
+                                        @if (row.Signals.Contains(TranslationCueSignal.EditedByUser))
+                                        {
+                                            <RadzenBadge IsPill="true" BadgeStyle="BadgeStyle.Primary" Text="@AppText.T("web.toolbox.subtitleTranslation.warning.edited")" />
+                                        }
+                                    </span>
+                                </Template>
+                            </RadzenDataGridColumn>
+                        </Columns>
+                    </RadzenDataGrid>
+                }
+                else if (busy && job != null && job.Phase == TranslationJobPhase.Review)
+                {
+                    @Thinking()
+                }
+                else if (job != null && job.Phase == TranslationJobPhase.Review)
+                {
+                    <RadzenStack AlignItems="AlignItems.Center" JustifyContent="JustifyContent.Center" Gap="0.5rem" class="rf-tool-empty">
+                        <RadzenText TextStyle="TextStyle.H6" TagName="TagName.H3">@JobStateText(job)</RadzenText>
+                    </RadzenStack>
+                }
+            }
+            else if (_step == STEP_EXPORT)
+            {
+                <ToolboxOutputOptions Orchestrator="@Orchestrator" JsModule="@JsModule" Id="translation" />
+                @if (_exported != null)
+                {
+                    <RadzenDataGrid TItem="TranslationExportRow"
+                                    Data="@_exported"
+                                    class="rf-data-grid rf-tool-grid rf-translation-job"
+                                    AllowAlternatingRows="false"
+                                    AllowColumnResize="false"
+                                    AllowPaging="false"
+                                    AllowSorting="false"
+                                    Density="Density.Compact"
+                                    GridLines="DataGridGridLines.Horizontal">
+                        <Columns>
+                            <RadzenDataGridColumn TItem="TranslationExportRow" Title="@AppText.T("web.dashboard.file")" Width="30%">
+                                <Template Context="row"><span class="rf-translation-file" title="@row.FileName">@row.FileName</span></Template>
+                            </RadzenDataGridColumn>
+                            <RadzenDataGridColumn TItem="TranslationExportRow" Title="@AppText.T("web.toolbox.subtitleTranslation.writtenFile")" Width="70%">
+                                <Template Context="row">
+                                    @if (row.Written)
+                                    {
+                                        <span class="rf-translation-file" title="@row.OutputPath">@row.OutputPath</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="rf-translation-rejected">@row.Error</span>
+                                    }
+                                </Template>
+                            </RadzenDataGridColumn>
+                        </Columns>
+                    </RadzenDataGrid>
+                }
+                else
+                {
+                    <RadzenDataGrid TItem="TranslationExportRow"
+                                    Data="@Orchestrator.GetExportRows()"
+                                    class="rf-data-grid rf-tool-grid rf-translation-job"
+                                    AllowAlternatingRows="false"
+                                    AllowColumnResize="false"
+                                    AllowPaging="false"
+                                    AllowSorting="false"
+                                    Density="Density.Compact"
+                                    GridLines="DataGridGridLines.Horizontal">
+                        <Columns>
+                            <RadzenDataGridColumn TItem="TranslationExportRow" Title="@AppText.T("web.dashboard.file")" Width="34%">
+                                <Template Context="row">
+                                    <span class="rf-translation-file" title="@row.FileName">@row.FileName</span>
+                                    @if (!string.IsNullOrEmpty(row.Error))
+                                    {
+                                        <span class="rf-translation-rejected">@row.Error</span>
+                                    }
+                                </Template>
+                            </RadzenDataGridColumn>
+                            <RadzenDataGridColumn TItem="TranslationExportRow" Title="@AppText.T("web.toolbox.subtitleTranslation.output")" Width="38%">
+                                <Template Context="row"><span class="rf-translation-file" title="@row.OutputPath">@System.IO.Path.GetFileName(row.OutputPath)</span></Template>
+                            </RadzenDataGridColumn>
+                            <RadzenDataGridColumn TItem="TranslationExportRow" Title="@AppText.T("web.toolbox.subtitleTranslation.translatedCues")" Width="14%" TextAlign="TextAlign.Right">
+                                <Template Context="row"><CellText Text="@row.Translated.ToString(CultureInfo.CurrentCulture)" /></Template>
+                            </RadzenDataGridColumn>
+                            <RadzenDataGridColumn TItem="TranslationExportRow" Title="@AppText.T("web.toolbox.subtitleTranslation.toReview")" Width="14%" TextAlign="TextAlign.Right">
+                                <Template Context="row">
+                                    @if (row.Untranslated > 0)
+                                    {
+                                        <strong class="rf-translation-untranslated">@row.Untranslated.ToString(CultureInfo.CurrentCulture)</strong>
+                                    }
+                                    else
+                                    {
+                                        <CellText Text="0" />
+                                    }
+                                </Template>
+                            </RadzenDataGridColumn>
+                        </Columns>
+                    </RadzenDataGrid>
+                }
+            }
+            else
+            {
+                bool glossaryLocked = Orchestrator.GlossaryLocked;
+                @if (busy && !glossaryLocked)
+                {
+                    @Thinking()
+                }
+                else if (project.Glossary != null && project.Analysis != null && project.Analysis.Status == TranslationAnalysisStatus.Completed)
+                {
+                    Glossary glossary = project.Glossary;
+                    string[] forms = TranslationRequestBuilder.GetAddressForms(project.TargetLanguage);
+                    TranslationEstimate translationEstimate = glossaryLocked ? null : Orchestrator.EstimateTranslation();
+
+                    @if (translationEstimate != null)
+                    {
+                        <div class="rf-tool-options">
+                            <div class="rf-tool-options-row rf-translation-estimate">
+                                <span class="rf-tool-label">@AppText.T("web.toolbox.subtitleTranslation.estimate")</span>
+                                <span>
+                                    @AppText.Count("web.toolbox.subtitleTranslation.filesCount", translationEstimate.Files)
+                                    · @AppText.Count("web.toolbox.subtitleTranslation.cuesCount", translationEstimate.Cues, translationEstimate.Cues.ToString("N0", CultureInfo.CurrentCulture))
+                                    · @AppText.Count("web.toolbox.subtitleTranslation.blocksCount", translationEstimate.Blocks)
+                                    · @AppText.F("web.toolbox.subtitleTranslation.estimateInput", translationEstimate.InputTokens.ToString("N0", CultureInfo.CurrentCulture))
+                                    @AppText.F("web.toolbox.subtitleTranslation.estimateUncached", (translationEstimate.InputTokens - translationEstimate.CachedTokens).ToString("N0", CultureInfo.CurrentCulture))
+                                    · @AppText.F("web.toolbox.subtitleTranslation.estimateOutput", translationEstimate.OutputTokens.ToString("N0", CultureInfo.CurrentCulture))
+                                    @if (translationEstimate.ReviewInputTokens.HasValue)
+                                    {
+                                        @(" · " + AppText.F("web.toolbox.subtitleTranslation.estimateReview", translationEstimate.ReviewInputTokens.Value.ToString("N0", CultureInfo.CurrentCulture)) + " "
+                                            + AppText.F("web.toolbox.subtitleTranslation.estimateUncached", (translationEstimate.ReviewInputTokens.Value - translationEstimate.ReviewCachedTokens.Value).ToString("N0", CultureInfo.CurrentCulture))
+                                            + ", " + AppText.F("web.toolbox.subtitleTranslation.estimateOutput", translationEstimate.ReviewOutputTokens.Value.ToString("N0", CultureInfo.CurrentCulture)))
+                                    }
+                                </span>
+                            </div>
+                        </div>
+                    }
+
+                    <RadzenTabs class="rf-tool-tabs rf-translation-tabs" RenderMode="TabRenderMode.Client" SelectedIndex="@_tab" Change="@((int index) => { _pending = null; _tab = index; })">
+                        <Tabs>
+                            <RadzenTabsItem Text="@AppText.F("web.toolbox.subtitleTranslation.termsTab", glossary.Terms.Count)">
+                                <RadzenDataGrid TItem="GlossaryTerm"
+                                                Data="@WithPending(glossary.Terms)"
+                                                class="rf-data-grid rf-tool-grid rf-translation-glossary"
+                                                AllowAlternatingRows="false"
+                                                AllowColumnResize="false"
+                                                AllowPaging="false"
+                                                AllowSorting="false"
+                                                Density="Density.Compact"
+                                                GridLines="DataGridGridLines.Horizontal">
+                                    <Columns>
+                                        <RadzenDataGridColumn TItem="GlossaryTerm" Title="@AppText.T("web.toolbox.subtitleTranslation.termSource")" Width="18%">
+                                            <Template Context="term">
+                                                @TextCell(term, term.Source, term.Origin == GlossaryOrigin.User, AppText.T("web.toolbox.subtitleTranslation.termSource"), (t, value) => t.Source = value)
+                                                @if (term.Origin == GlossaryOrigin.Import)
+                                                {
+                                                    <RadzenBadge IsPill="true" BadgeStyle="BadgeStyle.Base" class="rf-translation-origin" Text="@AppText.T("web.toolbox.subtitleTranslation.originImport")" />
+                                                }
+                                            </Template>
+                                        </RadzenDataGridColumn>
+                                        <RadzenDataGridColumn TItem="GlossaryTerm" Title="@AppText.T("web.toolbox.subtitleTranslation.termTarget")" Width="18%">
+                                            <Template Context="term">@TextCell(term, term.Target, true, AppText.T("web.toolbox.subtitleTranslation.termTarget"), (t, value) => t.Target = value)</Template>
+                                        </RadzenDataGridColumn>
+                                        <RadzenDataGridColumn TItem="GlossaryTerm" Title="@AppText.T("web.toolbox.subtitleTranslation.termKind")" Width="12%">
+                                            <Template Context="term">
+                                                @if (term.Origin == GlossaryOrigin.User)
+                                                {
+                                                    <RadzenDropDown TValue="GlossaryTermKind" class="rf-translation-cell-input" Data="@s_termKinds" Value="@term.Kind" Disabled="@(busy || glossaryLocked)"
+                                                                    aria-label="@AppText.T("web.toolbox.subtitleTranslation.termKind")" Change="@((object value) => ChangeEntry(term, t => t.Kind = (GlossaryTermKind)value))">
+                                                        <Template Context="kind">@AppText.T("web.toolbox.subtitleTranslation.kind." + kind)</Template>
+                                                        <ValueTemplate Context="kind">@AppText.T("web.toolbox.subtitleTranslation.kind." + kind)</ValueTemplate>
+                                                    </RadzenDropDown>
+                                                }
+                                                else
+                                                {
+                                                    <CellText Text="@AppText.T("web.toolbox.subtitleTranslation.kind." + term.Kind)" />
+                                                }
+                                            </Template>
+                                        </RadzenDataGridColumn>
+                                        <RadzenDataGridColumn TItem="GlossaryTerm" Title="@AppText.T("web.toolbox.subtitleTranslation.termInvariable")" Width="9%" TextAlign="TextAlign.Center">
+                                            <Template Context="term">
+                                                @if (term.Origin == GlossaryOrigin.User)
+                                                {
+                                                    <RadzenCheckBox TValue="bool" Value="@term.Invariable" Disabled="@(busy || glossaryLocked)" aria-label="@AppText.T("web.toolbox.subtitleTranslation.termInvariable")"
+                                                                    Change="@((bool value) => ChangeEntry(term, t => t.Invariable = value))" />
+                                                }
+                                                else if (term.Invariable)
+                                                {
+                                                    <RadzenIcon Icon="check" aria-label="@AppText.T("web.toolbox.subtitleTranslation.termInvariable")" />
+                                                }
+                                            </Template>
+                                        </RadzenDataGridColumn>
+                                        <RadzenDataGridColumn TItem="GlossaryTerm" Title="@AppText.T("web.toolbox.subtitleTranslation.episodes")" Width="7%" TextAlign="TextAlign.Right">
+                                            <Template Context="term"><CellText Text="@term.Episodes.Count.ToString(CultureInfo.CurrentCulture)" /></Template>
+                                        </RadzenDataGridColumn>
+                                        <RadzenDataGridColumn TItem="GlossaryTerm" Title="@AppText.T("web.toolbox.subtitleTranslation.note")" Width="20%">
+                                            <Template Context="term">@TextCell(term, term.Note, term.Origin == GlossaryOrigin.User, AppText.T("web.toolbox.subtitleTranslation.note"), (t, value) => t.Note = value)</Template>
+                                        </RadzenDataGridColumn>
+                                        <RadzenDataGridColumn TItem="GlossaryTerm" Width="4rem" TextAlign="TextAlign.Center">
+                                            <Template Context="term">@DeleteCell(term, term.Source)</Template>
+                                        </RadzenDataGridColumn>
+                                    </Columns>
+                                </RadzenDataGrid>
+                                <RadzenButton class="rf-translation-add" Text="@AppText.T("web.toolbox.subtitleTranslation.addTerm")" Icon="add" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base"
+                                              Disabled="@(_pending != null || busy || glossaryLocked)" Click="@(() => _pending = new GlossaryTerm { Origin = GlossaryOrigin.User })" />
+                            </RadzenTabsItem>
+
+                            <RadzenTabsItem Text="@AppText.F("web.toolbox.subtitleTranslation.charactersTab", glossary.Characters.Count)">
+                                <RadzenDataGrid TItem="GlossaryCharacter"
+                                                Data="@WithPending(glossary.Characters)"
+                                                class="rf-data-grid rf-tool-grid rf-translation-glossary"
+                                                AllowAlternatingRows="false"
+                                                AllowColumnResize="false"
+                                                AllowPaging="false"
+                                                AllowSorting="false"
+                                                Density="Density.Compact"
+                                                GridLines="DataGridGridLines.Horizontal">
+                                    <Columns>
+                                        <RadzenDataGridColumn TItem="GlossaryCharacter" Title="@AppText.T("web.toolbox.subtitleTranslation.characterName")" Width="22%">
+                                            <Template Context="character">
+                                                @TextCell(character, character.Name, character.Origin == GlossaryOrigin.User, AppText.T("web.toolbox.subtitleTranslation.characterName"), (c, value) => c.Name = value)
+                                                @if (character.Origin == GlossaryOrigin.Import)
+                                                {
+                                                    <RadzenBadge IsPill="true" BadgeStyle="BadgeStyle.Base" class="rf-translation-origin" Text="@AppText.T("web.toolbox.subtitleTranslation.originImport")" />
+                                                }
+                                            </Template>
+                                        </RadzenDataGridColumn>
+                                        <RadzenDataGridColumn TItem="GlossaryCharacter" Title="@AppText.T("web.toolbox.subtitleTranslation.characterGender")" Width="13%">
+                                            <Template Context="character">
+                                                <RadzenDropDown TValue="CharacterGender" class="rf-translation-cell-input" Data="@s_genders" Value="@character.Gender" Disabled="@(busy || glossaryLocked)"
+                                                                aria-label="@AppText.T("web.toolbox.subtitleTranslation.characterGender")" Change="@((object value) => ChangeEntry(character, c => c.Gender = (CharacterGender)value))">
+                                                    <Template Context="gender">@AppText.T("web.toolbox.subtitleTranslation.gender." + gender)</Template>
+                                                    <ValueTemplate Context="gender">@AppText.T("web.toolbox.subtitleTranslation.gender." + gender)</ValueTemplate>
+                                                </RadzenDropDown>
+                                            </Template>
+                                        </RadzenDataGridColumn>
+                                        <RadzenDataGridColumn TItem="GlossaryCharacter" Title="@AppText.T("web.toolbox.subtitleTranslation.characterRole")" Width="28%">
+                                            <Template Context="character">@TextCell(character, character.Role, character.Origin == GlossaryOrigin.User, AppText.T("web.toolbox.subtitleTranslation.characterRole"), (c, value) => c.Role = value)</Template>
+                                        </RadzenDataGridColumn>
+                                        <RadzenDataGridColumn TItem="GlossaryCharacter" Title="@AppText.T("web.toolbox.subtitleTranslation.characterRelationships")" Width="28%">
+                                            <Template Context="character">@TextCell(character, character.Relationships, character.Origin == GlossaryOrigin.User, AppText.T("web.toolbox.subtitleTranslation.characterRelationships"), (c, value) => c.Relationships = value)</Template>
+                                        </RadzenDataGridColumn>
+                                        <RadzenDataGridColumn TItem="GlossaryCharacter" Width="4rem" TextAlign="TextAlign.Center">
+                                            <Template Context="character">@DeleteCell(character, character.Name)</Template>
+                                        </RadzenDataGridColumn>
+                                    </Columns>
+                                </RadzenDataGrid>
+                                <RadzenButton class="rf-translation-add" Text="@AppText.T("web.toolbox.subtitleTranslation.addCharacter")" Icon="add" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base"
+                                              Disabled="@(_pending != null || busy || glossaryLocked)" Click="@(() => _pending = new GlossaryCharacter { Origin = GlossaryOrigin.User, Gender = CharacterGender.Unknown })" />
+                            </RadzenTabsItem>
+
+                            <RadzenTabsItem Text="@AppText.T("web.toolbox.subtitleTranslation.registerTab")">
+                                <div class="rf-translation-texts">
+                                    <div class="rf-tool-field">
+                                        <RadzenLabel class="rf-tool-label" Text="@AppText.T("web.toolbox.subtitleTranslation.series")" Component="TranslationSeries" />
+                                        <RadzenTextArea Name="TranslationSeries" Rows="2" Disabled="@glossaryLocked" Value="@glossary.Series" Change="@((string value) => Orchestrator.ChangeGlossary(g => g.Series = (value ?? "").Trim()))" />
+                                    </div>
+                                    <div class="rf-tool-field">
+                                        <RadzenLabel class="rf-tool-label" Text="@AppText.T("web.toolbox.subtitleTranslation.tone")" Component="TranslationTone" />
+                                        <RadzenTextArea Name="TranslationTone" Rows="2" Disabled="@glossaryLocked" Value="@glossary.Tone" Change="@((string value) => Orchestrator.ChangeGlossary(g => g.Tone = (value ?? "").Trim()))" />
+                                    </div>
+                                    <div class="rf-tool-field">
+                                        <RadzenLabel class="rf-tool-label" Text="@AppText.T("web.toolbox.subtitleTranslation.registerRules")" Component="TranslationRegisterRules" />
+                                        <RadzenTextArea Name="TranslationRegisterRules" Rows="2" Disabled="@glossaryLocked" Value="@glossary.RegisterRules" Change="@((string value) => Orchestrator.ChangeGlossary(g => g.RegisterRules = (value ?? "").Trim()))" />
+                                    </div>
+                                </div>
+                                @if (forms != null && forms.Length > 0)
+                                {
+                                    <RadzenDataGrid TItem="GlossaryAddressing"
+                                                    Data="@WithPending(glossary.Addressing)"
+                                                    class="rf-data-grid rf-tool-grid rf-translation-glossary"
+                                                    AllowAlternatingRows="false"
+                                                    AllowColumnResize="false"
+                                                    AllowPaging="false"
+                                                    AllowSorting="false"
+                                                    Density="Density.Compact"
+                                                    GridLines="DataGridGridLines.Horizontal">
+                                        <Columns>
+                                            <RadzenDataGridColumn TItem="GlossaryAddressing" Title="@AppText.T("web.toolbox.subtitleTranslation.speaker")" Width="26%">
+                                                <Template Context="pair">@TextCell(pair, pair.Speaker, pair.Origin == GlossaryOrigin.User, AppText.T("web.toolbox.subtitleTranslation.speaker"), (a, value) => a.Speaker = value)</Template>
+                                            </RadzenDataGridColumn>
+                                            <RadzenDataGridColumn TItem="GlossaryAddressing" Title="@AppText.T("web.toolbox.subtitleTranslation.addressee")" Width="26%">
+                                                <Template Context="pair">@TextCell(pair, pair.Addressee, pair.Origin == GlossaryOrigin.User, AppText.T("web.toolbox.subtitleTranslation.addressee"), (a, value) => a.Addressee = value)</Template>
+                                            </RadzenDataGridColumn>
+                                            <RadzenDataGridColumn TItem="GlossaryAddressing" Title="@AppText.T("web.toolbox.subtitleTranslation.form")" Width="14%">
+                                                <Template Context="pair">
+                                                    <RadzenDropDown TValue="string" class="rf-translation-cell-input" Data="@forms" Value="@pair.Form" Disabled="@(busy || glossaryLocked)"
+                                                                    aria-label="@AppText.T("web.toolbox.subtitleTranslation.form")" Change="@((object value) => ChangeEntry(pair, a => a.Form = (string)value))" />
+                                                </Template>
+                                            </RadzenDataGridColumn>
+                                            <RadzenDataGridColumn TItem="GlossaryAddressing" Title="@AppText.T("web.toolbox.subtitleTranslation.note")" Width="26%">
+                                                <Template Context="pair">@TextCell(pair, pair.Note, pair.Origin == GlossaryOrigin.User, AppText.T("web.toolbox.subtitleTranslation.note"), (a, value) => a.Note = value)</Template>
+                                            </RadzenDataGridColumn>
+                                            <RadzenDataGridColumn TItem="GlossaryAddressing" Width="4rem" TextAlign="TextAlign.Center">
+                                                <Template Context="pair">@DeleteCell(pair, pair.Speaker + " → " + pair.Addressee)</Template>
+                                            </RadzenDataGridColumn>
+                                        </Columns>
+                                    </RadzenDataGrid>
+                                    <RadzenButton class="rf-translation-add" Text="@AppText.T("web.toolbox.subtitleTranslation.addAddressing")" Icon="add" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base"
+                                                  Disabled="@(_pending != null || busy || glossaryLocked)" Click="@(() => _pending = new GlossaryAddressing { Origin = GlossaryOrigin.User, Form = forms[0] })" />
+                                }
+                            </RadzenTabsItem>
+                        </Tabs>
+                    </RadzenTabs>
+                }
+            }
+        </div>
+
+        @if (_step == STEP_GLOSSARY || _step == STEP_TRANSLATION || (_step == STEP_REVIEW && (Orchestrator.Job == null || Orchestrator.Job.Phase != TranslationJobPhase.UserReview)))
+        {
+            <SubtitleTranslationCallsPanel Calls="@Orchestrator.GetCalls()" JobCalls="@Orchestrator.GetJobCalls()" FileNames="@fileNames" Discarded="@Orchestrator.GetDiscardedCalls()" />
+        }
+    }
+</div>
+
+@code {
+    #region Costanti
+
+    /// <summary>
+    /// Passo Glossario
+    /// </summary>
+    private const int STEP_GLOSSARY = 1;
+
+    /// <summary>
+    /// Passo Traduzione
+    /// </summary>
+    private const int STEP_TRANSLATION = 2;
+
+    /// <summary>
+    /// Passo Revisione
+    /// </summary>
+    private const int STEP_REVIEW = 3;
+
+    /// <summary>
+    /// Passo Esporta
+    /// </summary>
+    private const int STEP_EXPORT = 4;
+
+    /// <summary>
+    /// Filtro della revisione: tutte le battute
+    /// </summary>
+    private const int FILTER_ALL = 0;
+
+    /// <summary>
+    /// Filtro della revisione: battute da controllare
+    /// </summary>
+    private const int FILTER_TO_CHECK = 1;
+
+    /// <summary>
+    /// Filtro della revisione: battute modificate a mano
+    /// </summary>
+    private const int FILTER_EDITED = 2;
+
+    #endregion
+
+    #region Variabili statiche
+
+    /// <summary>
+    /// Estensioni dei sottotitoli proposte dal browser
+    /// </summary>
+    private static readonly List<string> s_extensions = new List<string> { "srt", "ass", "ssa" };
+
+    /// <summary>
+    /// Estensione del glossario proposta dal browser
+    /// </summary>
+    private static readonly List<string> s_glossaryExtensions = new List<string> { "xlsx" };
+
+    /// <summary>
+    /// Estensione dell'archivio del progetto proposta dal browser
+    /// </summary>
+    private static readonly List<string> s_archiveExtensions = new List<string> { "zip" };
+
+    /// <summary>
+    /// Tipi di termine nell'ordine della tendina
+    /// </summary>
+    private static readonly List<GlossaryTermKind> s_termKinds = new List<GlossaryTermKind>((GlossaryTermKind[])Enum.GetValues(typeof(GlossaryTermKind)));
+
+    /// <summary>
+    /// Generi dei personaggi nell'ordine della tendina
+    /// </summary>
+    private static readonly List<CharacterGender> s_genders = new List<CharacterGender>((CharacterGender[])Enum.GetValues(typeof(CharacterGender)));
+
+    #endregion
+
+    #region Variabili di classe
+
+    /// <summary>
+    /// Progetti salvati, riletti a ogni ritorno all'elenco
+    /// </summary>
+    private List<TranslationProject> _projects = new List<TranslationProject>();
+
+    /// <summary>
+    /// Job attivo dei progetti dell'elenco, per identificativo del progetto
+    /// </summary>
+    private Dictionary<string, TranslationJob> _jobs = new Dictionary<string, TranslationJob>(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Progetti dell'elenco col job fermato e file da tradurre che non siano bloccati
+    /// </summary>
+    private HashSet<string> _jobsToResume = new HashSet<string>(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Progetti dell'elenco che si possono esportare
+    /// </summary>
+    private HashSet<string> _exportable = new HashSet<string>(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Identificativo del progetto scelto nell'elenco, vuoto se nessuno
+    /// </summary>
+    private string _selectedId = "";
+
+    /// <summary>
+    /// Passo mostrato del progetto aperto
+    /// </summary>
+    private int _step;
+
+    /// <summary>
+    /// Scheda mostrata del glossario
+    /// </summary>
+    private int _tab;
+
+    /// <summary>
+    /// Voce aggiunta a mano che non è ancora nel glossario perché incompleta; null se nessuna
+    /// </summary>
+    private object _pending;
+
+    /// <summary>
+    /// File mostrato nella revisione, null per il primo del job
+    /// </summary>
+    private string _reviewFileId;
+
+    /// <summary>
+    /// Filtro della revisione
+    /// </summary>
+    private int _reviewFilter = FILTER_ALL;
+
+    /// <summary>
+    /// Battute del file in revisione, rilette quando cambia lo stato della card
+    /// </summary>
+    private List<TranslationReviewRow> _reviewRows;
+
+    /// <summary>
+    /// Battute del file in revisione col filtro scelto
+    /// </summary>
+    private List<TranslationReviewRow> _reviewView;
+
+    /// <summary>
+    /// Battuta in modifica, null se nessuna
+    /// </summary>
+    private int? _editingCue;
+
+    /// <summary>
+    /// Testo della battuta in modifica
+    /// </summary>
+    private string _cueDraft = "";
+
+    /// <summary>
+    /// Esito dell'ultimo export, null prima dell'export o dopo un cambio di passo
+    /// </summary>
+    private List<TranslationExportRow> _exported;
+
+    #endregion
+
+    #region Metodi pubblici
+
+    /// <inheritdoc />
+    public override IReadOnlyList<UiCommandDefinition> BuildUiCommands(bool busy)
+    {
+        UiCommandPlacement allSurfaces = UiCommandPlacement.Menu | UiCommandPlacement.Toolbar;
+        TranslationProject project = this.Orchestrator.Project;
+        List<UiCommandDefinition> commands = new List<UiCommandDefinition>();
+
+        if (project == null)
+        {
+            TranslationProject selected = this.SelectedProject;
+            commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.subtitleTranslation.newProject"), "F5", "add", allSurfaces, UiCommandMenuSection.File, busy,
+                () => { this._step = 0; this.Orchestrator.NewProject(); })
+            {
+                ToolbarOrder = 10
+            });
+            commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.subtitleTranslation.openProject"), "", "folder_open", allSurfaces, UiCommandMenuSection.File, busy || selected == null,
+                () => this.OpenProject(selected))
+            {
+                ToolbarOrder = 11
+            });
+            bool analysisStopped = selected != null && selected.Analysis != null && selected.Analysis.Status == TranslationAnalysisStatus.Stopped;
+            bool jobStopped = selected != null && this._jobsToResume.Contains(selected.Id);
+            commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.subtitleTranslation.resume"), "F10", "play_arrow", allSurfaces, UiCommandMenuSection.Actions,
+                busy || (!analysisStopped && !jobStopped), null)
+            {
+                Callback = () => this.Resume(selected),
+                ToolbarOrder = 12
+            });
+            commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.subtitleTranslation.importProject"), "", "unarchive", allSurfaces, UiCommandMenuSection.File, busy, null)
+            {
+                AsyncCallback = this.ImportProjectAsync,
+                SecondaryToolbar = true,
+                ToolbarOrder = 13
+            });
+            commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.subtitleTranslation.exportProject"), "", "archive", allSurfaces, UiCommandMenuSection.File,
+                busy || selected == null || !this._exportable.Contains(selected.Id), null)
+            {
+                AsyncCallback = () => this.ExportProjectAsync(selected),
+                SecondaryToolbar = true,
+                ToolbarOrder = 14
+            });
+            commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.subtitleTranslation.deleteProject"), "", "delete", allSurfaces, UiCommandMenuSection.File, busy || selected == null, null)
+            {
+                AsyncCallback = () => this.DeleteProjectAsync(selected),
+                SecondaryToolbar = true,
+                DangerToolbar = true,
+                ToolbarOrder = 15
+            });
+            return commands;
+        }
+
+        commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.subtitleTranslation.projectsList"), "", "list", allSurfaces, UiCommandMenuSection.File, busy,
+            () => { this._pending = null; this.Orchestrator.CloseProject(); this.ReloadProjects(); })
+        {
+            SecondaryToolbar = true,
+            ToolbarOrder = 18
+        });
+
+        bool stopped = project.Analysis != null && project.Analysis.Status == TranslationAnalysisStatus.Stopped;
+        if (this._step == 0)
+        {
+            commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.list.addFiles"), "F5", "add", allSurfaces, UiCommandMenuSection.File, busy || this.Orchestrator.FilesLocked, null)
+            {
+                AsyncCallback = this.AddFilesAsync,
+                ToolbarOrder = 10
+            });
+            commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.subtitleTranslation.importGlossary"), "", "upload_file", allSurfaces, UiCommandMenuSection.File, busy || !this.Orchestrator.CanImportGlossary, null)
+            {
+                AsyncCallback = this.ImportGlossaryAsync,
+                ToolbarOrder = 11
+            });
+            commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.subtitleTranslation.exportGlossary"), "", "download", allSurfaces, UiCommandMenuSection.File, busy || project.Glossary == null, null)
+            {
+                AsyncCallback = this.ExportGlossaryAsync,
+                SecondaryToolbar = true,
+                ToolbarOrder = 15
+            });
+            commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.subtitleTranslation.models"), "", "tune", allSurfaces, UiCommandMenuSection.Actions, busy, null)
+            {
+                AsyncCallback = this.OpenModelsAsync,
+                SecondaryToolbar = true,
+                ToolbarOrder = 16
+            });
+            commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.list.clear"), "Ctrl+L", "clear_all", allSurfaces, UiCommandMenuSection.File, busy || this.Orchestrator.FilesLocked || this.Orchestrator.GetRecords().Count == 0, this.Orchestrator.Clear)
+            {
+                SecondaryToolbar = true,
+                ToolbarOrder = 17
+            });
+            commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.subtitleTranslation.next"), "", "arrow_forward", allSurfaces, UiCommandMenuSection.Actions,
+                busy || project.ReachedStep < TranslationProjectStep.Glossary,
+                null)
+            {
+                AsyncCallback = () =>
+                {
+                    this._step = STEP_GLOSSARY;
+                    return this.OnStateChanged.InvokeAsync();
+                },
+                ToolbarOrder = 13
+            });
+        }
+        else if (this._step == STEP_GLOSSARY)
+        {
+            commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.subtitleTranslation.approve"), "", "check", allSurfaces, UiCommandMenuSection.Actions, busy || !this.Orchestrator.CanApprove,
+                this.ApproveGlossary)
+            {
+                ToolbarOrder = 10
+            });
+            commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.subtitleTranslation.exportGlossary"), "", "download", allSurfaces, UiCommandMenuSection.File,
+                busy || project.Glossary == null, null)
+            {
+                AsyncCallback = this.ExportGlossaryAsync,
+                ToolbarOrder = 11
+            });
+            commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.subtitleTranslation.next"), "", "arrow_forward", allSurfaces, UiCommandMenuSection.Actions,
+                busy || project.ReachedStep < TranslationProjectStep.Translation,
+                null)
+            {
+                AsyncCallback = () =>
+                {
+                    this._pending = null;
+                    this._step = STEP_TRANSLATION;
+                    return this.OnStateChanged.InvokeAsync();
+                },
+                ToolbarOrder = 13
+            });
+        }
+        else
+        {
+            // Dopo una fermata Riprova per un errore, Riprendi per Stop, chiusura o limite d'uso, sul passo della fase fermata
+            TranslationJob job = this.Orchestrator.Job;
+            TranslationJobPhase stepPhase = this._step == STEP_TRANSLATION ? TranslationJobPhase.Translation : TranslationJobPhase.Review;
+            bool failed = job != null && job.Pause != null && (job.Pause.Reason == TranslationStopReason.AccessError || job.Pause.Reason == TranslationStopReason.ServiceError);
+            if (this._step != STEP_EXPORT && job != null && job.Phase == stepPhase)
+            {
+                commands.Add(new UiCommandDefinition(AppText.T(failed ? "web.toolbox.subtitleTranslation.retry" : "web.toolbox.subtitleTranslation.resume"), "F10", failed ? "refresh" : "play_arrow",
+                    allSurfaces, UiCommandMenuSection.Actions, busy || !this.Orchestrator.CanStartJob, null)
+                {
+                    Callback = this.StartJob,
+                    ToolbarOrder = 10
+                });
+            }
+
+            if (this._step == STEP_REVIEW && job != null && job.Phase == TranslationJobPhase.UserReview && project.ReachedStep < TranslationProjectStep.Export)
+            {
+                commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.subtitleTranslation.approve"), "", "check", allSurfaces, UiCommandMenuSection.Actions,
+                    busy || !this.Orchestrator.CanEditCues, null)
+                {
+                    AsyncCallback = () => this.ExportSubtitlesAsync(true),
+                    ToolbarOrder = 13
+                });
+            }
+
+            if (this._step == STEP_EXPORT)
+            {
+                commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.subtitleTranslation.exportSubtitles"), "F10", "save", allSurfaces, UiCommandMenuSection.Actions,
+                    busy || !this.Orchestrator.CanEditCues, null)
+                {
+                    AsyncCallback = () => this.ExportSubtitlesAsync(false),
+                    ToolbarOrder = 10
+                });
+                commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.subtitleTranslation.exportGlossary"), "", "download", allSurfaces, UiCommandMenuSection.File,
+                    busy || project.Glossary == null, null)
+                {
+                    AsyncCallback = this.ExportGlossaryAsync,
+                    SecondaryToolbar = true,
+                    ToolbarOrder = 12
+                });
+            }
+
+            commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.subtitleTranslation.exportProject"), "", "archive", allSurfaces, UiCommandMenuSection.File,
+                busy || !this.Orchestrator.CanExportProject(project, job), null)
+            {
+                AsyncCallback = () => this.ExportProjectAsync(project),
+                SecondaryToolbar = this._step == STEP_EXPORT,
+                ToolbarOrder = 11
+            });
+        }
+
+        // Analizza sul passo Progetto; dopo una fermata Riprova per un errore, Riprendi per Stop o limite d'uso, sui passi Progetto e Glossario
+        if (this._step == 0 || (this._step == STEP_GLOSSARY && stopped))
+        {
+            bool failed = stopped && project.Analysis.Stop != null &&
+                (project.Analysis.Stop.Reason == TranslationStopReason.AccessError || project.Analysis.Stop.Reason == TranslationStopReason.ServiceError);
+            string label = failed ? "web.toolbox.subtitleTranslation.retry" : stopped ? "web.toolbox.subtitleTranslation.resume" : "web.toolbox.subtitleTranslation.analyze";
+            commands.Add(new UiCommandDefinition(AppText.T(label), "F10", failed ? "refresh" : stopped ? "play_arrow" : "auto_awesome",
+                allSurfaces, UiCommandMenuSection.Actions, busy || !this.Orchestrator.CanStartAnalysis, null)
+            {
+                Callback = this.Analyze,
+                ToolbarOrder = 12
+            });
+        }
+
+        return commands;
+    }
+
+    /// <inheritdoc />
+    public override void Dispose()
+    {
+        base.Dispose();
+        this.Orchestrator.OnAnalysisFinished -= this.HandleAnalysisFinished;
+        this.Orchestrator.OnWebSearchRejected -= this.HandleWebSearchRejected;
+        this.Orchestrator.OnPhaseFinished -= this.HandlePhaseFinished;
+    }
+
+    #endregion
+
+    #region Metodi protetti
+
+    /// <inheritdoc />
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+        this.Orchestrator.OnAnalysisFinished += this.HandleAnalysisFinished;
+        this.Orchestrator.OnWebSearchRejected += this.HandleWebSearchRejected;
+        this.Orchestrator.OnPhaseFinished += this.HandlePhaseFinished;
+        this.ReloadProjects();
+        this._step = this.ProjectStep();
+    }
+
+    /// <summary>
+    /// Le battute della revisione si rileggono al cambio di stato della card
+    /// </summary>
+    protected override void OnOrchestratorChanged()
+    {
+        this._reviewRows = null;
+        this._reviewView = null;
+    }
+
+    #endregion
+
+    #region Metodi privati
+
+    /// <summary>
+    /// Toast dell'esito dell'analisi: glossario proposto, fermata, pausa per il limite d'uso o errore
+    /// </summary>
+    /// <param name="analysis">Analisi conclusa o fermata</param>
+    private void HandleAnalysisFinished(TranslationAnalysis analysis)
+    {
+        this.InvokeAsync(async () =>
+        {
+            TranslationProject project = this.Orchestrator.Project;
+            if (analysis.Status == TranslationAnalysisStatus.Completed && project != null && project.Glossary != null)
+            {
+                this.Notify(NotificationSeverity.Success, AppText.T("web.toolbox.subtitleTranslation.notifyProposed"),
+                    AppText.Count("web.toolbox.subtitleTranslation.termsCount", project.Glossary.Terms.Count) + " · " + AppText.Count("web.toolbox.subtitleTranslation.charactersCount", project.Glossary.Characters.Count));
+            }
+            else if (analysis.Stop != null && analysis.Stop.Reason == TranslationStopReason.Stop)
+            {
+                this.Notify(NotificationSeverity.Warning, AppText.T("web.toolbox.subtitleTranslation.notifyStopped"), AppText.T("web.toolbox.subtitleTranslation.notifyResumable"));
+            }
+            else if (analysis.Stop != null && analysis.Stop.Reason == TranslationStopReason.UsageLimit)
+            {
+                this.Notify(NotificationSeverity.Warning, AppText.T("web.toolbox.subtitleTranslation.analysisPaused"), analysis.Stop.Message);
+            }
+            else if (analysis.Stop != null)
+            {
+                this.Notify(NotificationSeverity.Error, AppText.T("web.toolbox.subtitleTranslation.notifyFailed"), analysis.Stop.Message);
+            }
+
+            await this.OnStateChanged.InvokeAsync();
+        });
+    }
+
+    /// <summary>
+    /// Toast della ricerca web rifiutata dall'accesso: l'analisi prosegue senza
+    /// </summary>
+    private void HandleWebSearchRejected()
+    {
+        this.InvokeAsync(() => this.Notify(NotificationSeverity.Info, AppText.T("web.toolbox.subtitleTranslation.notifyWebSearchTitle"), AppText.T("web.toolbox.subtitleTranslation.notifyWebSearch")));
+    }
+
+    /// <summary>
+    /// Sceglie un progetto dell'elenco
+    /// </summary>
+    /// <param name="project">Progetto della riga</param>
+    private async Task SelectProject(TranslationProject project)
+    {
+        this._selectedId = project.Id;
+        await this.OnStateChanged.InvokeAsync();
+    }
+
+    /// <summary>
+    /// Mostra un passo del progetto aperto, senza l'esito dell'ultimo export e la battuta in modifica
+    /// </summary>
+    /// <param name="index">Indice del passo</param>
+    private async Task SelectStep(int index)
+    {
+        this._step = index;
+        this._exported = null;
+        this.CancelCueEditing();
+        await this.OnStateChanged.InvokeAsync();
+    }
+
+    /// <summary>
+    /// Approva il glossario e avvia il giro; senza il modello della traduzione, quello della revisione se la modalità lo usa o le
+    /// credenziali dell'accesso il glossario non si approva
+    /// </summary>
+    private void ApproveGlossary()
+    {
+        if (!this.CheckModel(TranslationJobPhase.Translation) || !this.CheckModel(TranslationJobPhase.Review))
+            return;
+        if (!this.Orchestrator.IsAccessConfigured)
+        {
+            this.Notify(NotificationSeverity.Error, AppText.T("web.toolbox.subtitleTranslation.notifyTranslationFailed"), AppText.T("ai.error.notConfigured"));
+            return;
+        }
+
+        this._pending = null;
+        this._step = STEP_TRANSLATION;
+        this.Orchestrator.ApproveGlossary();
+        this.Notify(NotificationSeverity.Success, AppText.T("web.toolbox.subtitleTranslation.notifyApproved"), AppText.F("web.toolbox.subtitleTranslation.revision", this.Orchestrator.Project.Glossary.Revision));
+    }
+
+    /// <summary>
+    /// Toglie un file bloccato dal job e mostra il passo in cui il giro aspetta
+    /// </summary>
+    /// <param name="row">Riga del file</param>
+    private void ExcludeFile(TranslationJobFileRow row)
+    {
+        this.Orchestrator.ExcludeFile(row.FileId);
+        this._step = this.ProjectStep();
+    }
+
+    /// <summary>
+    /// Mostra nella revisione un altro file del job, senza la battuta in modifica
+    /// </summary>
+    /// <param name="fileId">File del job</param>
+    private void SelectReviewFile(string fileId)
+    {
+        this._reviewFileId = fileId;
+        this._reviewRows = null;
+        this.CancelCueEditing();
+    }
+
+    /// <summary>
+    /// Mette in modifica una battuta col suo testo
+    /// </summary>
+    /// <param name="row">Riga della battuta</param>
+    private void StartCueEditing(TranslationReviewRow row)
+    {
+        this._editingCue = row.Id;
+        this._cueDraft = row.Text ?? "";
+    }
+
+    /// <summary>
+    /// Apre un progetto dell'elenco sul passo più avanti raggiunto; un progetto che non si legge resta nell'elenco con un toast
+    /// </summary>
+    /// <param name="project">Progetto della riga</param>
+    /// <returns>True se il progetto è aperto</returns>
+    private bool OpenProject(TranslationProject project)
+    {
+        try
+        {
+            this.Orchestrator.OpenProject(project.Id);
+        }
+        catch (Exception ex)
+        {
+            if (!(ex is InvalidDataException || ex is IOException || ex is UnauthorizedAccessException))
+                throw;
+
+            this.Notify(NotificationSeverity.Error, AppText.T("web.toolbox.subtitleTranslation.notifyOpenFailed"), ex.Message);
+            return false;
+        }
+
+        this._step = this.ProjectStep();
+        this._pending = null;
+        return true;
+    }
+
+    /// <summary>
+    /// Apre il progetto scelto e ne riprende la traduzione o l'analisi fermata
+    /// </summary>
+    /// <param name="project">Progetto della riga</param>
+    private void Resume(TranslationProject project)
+    {
+        if (!this.OpenProject(project))
+            return;
+
+        if (this.Orchestrator.Job != null)
+        {
+            this.StartJob();
+        }
+        else
+        {
+            this.Analyze();
+        }
+    }
+
+    /// <summary>
+    /// Cancella il progetto scelto dopo la conferma
+    /// </summary>
+    /// <param name="project">Progetto della riga</param>
+    private async Task DeleteProjectAsync(TranslationProject project)
+    {
+        string name = SubtitleTranslationOrchestrator.DisplayName(project);
+        bool confirmed = await AppDialogs.ConfirmAsync(this.DialogService, AppText.T("web.toolbox.subtitleTranslation.deleteTitle"), AppText.F("web.toolbox.subtitleTranslation.deleteMessage", name),
+            AppText.T("web.common.delete"), AppText.T("web.common.cancel"));
+        if (!confirmed)
+            return;
+
+        if (!this.Orchestrator.DeleteProject(project))
+            return;
+
+        this._selectedId = "";
+        this.ReloadProjects();
+        this.Notify(NotificationSeverity.Success, AppText.T("web.toolbox.subtitleTranslation.notifyDeleted"), name);
+        await this.OnStateChanged.InvokeAsync();
+    }
+
+    /// <summary>
+    /// Carica un glossario .xlsx e dice l'esito: le voci lette o il primo errore con la sua cella
+    /// </summary>
+    private async Task ImportGlossaryAsync()
+    {
+        List<TranslationFileRecord> records = this.Orchestrator.GetRecords();
+        string initialPath = records.Count > 0 ? System.IO.Path.GetDirectoryName(records[0].InputPath) : "";
+        string path = await AppDialogs.BrowseAsync(this.DialogService, this.JsModule, initialPath, true, false, s_glossaryExtensions);
+        if (string.IsNullOrEmpty(path))
+            return;
+
+        GlossaryImportResult result = this.Orchestrator.ImportGlossary(path);
+        if (result.Glossary != null)
+        {
+            this.Notify(NotificationSeverity.Success, AppText.T("web.toolbox.subtitleTranslation.notifyImported"),
+                AppText.Count("web.toolbox.subtitleTranslation.termsCount", this.Orchestrator.Project.ImportedGlossary.TermCount) + " · " +
+                AppText.Count("web.toolbox.subtitleTranslation.charactersCount", this.Orchestrator.Project.ImportedGlossary.CharacterCount));
+        }
+        else if (!string.IsNullOrEmpty(result.Code))
+        {
+            string keyPrefix = result.Code == GlossaryFile.FILE_INVALID || result.Code == GlossaryFile.LANGUAGE_MISMATCH ? "toolbox.subtitleTranslation.glossaryImport." : "toolbox.subtitleTranslation.validation.";
+            this.Notify(NotificationSeverity.Error, AppText.T("web.toolbox.subtitleTranslation.notifyImportFailed"),
+                AppText.F(keyPrefix + result.Code, result.Location, result.Detail, LanguageName(result.SourceLanguage), LanguageName(result.TargetLanguage),
+                    LanguageName(this.Orchestrator.Project.SourceLanguage), LanguageName(this.Orchestrator.Project.TargetLanguage)));
+        }
+    }
+
+    /// <summary>
+    /// Apre il dialog dei modelli
+    /// </summary>
+    private async Task OpenModelsAsync()
+    {
+        Dictionary<string, object> parameters = new Dictionary<string, object>();
+        parameters.Add(nameof(SubtitleTranslationModelsDialog.Orchestrator), this.Orchestrator);
+        await AppDialogs.OpenAsync<SubtitleTranslationModelsDialog>(this.DialogService, AppText.T("web.toolbox.subtitleTranslation.models"), parameters,
+            AppDialogs.CreateOptions(AppDialogs.WIDTH_COMPACT, null, this.JsModule), this.JsModule);
+    }
+
+    /// <summary>
+    /// Avvia o riprende l'analisi; senza il modello dell'analisi non parte
+    /// </summary>
+    private void Analyze()
+    {
+        if (string.IsNullOrEmpty(this.Orchestrator.Project.Models.Analysis))
+        {
+            this.Notify(NotificationSeverity.Error, AppText.T("web.toolbox.subtitleTranslation.notifyModelMissing"),
+                AppText.F("web.toolbox.subtitleTranslation.modelMissing", AppText.T("web.toolbox.subtitleTranslation.models.phase.analysis")));
+            return;
+        }
+
+        this._pending = null;
+        this._step = STEP_GLOSSARY;
+        this.Orchestrator.StartAnalysis();
+    }
+
+    /// <summary>
+    /// Avvia o riprende il giro nella fase del job; senza il modello della fase non parte
+    /// </summary>
+    private void StartJob()
+    {
+        TranslationJob job = this.Orchestrator.Job;
+        TranslationJobPhase phase = job != null ? job.Phase : TranslationJobPhase.Translation;
+        if (!this.CheckModel(phase))
+            return;
+
+        this._step = phase == TranslationJobPhase.Review ? STEP_REVIEW : STEP_TRANSLATION;
+        this.Orchestrator.StartJob();
+    }
+
+    /// <summary>
+    /// Controlla il modello della fase che parte; la revisione lo chiede solo se la modalità manda i blocchi al modello
+    /// </summary>
+    /// <param name="phase">Fase che parte: traduzione o revisione AI</param>
+    /// <returns>True se la fase può partire</returns>
+    private bool CheckModel(TranslationJobPhase phase)
+    {
+        TranslationJob job = this.Orchestrator.Job;
+        TranslationPhaseModels models = job != null ? job.Models : this.Orchestrator.Project.Models;
+        TranslationReviewMode reviewMode = job != null ? job.ReviewMode : this.Orchestrator.Project.Options.ReviewMode;
+        if (phase == TranslationJobPhase.Review && !TranslationReviewer.ReviewsBlocks(reviewMode))
+            return true;
+
+        string model = phase == TranslationJobPhase.Review ? models.Review : models.Translation;
+        if (string.IsNullOrEmpty(model))
+        {
+            string name = phase == TranslationJobPhase.Review ? "review" : "translation";
+            this.Notify(NotificationSeverity.Error, AppText.T("web.toolbox.subtitleTranslation.notifyModelMissing"),
+                AppText.F("web.toolbox.subtitleTranslation.modelMissing", AppText.T("web.toolbox.subtitleTranslation.models.phase." + name)));
+            return false;
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Toast dell'esito di una fase del giro e passo della fase in cui il giro aspetta: traduzione conclusa o con file bloccati,
+    /// revisione AI conclusa o senza blocchi da rivedere, fermata, pausa per il limite d'uso o errore
+    /// </summary>
+    /// <param name="result">Fase conclusa o fermata</param>
+    private void HandlePhaseFinished(TranslationPhaseResult result)
+    {
+        this.InvokeAsync(async () =>
+        {
+            TranslationJob job = result.Job;
+            TranslationStop stop = result.Stop;
+            string name = result.Phase == TranslationJobPhase.Review ? "Review" : "Translation";
+            if (stop != null && stop.Reason == TranslationStopReason.Stop)
+            {
+                this.Notify(NotificationSeverity.Warning, AppText.T("web.toolbox.subtitleTranslation.notify" + name + "Stopped"), AppText.T("web.toolbox.subtitleTranslation.notifyJobResumable"));
+            }
+            else if (stop != null && stop.Reason == TranslationStopReason.UsageLimit)
+            {
+                this.Notify(NotificationSeverity.Warning, AppText.T("web.toolbox.subtitleTranslation.notify" + name + "Paused"), stop.Message);
+            }
+            else if (stop != null)
+            {
+                this.Notify(NotificationSeverity.Error, AppText.T("web.toolbox.subtitleTranslation.notify" + name + "Failed"), stop.Message);
+            }
+            else if (result.Phase == TranslationJobPhase.Translation && job.Phase == TranslationJobPhase.Translation)
+            {
+                this.Notify(NotificationSeverity.Warning, AppText.T("web.toolbox.subtitleTranslation.notifyBlocked"), AppText.T("web.toolbox.subtitleTranslation.notifyBlockedDetail"));
+            }
+            else if (job.Phase == result.Phase)
+            {
+                // Fase non passata oltre senza fermata: file bloccati, che dopo la traduzione non si ricominciano
+                this.Notify(NotificationSeverity.Warning, AppText.T("web.toolbox.subtitleTranslation.notify" + name + "Blocked"), AppText.T("web.toolbox.subtitleTranslation.notifyBlockedAfterDetail"));
+            }
+            else if (result.Phase == TranslationJobPhase.Translation)
+            {
+                this.Notify(NotificationSeverity.Success, AppText.T("web.toolbox.subtitleTranslation.notifyTranslated"), AppText.Count("web.toolbox.subtitleTranslation.filesCount", job.FileIds.Count));
+            }
+            else if (result.Phase == TranslationJobPhase.Review && result.NotReviewed > 0)
+            {
+                this.Notify(NotificationSeverity.Warning, AppText.T("web.toolbox.subtitleTranslation.notifyReviewedPartial"),
+                    AppText.Count("web.toolbox.subtitleTranslation.notReviewedCount", result.NotReviewed, AppText.Count("web.toolbox.subtitleTranslation.correctedCount", result.Corrected)));
+            }
+            else if (result.Phase == TranslationJobPhase.Review && result.ReviewBlocks > 0)
+            {
+                this.Notify(NotificationSeverity.Success, AppText.T("web.toolbox.subtitleTranslation.notifyReviewed"), AppText.Count("web.toolbox.subtitleTranslation.correctedCount", result.Corrected));
+            }
+            else if (result.Phase == TranslationJobPhase.Review)
+            {
+                this.Notify(NotificationSeverity.Info, AppText.T("web.toolbox.subtitleTranslation.notifyReviewed"), AppText.T("web.toolbox.subtitleTranslation.notifyNothingToReview"));
+            }
+
+            if (stop == null)
+                this._step = this.ProjectStep();
+
+            await this.OnStateChanged.InvokeAsync();
+        });
+    }
+
+    /// <summary>
+    /// Salva la battuta in modifica; un testo con errori resta in modifica col toast dei motivi
+    /// </summary>
+    /// <param name="row">Riga della battuta</param>
+    private void SaveCue(TranslationReviewRow row)
+    {
+        string error = this.Orchestrator.EditCue(this._reviewFileId, row.Id, this._cueDraft ?? "");
+        if (!string.IsNullOrEmpty(error))
+        {
+            this.Notify(NotificationSeverity.Error, AppText.T("web.toolbox.subtitleTranslation.notifyCueInvalid"), error);
+            return;
+        }
+
+        this.CancelCueEditing();
+    }
+
+    /// <summary>
+    /// Chiude la modifica della battuta senza salvare
+    /// </summary>
+    private void CancelCueEditing()
+    {
+        this._editingCue = null;
+        this._cueDraft = "";
+    }
+
+    /// <summary>
+    /// Scrive i sottotitoli tradotti; con battute senza traduzione chiede prima la conferma
+    /// </summary>
+    /// <param name="approve">True per l'approvazione della revisione dell'utente, che dopo la conferma apre il passo Esporta</param>
+    private async Task ExportSubtitlesAsync(bool approve)
+    {
+        int untranslated = 0;
+        foreach (TranslationExportRow row in this.Orchestrator.GetExportRows())
+            untranslated += row.Untranslated;
+
+        if (untranslated > 0)
+        {
+            bool confirmed = await AppDialogs.ConfirmAsync(this.DialogService, AppText.T("web.toolbox.subtitleTranslation.exportSubtitles"),
+                AppText.Count("web.toolbox.subtitleTranslation.exportUntranslated", untranslated), AppText.T("web.toolbox.subtitleTranslation.exportSubtitles"), AppText.T("web.common.cancel"));
+            if (!confirmed)
+                return;
+        }
+
+        if (approve)
+        {
+            this.CancelCueEditing();
+            this.Orchestrator.ApproveReview();
+            this._step = STEP_EXPORT;
+        }
+
+        List<TranslationExportRow> rows = await Task.Run(() => this.Orchestrator.ExportSubtitles());
+        if (rows == null)
+        {
+            string folderError = this.Orchestrator.OutputFolderError;
+            if (!string.IsNullOrEmpty(folderError))
+                this.Notify(NotificationSeverity.Error, AppText.T("web.toolbox.subtitleTranslation.notifySubtitlesNotExported"), folderError);
+            return;
+        }
+
+        int failed = rows.FindAll(r => !r.Written).Count;
+        if (failed == 0)
+        {
+            // Tutto scritto: il toast dice le cartelle col solo nome e la pagina torna all'elenco dei progetti
+            List<string> folders = new List<string>();
+            foreach (TranslationExportRow row in rows)
+            {
+                string folder = System.IO.Path.GetFileName(System.IO.Path.GetDirectoryName(row.OutputPath));
+                if (!folders.Contains(folder))
+                    folders.Add(folder);
+            }
+            this.Notify(NotificationSeverity.Success, AppText.T("web.toolbox.subtitleTranslation.notifySubtitlesExported"), string.Join(", ", folders));
+            this._exported = null;
+            this._pending = null;
+            this.Orchestrator.CloseProject();
+            this.ReloadProjects();
+        }
+        else
+        {
+            this._exported = rows;
+            this.Notify(NotificationSeverity.Error, AppText.T("web.toolbox.subtitleTranslation.notifySubtitlesNotExported"), AppText.Count("web.toolbox.subtitleTranslation.filesCount", failed));
+        }
+
+        await this.OnStateChanged.InvokeAsync();
+    }
+
+    /// <summary>
+    /// Ricomincia da capo un file col sorgente cambiato, dopo la conferma
+    /// </summary>
+    /// <param name="row">Riga del file</param>
+    private async Task RestartFileAsync(TranslationJobFileRow row)
+    {
+        bool confirmed = await AppDialogs.ConfirmAsync(this.DialogService, AppText.T("web.toolbox.subtitleTranslation.restartFile"), AppText.F("web.toolbox.subtitleTranslation.restartMessage", row.FileName),
+            AppText.T("web.toolbox.subtitleTranslation.restartFile"), AppText.T("web.common.cancel"));
+        if (confirmed)
+            this.Orchestrator.RestartFile(row.FileId);
+    }
+
+    /// <summary>
+    /// Scrive l'archivio del progetto nella cartella scelta
+    /// </summary>
+    /// <param name="project">Progetto aperto o dell'elenco</param>
+    private async Task ExportProjectAsync(TranslationProject project)
+    {
+        string initialPath = project.Files.Count > 0 ? System.IO.Path.GetDirectoryName(project.Files[0].Path) : "";
+        string folder = await AppDialogs.BrowseAsync(this.DialogService, this.JsModule, initialPath, false, true, null);
+        if (string.IsNullOrEmpty(folder))
+            return;
+
+        try
+        {
+            string path = await Task.Run(() => this.Orchestrator.ExportProject(project, folder));
+            if (!string.IsNullOrEmpty(path))
+                this.Notify(NotificationSeverity.Success, AppText.T("web.toolbox.subtitleTranslation.notifyProjectExported"), path);
+        }
+        catch (Exception ex)
+        {
+            if (!(ex is IOException || ex is UnauthorizedAccessException || ex is InvalidDataException))
+                throw;
+
+            this.Notify(NotificationSeverity.Error, AppText.T("web.toolbox.subtitleTranslation.notifyProjectExportFailed"), ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Importa un archivio: controlli, conferma della sostituzione di un progetto presente, cartella dei sorgenti; poi apre il
+    /// progetto al passo raggiunto
+    /// </summary>
+    private async Task ImportProjectAsync()
+    {
+        string zipPath = await AppDialogs.BrowseAsync(this.DialogService, this.JsModule, "", true, false, s_archiveExtensions);
+        if (string.IsNullOrEmpty(zipPath))
+            return;
+
+        TranslationArchiveInspection inspection;
+        try
+        {
+            inspection = await Task.Run(() => this.Orchestrator.InspectArchive(zipPath));
+        }
+        catch (Exception ex)
+        {
+            if (!(ex is IOException || ex is UnauthorizedAccessException || ex is InvalidDataException))
+                throw;
+
+            this.Notify(NotificationSeverity.Error, AppText.T("web.toolbox.subtitleTranslation.notifyProjectImportFailed"), ex.Message);
+            return;
+        }
+
+        if (inspection.Existing != null)
+        {
+            bool replace = await AppDialogs.ConfirmAsync(this.DialogService, AppText.T("web.toolbox.subtitleTranslation.importReplaceTitle"),
+                AppText.F("web.toolbox.subtitleTranslation.importReplaceMessage", SubtitleTranslationOrchestrator.DisplayName(inspection.Existing),
+                    inspection.Existing.UpdatedAt.ToLocalTime().ToString("g", CultureInfo.CurrentCulture), SubtitleTranslationOrchestrator.DisplayName(inspection.Project),
+                    inspection.Project.UpdatedAt.ToLocalTime().ToString("g", CultureInfo.CurrentCulture)),
+                AppText.T("web.toolbox.subtitleTranslation.importReplace"), AppText.T("web.common.cancel"));
+            if (!replace)
+                return;
+        }
+
+        string folder = await AppDialogs.BrowseAsync(this.DialogService, this.JsModule, System.IO.Path.GetDirectoryName(zipPath), false, true, null);
+        if (string.IsNullOrEmpty(folder))
+            return;
+
+        TranslationProject project;
+        try
+        {
+            project = await Task.Run(() => this.Orchestrator.ImportProject(zipPath, folder, inspection.Existing != null));
+        }
+        catch (Exception ex)
+        {
+            if (!(ex is IOException || ex is UnauthorizedAccessException || ex is InvalidDataException || ex is InvalidOperationException))
+                throw;
+
+            this.Notify(NotificationSeverity.Error, AppText.T("web.toolbox.subtitleTranslation.notifyProjectImportFailed"), ex.Message);
+            return;
+        }
+
+        if (project == null)
+            return;
+
+        this.ReloadProjects();
+        this.Notify(NotificationSeverity.Success, AppText.T("web.toolbox.subtitleTranslation.notifyProjectImported"), SubtitleTranslationOrchestrator.DisplayName(project));
+        this.OpenProject(project);
+    }
+
+    /// <summary>
+    /// Scrive il glossario in .xlsx nella cartella scelta
+    /// </summary>
+    private async Task ExportGlossaryAsync()
+    {
+        List<TranslationFileRecord> records = this.Orchestrator.GetRecords();
+        string initialPath = records.Count > 0 ? System.IO.Path.GetDirectoryName(records[0].InputPath) : "";
+        string folder = await AppDialogs.BrowseAsync(this.DialogService, this.JsModule, initialPath, false, true, null);
+        if (string.IsNullOrEmpty(folder))
+            return;
+
+        try
+        {
+            string path = await Task.Run(() => this.Orchestrator.ExportGlossary(folder));
+            this.Notify(NotificationSeverity.Success, AppText.T("web.toolbox.subtitleTranslation.notifyExported"), path);
+        }
+        catch (Exception ex)
+        {
+            if (!(ex is IOException || ex is UnauthorizedAccessException))
+                throw;
+
+            this.Notify(NotificationSeverity.Error, AppText.T("web.toolbox.subtitleTranslation.notifyExportFailed"), ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Voci di una scheda con, in fondo, quella aggiunta a mano non ancora nel glossario
+    /// </summary>
+    /// <typeparam name="T">Tipo della voce</typeparam>
+    /// <param name="entries">Voci del glossario</param>
+    /// <returns>Righe della griglia</returns>
+    private List<T> WithPending<T>(List<T> entries)
+    {
+        List<T> rows = new List<T>(entries);
+        if (this._pending is T pending)
+            rows.Add(pending);
+        return rows;
+    }
+
+    /// <summary>
+    /// Applica la modifica di una cella a una voce: i campi chiave non vuoti e non già presenti in un'altra voce. La voce
+    /// aggiunta a mano entra nel glossario quando la modifica la completa; fino ad allora tiene i valori scritti
+    /// </summary>
+    /// <typeparam name="T">Tipo della voce</typeparam>
+    /// <param name="entry">Voce della riga</param>
+    /// <param name="change">Modifica della cella</param>
+    private void ChangeEntry<T>(T entry, Action<T> change) where T : class
+    {
+        TranslationProject project = this.Orchestrator.Project;
+        Glossary glossary = project.Glossary;
+        GlossaryBuilder builder = new GlossaryBuilder(project.SourceLanguage, project.TargetLanguage);
+        bool adding = ReferenceEquals(entry, this._pending);
+        bool incomplete = false;
+        string error = "";
+        Action<Glossary> add = null;
+
+        // La modifica si prova su una copia dei campi chiave: la voce cambia solo se resta valida
+        object candidate = entry switch
+        {
+            GlossaryTerm t => new GlossaryTerm { Source = t.Source, Target = t.Target },
+            GlossaryCharacter c => new GlossaryCharacter { Name = c.Name },
+            GlossaryAddressing a => new GlossaryAddressing { Speaker = a.Speaker, Addressee = a.Addressee },
+            _ => null
+        };
+        change((T)candidate);
+
+        if (candidate is GlossaryTerm term)
+        {
+            incomplete = term.IsIncomplete();
+            if (incomplete)
+            {
+                error = AppText.T("web.toolbox.subtitleTranslation.editTermEmpty");
+            }
+            else if (builder.HasEntry(glossary, term, entry))
+            {
+                error = AppText.F("web.toolbox.subtitleTranslation.editDuplicate", term.Source);
+            }
+            add = g => g.Terms.Add(entry as GlossaryTerm);
+        }
+        else if (candidate is GlossaryCharacter character)
+        {
+            incomplete = character.IsIncomplete();
+            if (incomplete)
+            {
+                error = AppText.T("web.toolbox.subtitleTranslation.editCharacterEmpty");
+            }
+            else if (builder.HasEntry(glossary, character, entry))
+            {
+                error = AppText.F("web.toolbox.subtitleTranslation.editDuplicate", character.Name);
+            }
+            add = g => g.Characters.Add(entry as GlossaryCharacter);
+        }
+        else if (candidate is GlossaryAddressing pair)
+        {
+            incomplete = pair.IsIncomplete();
+            if (incomplete)
+            {
+                error = AppText.T("web.toolbox.subtitleTranslation.editAddressingEmpty");
+            }
+            else if (builder.HasEntry(glossary, pair, entry))
+            {
+                error = AppText.F("web.toolbox.subtitleTranslation.editDuplicate", pair.Speaker + " → " + pair.Addressee);
+            }
+            add = g => g.Addressing.Add(entry as GlossaryAddressing);
+        }
+
+        // La voce aggiunta a mano non è nel glossario: tiene i valori anche se incompleta
+        if (adding)
+            change(entry);
+
+        if (!string.IsNullOrEmpty(error))
+        {
+            if (!adding || !incomplete)
+                this.Notify(NotificationSeverity.Error, AppText.T("web.toolbox.subtitleTranslation.notifyEditInvalid"), error);
+            return;
+        }
+
+        // Il termine nuovo o modificato riprende le maiuscole esatte dalle battute, che ora possono dire altro
+        this.Orchestrator.ChangeGlossary(g =>
+        {
+            if (entry is GlossaryTerm changedTerm)
+                changedTerm.ExactCase = null;
+            if (adding)
+            {
+                add(g);
+            }
+            else
+            {
+                change(entry);
+            }
+        });
+        if (adding)
+            this._pending = null;
+    }
+
+    /// <summary>
+    /// Toglie una voce dal glossario, o lascia quella aggiunta a mano non ancora nel glossario
+    /// </summary>
+    /// <param name="entry">Voce della riga</param>
+    private void DeleteEntry(object entry)
+    {
+        if (ReferenceEquals(entry, this._pending))
+        {
+            this._pending = null;
+            return;
+        }
+
+        this.Orchestrator.ChangeGlossary(g =>
+        {
+            if (entry is GlossaryTerm term)
+            {
+                g.Terms.Remove(term);
+            }
+            else if (entry is GlossaryCharacter character)
+            {
+                g.Characters.Remove(character);
+            }
+            else if (entry is GlossaryAddressing pair)
+            {
+                g.Addressing.Remove(pair);
+            }
+        });
+    }
+
+    /// <summary>
+    /// Cella di testo di una voce del glossario: campo che salva al cambio, o testo se la colonna non si modifica sulla riga
+    /// </summary>
+    /// <typeparam name="T">Tipo della voce</typeparam>
+    /// <param name="entry">Voce della riga</param>
+    /// <param name="value">Valore della cella</param>
+    /// <param name="editable">True se la colonna si modifica sulla riga</param>
+    /// <param name="label">Titolo della colonna per l'etichetta accessibile</param>
+    /// <param name="assign">Scrittura del valore nella voce</param>
+    /// <returns>Frammento della cella</returns>
+    private RenderFragment TextCell<T>(T entry, string value, bool editable, string label, Action<T, string> assign) where T : class =>
+        @<text>
+            @if (editable)
+            {
+                <RadzenTextBox class="rf-translation-cell-input" Value="@value" Disabled="@(Orchestrator.IsBusy || Orchestrator.GlossaryLocked)" aria-label="@label"
+                               Change="@((string text) => ChangeEntry(entry, e => assign(e, (text ?? "").Trim())))" />
+            }
+            else
+            {
+                <span class="rf-translation-cell">@value</span>
+            }
+        </text>;
+
+    /// <summary>
+    /// Cella con il pulsante che toglie una voce del glossario
+    /// </summary>
+    /// <param name="entry">Voce della riga</param>
+    /// <param name="name">Nome della voce per l'etichetta accessibile</param>
+    /// <returns>Frammento della cella</returns>
+    private RenderFragment DeleteCell(object entry, string name) =>
+        @<RadzenButton Icon="delete" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Danger" Disabled="@(Orchestrator.IsBusy || Orchestrator.GlossaryLocked)"
+                       title="@AppText.T("web.common.delete")" aria-label="@(AppText.T("web.common.delete") + " " + name)" Click="@(() => DeleteEntry(entry))" />;
+
+    /// <summary>
+    /// Attesa della chiamata AI in corso
+    /// </summary>
+    /// <returns>Frammento dell'attesa</returns>
+    private RenderFragment Thinking() =>
+        @<div class="rf-translation-thinking"><AiThinkingComponent Phrase="@Orchestrator.Phrase" Detail="@Orchestrator.Detail" StartedAt="@Orchestrator.CallStartedAt" /></div>;
+
+    /// <summary>
+    /// Rilegge i progetti salvati e i loro job; un job illeggibile lascia il progetto nell'elenco senza job, e l'apertura ne dà il motivo
+    /// </summary>
+    private void ReloadProjects()
+    {
+        this._projects = this.Orchestrator.ListProjects();
+        this._jobs = new Dictionary<string, TranslationJob>(StringComparer.Ordinal);
+        this._jobsToResume = new HashSet<string>(StringComparer.Ordinal);
+        this._exportable = new HashSet<string>(StringComparer.Ordinal);
+        foreach (TranslationProject project in this._projects)
+        {
+            try
+            {
+                TranslationJob job = this.Orchestrator.LoadJob(project);
+                if (job == null)
+                    continue;
+
+                this._jobs[project.Id] = job;
+                if (job.Status == TranslationJobStatus.Paused && (job.Phase == TranslationJobPhase.Review ||
+                    (job.Phase == TranslationJobPhase.Translation && this.Orchestrator.HasFilesToTranslate(job))))
+                    this._jobsToResume.Add(project.Id);
+                if (this.Orchestrator.CanExportProject(project, job))
+                    this._exportable.Add(project.Id);
+            }
+            catch (Exception ex)
+            {
+                if (!(ex is InvalidDataException || ex is IOException || ex is UnauthorizedAccessException))
+                    throw;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Passo da mostrare per il progetto aperto: col job Glossario se il glossario cambiato nella pausa della traduzione è da
+    /// approvare, Traduzione se un file è bloccato, poi il passo della sua fase, Esporta se già raggiunto dalla revisione
+    /// dell'utente; Glossario con l'analisi partita, altrimenti Progetto
+    /// </summary>
+    /// <returns>Indice del passo</returns>
+    private int ProjectStep()
+    {
+        TranslationProject project = this.Orchestrator.Project;
+        if (project == null)
+            return 0;
+
+        TranslationJob job = this.Orchestrator.Job;
+        if (job != null && job.Phase == TranslationJobPhase.Translation && project.Glossary.Status == GlossaryStatus.Draft)
+            return STEP_GLOSSARY;
+        if (job != null && this.Orchestrator.HasBlockedFiles)
+            return STEP_TRANSLATION;
+        if (job != null && job.Phase == TranslationJobPhase.Review)
+            return STEP_REVIEW;
+        if (job != null && job.Phase == TranslationJobPhase.UserReview)
+            return project.ReachedStep >= TranslationProjectStep.Export ? STEP_EXPORT : STEP_REVIEW;
+        if (job != null)
+            return STEP_TRANSLATION;
+
+        return this.Orchestrator.IsBusy || project.ReachedStep >= TranslationProjectStep.Glossary ? STEP_GLOSSARY : 0;
+    }
+
+    /// <summary>
+    /// Stato mostrato di un job: in traduzione, in revisione AI, in pausa, interrotto, tradotto, da rivedere, esportato
+    /// </summary>
+    /// <param name="job">Job</param>
+    /// <returns>Testo del badge</returns>
+    private static string JobStateText(TranslationJob job)
+    {
+        if (job.Status == TranslationJobStatus.Running)
+            return AppText.T(job.Phase == TranslationJobPhase.Review ? "web.toolbox.subtitleTranslation.jobState.reviewing" : "web.toolbox.subtitleTranslation.jobState.running");
+        if (job.Status == TranslationJobStatus.Paused)
+            return AppText.T(job.Pause != null && (job.Pause.Reason == TranslationStopReason.Stop || job.Pause.Reason == TranslationStopReason.Crash)
+                ? "web.toolbox.subtitleTranslation.jobState.interrupted" : "web.toolbox.subtitleTranslation.jobState.paused");
+        if (job.Phase == TranslationJobPhase.Review)
+            return AppText.T("web.toolbox.subtitleTranslation.jobState.translated");
+        if (job.Phase == TranslationJobPhase.UserReview)
+            return AppText.T(job.Exported ? "web.toolbox.subtitleTranslation.jobState.exported" : "web.toolbox.subtitleTranslation.jobState.userReview");
+
+        return AppText.T("web.toolbox.subtitleTranslation.steps.translation");
+    }
+
+    /// <summary>
+    /// True se la battuta è da controllare: da rivedere, col glossario non rispettato, ritentata, corretta dall'AI o modificata a
+    /// mano
+    /// </summary>
+    /// <param name="row">Riga della revisione</param>
+    /// <returns>True per il filtro «Da controllare»</returns>
+    private static bool NeedsCheck(TranslationReviewRow row)
+    {
+        return row.ToReview || row.Signals.Contains(TranslationCueSignal.Glossary) || row.Signals.Contains(TranslationCueSignal.Retried) ||
+            row.Signals.Contains(TranslationCueSignal.CorrectedByAi) || row.Signals.Contains(TranslationCueSignal.EditedByUser);
+    }
+
+    /// <summary>
+    /// Testo di una battuta con aperture e chiusure dei segni evidenziate
+    /// </summary>
+    /// <param name="text">Testo con i segni</param>
+    /// <returns>Frammento della cella</returns>
+    private static RenderFragment MarkedText(string text) => builder => BuildMarkedText(builder, text);
+
+    /// <summary>
+    /// Scrive il testo di una battuta con aperture e chiusure dei segni evidenziate
+    /// </summary>
+    /// <param name="builder">Builder del render</param>
+    /// <param name="text">Testo con i segni</param>
+    private static void BuildMarkedText(RenderTreeBuilder builder, string text)
+    {
+        int position = 0;
+        int sequence = 0;
+        foreach (Match match in SubtitleCueCleaner.FindMarks(text))
+        {
+            builder.AddContent(sequence++, text.Substring(position, match.Index - position));
+            builder.OpenElement(sequence++, "mark");
+            builder.AddAttribute(sequence++, "class", "rf-translation-mark");
+            builder.AddContent(sequence++, match.Value.TrimEnd());
+            builder.CloseElement();
+            if (match.Value.EndsWith(" ", StringComparison.Ordinal))
+                builder.AddContent(sequence++, " ");
+            position = match.Index + match.Length;
+        }
+        builder.AddContent(sequence, text.Substring(position));
+    }
+
+    /// <summary>
+    /// Tempo di una battuta come ore, minuti, secondi e millesimi
+    /// </summary>
+    /// <param name="ms">Millisecondi</param>
+    /// <returns>Testo hh:mm:ss.mmm</returns>
+    private static string FormatTime(long ms)
+    {
+        return TimeSpan.FromMilliseconds(ms).ToString(@"hh\:mm\:ss\.fff", CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>
+    /// Nome di una lingua per l'elenco, il codice se la lingua non ha nome
+    /// </summary>
+    /// <param name="code">Codice ISO 639-2</param>
+    /// <returns>Nome da mostrare</returns>
+    private static string LanguageName(string code)
+    {
+        if (string.IsNullOrEmpty(code))
+            return "—";
+
+        return LanguageChipsComponent.LocalizedName(code) ?? code;
+    }
+
+    #endregion
+
+    #region Proprietà
+
+    /// <inheritdoc />
+    protected override List<string> FileExtensions
+    {
+        get { return s_extensions; }
+    }
+
+    /// <summary>
+    /// Battute del file in revisione, il primo del job se non scelto; si rileggono al cambio di stato della card
+    /// </summary>
+    private List<TranslationReviewRow> ReviewRows
+    {
+        get
+        {
+            TranslationJob job = this.Orchestrator.Job;
+            if (this._reviewFileId == null || job == null || !job.FileIds.Contains(this._reviewFileId))
+            {
+                this._reviewFileId = job != null && job.FileIds.Count > 0 ? job.FileIds[0] : null;
+                this._reviewRows = null;
+            }
+
+            if (this._reviewRows == null)
+            {
+                this._reviewRows = this.Orchestrator.GetReviewRows(this._reviewFileId);
+                this._reviewView = null;
+            }
+
+            return this._reviewRows;
+        }
+    }
+
+    /// <summary>
+    /// Battute del file in revisione col filtro scelto
+    /// </summary>
+    private List<TranslationReviewRow> ReviewView
+    {
+        get
+        {
+            if (this._reviewView == null)
+            {
+                List<TranslationReviewRow> rows = this.ReviewRows;
+                this._reviewView = this._reviewFilter == FILTER_TO_CHECK ? rows.FindAll(r => NeedsCheck(r))
+                    : this._reviewFilter == FILTER_EDITED ? rows.FindAll(r => r.Signals.Contains(TranslationCueSignal.EditedByUser)) : rows;
+            }
+
+            return this._reviewView;
+        }
+    }
+
+    /// <summary>
+    /// Progetto scelto nell'elenco, null se nessuno
+    /// </summary>
+    private TranslationProject SelectedProject
+    {
+        get { return this._projects.Find(p => p.Id == this._selectedId); }
+    }
+
+    #endregion
+}

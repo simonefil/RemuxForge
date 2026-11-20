@@ -1,0 +1,324 @@
+@using RemuxForge.Core.Toolbox.Common
+@using RemuxForge.Core.Toolbox.TrackExtraction
+@inherits ToolboxBatchPageBase<TrackExtractionOrchestrator, TrackExtractionFile>
+
+@{
+    List<TrackExtractionFile> files = Orchestrator.GetRecords();
+    List<TrackExtractionTrack> selection = Orchestrator.GetSelection();
+    bool busy = Orchestrator.IsBusy;
+    TrackExtractionView view = Orchestrator.View;
+
+    _plan = Orchestrator.PlanOutputs();
+}
+<div class="rf-panel rf-tool-page">
+    <ToolboxOutputOptions Orchestrator="@Orchestrator" JsModule="@JsModule" Id="track-extraction" />
+
+    @if (files.Count == 0)
+    {
+        <ToolboxEmptyState Title="@AppText.T("web.toolbox.trackExtraction.emptyTitle")">
+            <RadzenButton Text="@AppText.T("web.toolbox.list.addFiles")" Icon="add" Disabled="@busy" Click="@AddFilesAsync" />
+        </ToolboxEmptyState>
+    }
+    else
+    {
+        @* La vista si apre in CanChange, prima che la scheda cambi: durante Change le schede in Client non si ridisegnano. Durante il lotto la vista estratta resta aperta *@
+        <RadzenTabs class="rf-tool-tabs" RenderMode="TabRenderMode.Client" SelectedIndex="@((int)view)"
+                    CanChange="@((TabsCanChangeEventArgs args) => { if (!Orchestrator.SetView((TrackExtractionView)args.NewIndex)) args.PreventDefault(); })">
+            <Tabs>
+                <RadzenTabsItem Text="@AppText.T("web.toolbox.trackExtraction.viewByFile")" Disabled="@(busy && view != TrackExtractionView.ByFile)">
+                    @* Una riga per video; espandendola si spuntano le sue tracce. Le tracce video si vedono ma non si spuntano *@
+                    <RadzenDataGrid TItem="TrackExtractionFile"
+                                    Data="@files"
+                                    class="rf-data-grid rf-tool-grid"
+                                    AllowAlternatingRows="false"
+                                    AllowColumnResize="true"
+                                    AllowPaging="false"
+                                    AllowSorting="false"
+                                    Density="Density.Compact"
+                                    GridLines="DataGridGridLines.Both"
+                                    ExpandMode="DataGridExpandMode.Multiple"
+                                    ExpandChildItemAriaLabel="@AppText.T("web.toolbox.trackExtraction.showTracks")"
+                                    RowRender="@((RowRenderEventArgs<TrackExtractionFile> args) => args.Expandable = args.Data.Tracks.Count > 0)">
+                        <Template Context="file">
+                            <RadzenDataGrid TItem="TrackExtractionTrack"
+                                            Data="@file.Tracks"
+                                            class="rf-data-grid rf-tool-track-grid"
+                                            AllowAlternatingRows="false"
+                                            AllowColumnResize="false"
+                                            AllowPaging="false"
+                                            AllowSorting="false"
+                                            Density="Density.Compact"
+                                            GridLines="DataGridGridLines.Horizontal">
+                                <Columns>
+                                    <RadzenDataGridColumn TItem="TrackExtractionTrack" Width="5%" MinWidth="2.5rem" TextAlign="TextAlign.Center">
+                                        <Template Context="track">
+                                            @if (track.Track.IsExtractable)
+                                            {
+                                                <RadzenCheckBox TValue="bool" Value="@track.IsChecked" Disabled="@busy"
+                                                                AriaLabel="@AppText.F("web.toolbox.trackExtraction.checkTrack", track.Track.Number, System.IO.Path.GetFileName(file.InputPath))"
+                                                                Change="@((bool value) => Orchestrator.SetChecked(track, value))" />
+                                            }
+                                        </Template>
+                                    </RadzenDataGridColumn>
+                                    <RadzenDataGridColumn TItem="TrackExtractionTrack" Title="#" Width="5%" MinWidth="2.5rem">
+                                        <Template Context="track"><CellText Text="@track.Track.Number.ToString()" /></Template>
+                                    </RadzenDataGridColumn>
+                                    <RadzenDataGridColumn TItem="TrackExtractionTrack" Title="@AppText.T("web.toolbox.trackExtraction.kind")" Width="10%" MinWidth="2.5rem">
+                                        <Template Context="track">@TrackKindCell(track)</Template>
+                                    </RadzenDataGridColumn>
+                                    <RadzenDataGridColumn TItem="TrackExtractionTrack" Title="@AppText.T("web.toolbox.trackExtraction.format")" Width="14%" MinWidth="2.5rem">
+                                        <Template Context="track">@TrackFormatCell(track)</Template>
+                                    </RadzenDataGridColumn>
+                                    <RadzenDataGridColumn TItem="TrackExtractionTrack" Title="@AppText.T("web.toolbox.trackExtraction.language")" Width="8%" MinWidth="2.5rem">
+                                        <Template Context="track"><CellText Text="@track.Track.Language" /></Template>
+                                    </RadzenDataGridColumn>
+                                    <RadzenDataGridColumn TItem="TrackExtractionTrack" Title="@AppText.T("web.toolbox.trackExtraction.name")" Width="20%" MinWidth="2.5rem">
+                                        <Template Context="track">@TrackNameCell(track)</Template>
+                                    </RadzenDataGridColumn>
+                                    <RadzenDataGridColumn TItem="TrackExtractionTrack" Title="@AppText.T("web.dashboard.status")" Width="13%" MinWidth="2.5rem">
+                                        <Template Context="track">@TrackStatusCell(track)</Template>
+                                    </RadzenDataGridColumn>
+                                    <RadzenDataGridColumn TItem="TrackExtractionTrack" Title="@AppText.T("web.toolbox.trackExtraction.outputFile")" Width="25%" MinWidth="2.5rem">
+                                        <Template Context="track">@TrackOutputCell(track)</Template>
+                                    </RadzenDataGridColumn>
+                                </Columns>
+                            </RadzenDataGrid>
+                        </Template>
+                        <Columns>
+                            <RadzenDataGridColumn TItem="TrackExtractionFile" Width="4%" MinWidth="2.5rem" TextAlign="TextAlign.Center">
+                                <Template Context="file">
+                                    @if (file.Tracks.Exists(t => t.Track.IsExtractable))
+                                    {
+                                        int extractable = file.Tracks.FindAll(t => t.Track.IsExtractable).Count;
+                                        int chosen = file.Tracks.FindAll(t => t.IsChecked).Count;
+                                        @* Spunta piena se sono scelte tutte le tracce estraibili, parziale se solo alcune; il clic le sceglie tutte o le toglie tutte *@
+                                        <RadzenCheckBox TValue="bool?" Value="@(chosen == 0 ? false : chosen == extractable ? true : null)" Disabled="@busy"
+                                                        AriaLabel="@AppText.F("web.toolbox.trackExtraction.checkFile", System.IO.Path.GetFileName(file.InputPath))"
+                                                        Change="@((bool? value) => Orchestrator.SetFileChecked(file, chosen < extractable))" />
+                                    }
+                                </Template>
+                            </RadzenDataGridColumn>
+                            <RadzenDataGridColumn TItem="TrackExtractionFile" Title="@AppText.T("web.dashboard.file")" Width="31%" MinWidth="2.5rem">
+                                <Template Context="file"><span title="@file.InputPath">@System.IO.Path.GetFileName(file.InputPath)</span></Template>
+                            </RadzenDataGridColumn>
+                            <RadzenDataGridColumn TItem="TrackExtractionFile" Title="@AppText.T("web.toolbox.list.container")" Width="8%" MinWidth="2.5rem">
+                                <Template Context="file"><CellText Text="@System.IO.Path.GetExtension(file.InputPath).TrimStart('.').ToUpperInvariant()" /></Template>
+                            </RadzenDataGridColumn>
+                            <RadzenDataGridColumn TItem="TrackExtractionFile" Title="@AppText.T("web.toolbox.list.size")" Width="8%" MinWidth="2.5rem">
+                                <Template Context="file"><CellText Text="@Utils.FormatSize(file.Size)" /></Template>
+                            </RadzenDataGridColumn>
+                            <RadzenDataGridColumn TItem="TrackExtractionFile" Title="@AppText.T("web.toolbox.trackExtraction.tracks")" Width="12%" MinWidth="2.5rem">
+                                <Template Context="file">
+                                    <CellText Text="@(file.State == TrackExtractionFileState.Read ? AppText.F("web.toolbox.trackExtraction.tracksChosen", file.Tracks.FindAll(t => t.IsChecked).Count, file.Tracks.FindAll(t => t.Track.IsExtractable).Count) : "")" />
+                                </Template>
+                            </RadzenDataGridColumn>
+                            <RadzenDataGridColumn TItem="TrackExtractionFile" Title="@AppText.T("web.dashboard.status")" Width="14%" MinWidth="2.5rem">
+                                <Template Context="file">
+                                    <RadzenBadge IsPill="true"
+                                                 Text="@AppText.T(file.Outcome switch
+                                                 {
+                                                     TrackExtractionFileOutcome.Reading => "web.toolbox.trackExtraction.fileReading",
+                                                     TrackExtractionFileOutcome.Unreadable => "web.toolbox.trackExtraction.fileUnreadableStatus",
+                                                     TrackExtractionFileOutcome.NotRead => "web.toolbox.trackExtraction.fileNotRead",
+                                                     TrackExtractionFileOutcome.Running => "web.toolbox.trackExtraction.fileRunning",
+                                                     TrackExtractionFileOutcome.Extracted => "web.toolbox.trackExtraction.fileExtracted",
+                                                     TrackExtractionFileOutcome.ExtractedWithWarnings => "web.toolbox.trackExtraction.fileExtractedWithWarnings",
+                                                     TrackExtractionFileOutcome.Partial => "web.toolbox.trackExtraction.filePartial",
+                                                     TrackExtractionFileOutcome.Failed => "web.toolbox.trackExtraction.fileFailed",
+                                                     TrackExtractionFileOutcome.Stopped => "web.toolbox.trackExtraction.fileStopped",
+                                                     _ => "web.toolbox.trackExtraction.filePending"
+                                                 })"
+                                                 BadgeStyle="@(file.Outcome switch
+                                                 {
+                                                     TrackExtractionFileOutcome.Reading => BadgeStyle.Info,
+                                                     TrackExtractionFileOutcome.Running => BadgeStyle.Info,
+                                                     TrackExtractionFileOutcome.Extracted => BadgeStyle.Success,
+                                                     TrackExtractionFileOutcome.Unreadable => BadgeStyle.Danger,
+                                                     TrackExtractionFileOutcome.Failed => BadgeStyle.Danger,
+                                                     TrackExtractionFileOutcome.ExtractedWithWarnings => BadgeStyle.Warning,
+                                                     TrackExtractionFileOutcome.Partial => BadgeStyle.Warning,
+                                                     TrackExtractionFileOutcome.Stopped => BadgeStyle.Warning,
+                                                     TrackExtractionFileOutcome.NotRead => BadgeStyle.Warning,
+                                                     _ => BadgeStyle.Base
+                                                 })" />
+                                </Template>
+                            </RadzenDataGridColumn>
+                            <RadzenDataGridColumn TItem="TrackExtractionFile" Title="@AppText.T("web.toolbox.list.result")" Width="18%" MinWidth="2.5rem">
+                                <Template Context="file">
+                                    @* Illeggibile o non letto: il motivo, per intero nel tooltip; altrimenti quante tracce sono state scritte *@
+                                    @if (file.Error.Length > 0)
+                                    {
+                                        <span title="@file.Error">@file.Error</span>
+                                    }
+                                    else
+                                    {
+                                        int written = file.Tracks.FindAll(t => t.Result.IsDone).Count;
+                                        <CellText Text="@(written > 0 ? AppText.Count("web.toolbox.trackExtraction.tracksWritten", written) : "")" />
+                                    }
+                                </Template>
+                            </RadzenDataGridColumn>
+                            <RadzenDataGridColumn TItem="TrackExtractionFile" Width="5%" MinWidth="3rem" TextAlign="TextAlign.Center">
+                                <Template Context="file">
+                                    <RadzenButton Icon="delete" Variant="Variant.Text" ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.Small" Disabled="@busy"
+                                                  title="@AppText.T("web.toolbox.list.remove")" aria-label="@(AppText.T("web.toolbox.list.remove") + " " + System.IO.Path.GetFileName(file.InputPath))"
+                                                  Click="@(() => Orchestrator.Remove(file))" />
+                                </Template>
+                            </RadzenDataGridColumn>
+                        </Columns>
+                    </RadzenDataGrid>
+                </RadzenTabsItem>
+                <RadzenTabsItem Text="@AppText.T("web.toolbox.trackExtraction.viewByType")" Disabled="@(busy && view != TrackExtractionView.ByType)">
+                    @* Tendine in testata: un filtro vuoto vale tutti i valori. Lingue e formati sono quelli presenti nei video dell'elenco *@
+                    <div class="rf-tool-filters">
+                        <div class="rf-tool-field">
+                            <RadzenLabel class="rf-tool-label" Text="@AppText.T("web.toolbox.trackExtraction.kind")" Component="TrackExtractionKinds" />
+                            <RadzenDropDown TValue="IEnumerable<TrackExtractionKind>" Name="TrackExtractionKinds" class="rf-tool-filter"
+                                            Data="@(new List<KeyValuePair<TrackExtractionKind, string>> { new KeyValuePair<TrackExtractionKind, string>(TrackExtractionKind.Audio, AppText.T("web.toolbox.trackExtraction.kindAudio")), new KeyValuePair<TrackExtractionKind, string>(TrackExtractionKind.Subtitles, AppText.T("web.toolbox.trackExtraction.kindSubtitles")) })"
+                                            TextProperty="Value" ValueProperty="Key" Multiple="true" AllowSelectAll="false" AllowClear="true" Disabled="@busy"
+                                            Placeholder="@AppText.T("web.toolbox.trackExtraction.allKinds")"
+                                            Value="@Orchestrator.Kinds"
+                                            Change="@((object value) => Orchestrator.SetFilters((IEnumerable<TrackExtractionKind>)value ?? new List<TrackExtractionKind>(), Orchestrator.Languages, Orchestrator.Formats))" />
+                        </div>
+                        <div class="rf-tool-field">
+                            <RadzenLabel class="rf-tool-label" Text="@AppText.T("web.toolbox.trackExtraction.language")" Component="TrackExtractionLanguages" />
+                            <RadzenDropDown TValue="IEnumerable<string>" Name="TrackExtractionLanguages" class="rf-tool-filter"
+                                            Data="@Orchestrator.AvailableLanguages" Multiple="true" AllowSelectAll="false" AllowClear="true" Disabled="@busy"
+                                            MaxSelectedLabels="3" SelectedItemsText="@AppText.T("web.toolbox.trackExtraction.selectedItems")"
+                                            Placeholder="@AppText.T("web.toolbox.trackExtraction.allLanguages")"
+                                            Value="@Orchestrator.Languages"
+                                            Change="@((object value) => Orchestrator.SetFilters(Orchestrator.Kinds, (IEnumerable<string>)value ?? new List<string>(), Orchestrator.Formats))" />
+                        </div>
+                        <div class="rf-tool-field">
+                            <RadzenLabel class="rf-tool-label" Text="@AppText.T("web.toolbox.trackExtraction.format")" Component="TrackExtractionFormats" />
+                            <RadzenDropDown TValue="IEnumerable<string>" Name="TrackExtractionFormats" class="rf-tool-filter"
+                                            Data="@Orchestrator.AvailableFormats" Multiple="true" AllowSelectAll="false" AllowClear="true" Disabled="@busy"
+                                            MaxSelectedLabels="3" SelectedItemsText="@AppText.T("web.toolbox.trackExtraction.selectedItems")"
+                                            Placeholder="@AppText.T("web.toolbox.trackExtraction.allFormats")"
+                                            Value="@Orchestrator.Formats"
+                                            Change="@((object value) => Orchestrator.SetFilters(Orchestrator.Kinds, Orchestrator.Languages, (IEnumerable<string>)value ?? new List<string>()))" />
+                        </div>
+                    </div>
+                    @if (selection.Count == 0)
+                    {
+                        <ToolboxEmptyState Title="@AppText.T("web.toolbox.trackExtraction.noMatchTitle")" Compact="true">
+                            <RadzenText>@AppText.T(files.Exists(f => f.Tracks.Exists(t => t.Track.IsExtractable)) ? "web.toolbox.trackExtraction.noMatchFilters" : "web.toolbox.trackExtraction.noMatchTracks")</RadzenText>
+                        </ToolboxEmptyState>
+                    }
+                    else
+                    {
+                        <RadzenDataGrid TItem="TrackExtractionTrack"
+                                        Data="@selection"
+                                        class="rf-data-grid rf-tool-grid"
+                                        AllowAlternatingRows="false"
+                                        AllowColumnResize="true"
+                                        AllowPaging="false"
+                                        AllowSorting="false"
+                                        Density="Density.Compact"
+                                        GridLines="DataGridGridLines.Both">
+                            <Columns>
+                                <RadzenDataGridColumn TItem="TrackExtractionTrack" Title="@AppText.T("web.dashboard.file")" Width="24%" MinWidth="2.5rem">
+                                    <Template Context="track"><span title="@track.File.InputPath">@System.IO.Path.GetFileName(track.File.InputPath)</span></Template>
+                                </RadzenDataGridColumn>
+                                <RadzenDataGridColumn TItem="TrackExtractionTrack" Title="#" Width="5%" MinWidth="2.5rem">
+                                    <Template Context="track"><CellText Text="@track.Track.Number.ToString()" /></Template>
+                                </RadzenDataGridColumn>
+                                <RadzenDataGridColumn TItem="TrackExtractionTrack" Title="@AppText.T("web.toolbox.trackExtraction.kind")" Width="9%" MinWidth="2.5rem">
+                                    <Template Context="track">@TrackKindCell(track)</Template>
+                                </RadzenDataGridColumn>
+                                <RadzenDataGridColumn TItem="TrackExtractionTrack" Title="@AppText.T("web.toolbox.trackExtraction.format")" Width="12%" MinWidth="2.5rem">
+                                    <Template Context="track">@TrackFormatCell(track)</Template>
+                                </RadzenDataGridColumn>
+                                <RadzenDataGridColumn TItem="TrackExtractionTrack" Title="@AppText.T("web.toolbox.trackExtraction.language")" Width="7%" MinWidth="2.5rem">
+                                    <Template Context="track"><CellText Text="@track.Track.Language" /></Template>
+                                </RadzenDataGridColumn>
+                                <RadzenDataGridColumn TItem="TrackExtractionTrack" Title="@AppText.T("web.toolbox.trackExtraction.name")" Width="12%" MinWidth="2.5rem">
+                                    <Template Context="track">@TrackNameCell(track)</Template>
+                                </RadzenDataGridColumn>
+                                <RadzenDataGridColumn TItem="TrackExtractionTrack" Title="@AppText.T("web.dashboard.status")" Width="12%" MinWidth="2.5rem">
+                                    <Template Context="track">@TrackStatusCell(track)</Template>
+                                </RadzenDataGridColumn>
+                                <RadzenDataGridColumn TItem="TrackExtractionTrack" Title="@AppText.T("web.toolbox.trackExtraction.outputFile")" Width="19%" MinWidth="2.5rem">
+                                    <Template Context="track">@TrackOutputCell(track)</Template>
+                                </RadzenDataGridColumn>
+                            </Columns>
+                        </RadzenDataGrid>
+                    }
+                </RadzenTabsItem>
+            </Tabs>
+        </RadzenTabs>
+    }
+</div>
+
+@code {
+    /// <summary>
+    /// Estensioni proposte dal browser: tutti i contenitori accettati, Matroska compreso
+    /// </summary>
+    private static readonly List<string> s_extensions = new List<string>(MediaContainerFormats.Extensions);
+
+    /// <summary>
+    /// Nome previsto di ogni traccia scelta e non ancora estratta, preso dall'orchestratore a ogni disegno
+    /// </summary>
+    private Dictionary<TrackExtractionTrack, string> _plan = new Dictionary<TrackExtractionTrack, string>();
+
+    /// <summary>
+    /// Cella del tipo di traccia
+    /// </summary>
+    private RenderFragment TrackKindCell(TrackExtractionTrack track) =>
+        @<CellText Text="@AppText.T(track.Track.Kind switch
+                         {
+                             TrackExtractionKind.Video => "web.toolbox.trackExtraction.kindVideo",
+                             TrackExtractionKind.Audio => "web.toolbox.trackExtraction.kindAudio",
+                             TrackExtractionKind.Subtitles => "web.toolbox.trackExtraction.kindSubtitles",
+                             _ => "web.toolbox.trackExtraction.kindOther"
+                         })" />;
+
+    /// <summary>
+    /// Cella del formato: quello di estrazione, oppure il codec letto se la traccia non si estrae
+    /// </summary>
+    private RenderFragment TrackFormatCell(TrackExtractionTrack track) =>
+        @<span title="@track.Track.Codec">@(track.Track.Format != null ? track.Track.Format.Name : track.Track.Codec)</span>;
+
+    /// <summary>
+    /// Cella del nome, seguito dai flag predefinita e forzata
+    /// </summary>
+    private RenderFragment TrackNameCell(TrackExtractionTrack track) =>
+        @<CellText Text="@string.Join(" · ", new[] { track.Track.Name, track.Track.IsDefault ? AppText.T("web.toolbox.trackExtraction.flagDefault") : "", track.Track.IsForced ? AppText.T("web.toolbox.trackExtraction.flagForced") : "" }.Where(part => part.Length > 0))" />;
+
+    /// <summary>
+    /// Cella dello stato: vuota per le tracce non scelte e per quelle che non si estraggono
+    /// </summary>
+    private RenderFragment TrackStatusCell(TrackExtractionTrack track) =>
+        @<span>
+            @if (track.Result.Status != ToolboxItemStatus.Pending || _plan.ContainsKey(track))
+            {
+                <ToolboxStatusBadge Result="@track.Result" TextPrefix="web.toolbox.trackExtraction" />
+            }
+        </span>;
+
+    /// <summary>
+    /// Cella dell'uscita: il file scritto, il motivo dell'errore, il nome previsto per le tracce scelte o perché la traccia non si
+    /// estrae. Nel tooltip il percorso completo, gli avvisi o l'errore dello strumento per intero
+    /// </summary>
+    private RenderFragment TrackOutputCell(TrackExtractionTrack track) =>
+        @<span>
+            @if (!track.Track.IsExtractable)
+            {
+                <span class="rf-tool-muted" title="@track.Track.UnavailableReason">@track.Track.UnavailableReason</span>
+            }
+            else
+            {
+                <ToolboxResultCell Result="@track.Result">
+                    @if (_plan.TryGetValue(track, out string planned))
+                    {
+                        <span class="rf-tool-muted" title="@planned">@System.IO.Path.GetFileName(planned)</span>
+                    }
+                </ToolboxResultCell>
+            }
+        </span>;
+
+    /// <inheritdoc />
+    protected override List<string> FileExtensions
+    {
+        get { return s_extensions; }
+    }
+}

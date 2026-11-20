@@ -26,9 +26,9 @@ namespace RemuxForge.Core.Media
         private const string VFW_CODEC_ID = "V_MS/VFW/FOURCC";
 
         /// <summary>
-        /// Exit code mkvmerge per esecuzione riuscita con avvisi
+        /// Exit code di mkvmerge e mkvextract per esecuzione riuscita con avvisi
         /// </summary>
-        private const int MKVMERGE_WARNING_EXIT_CODE = 1;
+        public const int MKVMERGE_WARNING_EXIT_CODE = 1;
 
         #endregion
 
@@ -88,6 +88,48 @@ namespace RemuxForge.Core.Media
             return new MediaContainerNormalizer(mkvMergePath, AppSettingsService.Instance.GetTempFolder());
         }
 
+        /// <summary>
+        /// Argomenti mkvmerge che portano un file in Matroska con le stesse tracce; il chiamante aggiunge le opzioni di output della
+        /// console (-q o --gui-mode)
+        /// </summary>
+        /// <param name="sourceTracks">Tracce lette sul file d'ingresso</param>
+        /// <param name="inputPath">File d'ingresso</param>
+        /// <param name="outputPath">Matroska da scrivere</param>
+        /// <returns>Argomenti nell'ordine atteso da mkvmerge</returns>
+        public static List<string> BuildRemuxArguments(List<TrackInfo> sourceTracks, string inputPath, string outputPath)
+        {
+            List<string> arguments = new List<string> { "-o", outputPath, inputPath };
+
+            if (NeedsNativeMpeg4(sourceTracks))
+                arguments.InsertRange(0, new string[] { "--engage", "native_mpeg4" });
+
+            return arguments;
+        }
+
+        /// <summary>
+        /// Indica se il remux in Matroska va fatto con --engage native_mpeg4, che porta MPEG-4 Part 2 fuori da Video for Windows con
+        /// timestamp di presentazione puliti. Solo con una traccia MPEG-4 Part 2: mkvmerge applica la modalità nativa anche a
+        /// MS-MPEG4v2 (MP42), che non ha configurazione e fallisce
+        /// </summary>
+        /// <param name="sourceTracks">Tracce lette sul file d'ingresso</param>
+        /// <returns>True se serve la modalità nativa</returns>
+        public static bool NeedsNativeMpeg4(List<TrackInfo> sourceTracks)
+        {
+            return sourceTracks.Exists(t => t.Codec == MkvSplitCodecCapabilities.MPEG4_PART2_CODEC);
+        }
+
+        /// <summary>
+        /// Verifica che il Matroska prodotto abbia le tracce dell'ingresso con gli stessi ID e tipi
+        /// </summary>
+        /// <param name="sourceTracks">Tracce lette sul file d'ingresso</param>
+        /// <param name="outputTracks">Tracce lette sul Matroska prodotto</param>
+        /// <returns>True se le tracce coincidono; false anche quando l'ingresso non ha tracce lette</returns>
+        public static bool KeepsTracks(List<TrackInfo> sourceTracks, List<TrackInfo> outputTracks)
+        {
+            return sourceTracks.Count > 0 && sourceTracks.Count == outputTracks.Count &&
+                sourceTracks.FindIndex(t => outputTracks.FindIndex(n => n.Id == t.Id && n.Type == t.Type) < 0) < 0;
+        }
+
         #endregion
 
         #region Metodi pubblici
@@ -111,13 +153,8 @@ namespace RemuxForge.Core.Media
             string tempPath = Path.Combine(this._tempFolder, "normalized_" + Guid.NewGuid().ToString("N") + "_" + Path.GetFileNameWithoutExtension(filePath) + MediaContainerFormats.OUTPUT_EXTENSION);
             ConsoleHelper.Write(LogSection.General, LogLevel.Info, AppText.F("media.normalize.start", Path.GetFileName(filePath)));
             Stopwatch watch = Stopwatch.StartNew();
-            // native_mpeg4 porta MPEG-4 Part 2 fuori da Video for Windows con timestamp di presentazione puliti. Solo con una traccia
-            // MPEG-4 Part 2: mkvmerge applica la modalità nativa anche a MS-MPEG4v2 (MP42), che non ha configurazione e fallisce
-            List<string> arguments = new List<string> { "-q", "-o", tempPath, filePath };
-            if (sourceTracks.Exists(t => t.Codec == MkvSplitCodecCapabilities.MPEG4_PART2_CODEC))
-            {
-                arguments.InsertRange(1, new string[] { "--engage", "native_mpeg4" });
-            }
+            List<string> arguments = BuildRemuxArguments(sourceTracks, filePath, tempPath);
+            arguments.Insert(0, "-q");
 
             ProcessResult result = ProcessRunner.Run(this._mkvMergePath, arguments.ToArray(), 0, cancellationToken);
             if (result.ExitCode != 0 && result.ExitCode != MKVMERGE_WARNING_EXIT_CODE)
@@ -134,8 +171,7 @@ namespace RemuxForge.Core.Media
             }
 
             // Selezioni e mappature usano gli ID letti sull'originale: il temporaneo deve avere le stesse tracce con gli stessi ID
-            List<TrackInfo> normalizedTracks = this.ReadTracks(tempPath);
-            if (sourceTracks.Count == 0 || sourceTracks.Count != normalizedTracks.Count || sourceTracks.FindIndex(t => normalizedTracks.FindIndex(n => n.Id == t.Id && n.Type == t.Type) < 0) >= 0)
+            if (!KeepsTracks(sourceTracks, this.ReadTracks(tempPath)))
             {
                 FileHelper.DeleteTempFile(tempPath);
                 return new NormalizedMediaFile(filePath, "", false, AppText.F("media.normalize.failed", Path.GetFileName(filePath), AppText.T("media.normalize.tracksChanged")));

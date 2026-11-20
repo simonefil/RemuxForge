@@ -1,0 +1,647 @@
+using RemuxForge.Core.Configuration;
+using RemuxForge.Core.Localization;
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.Linq;
+using System.Text;
+using System.Text.Encodings.Web;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+
+namespace RemuxForge.Core.Toolbox.SubtitleTranslation
+{
+    /// <summary>
+    /// Parti comuni delle richieste della traduzione: formato a record delle battute, regole per lingua d'arrivo, nomi inglesi
+    /// delle lingue nei template e serializzazione JSON leggibile del testo mandato al modello
+    /// </summary>
+    public static class TranslationRequestBuilder
+    {
+        #region Costanti
+
+        /// <summary>
+        /// Segno degli a capo di una battuta nei record, che stanno su una riga sola, e nel testo consegnato: \N, l'a capo dell'ASS,
+        /// che il testo pulito non ha perché lo diventa a capo
+        /// </summary>
+        public const string LINE_BREAK_MARK = "\\N";
+
+        /// <summary>
+        /// Blocco «Record format», identico in tutte le instructions che lo usano
+        /// </summary>
+        public const string RECORD_FORMAT = "Record format\n" +
+            "- A source cue is a record on a single line. Its header is \"<id>\", followed by \" [song]\" for song lyrics or \" [sign]\" for on-screen text such as signs and titles; a header without either is dialogue. Then a tab and the whole text of the cue, where \"\\N\" marks a line break inside the cue. Each line of a source episode is a different cue.\n" +
+            "- A translation record has the same header followed by \" =>\", then a tab and the translated text, on one line with \"\\N\" for its line breaks. A header with nothing after \" =>\" means the cue has no accepted translation yet.\n" +
+            "- A signal record (review only) has the header \"<id> !\", then a tab and one signal per line, each further signal starting with a tab.\n" +
+            "- A delivered text marks its line breaks with \"\\N\" too, as the records do (\"\\\\N\" inside the JSON string).";
+
+        /// <summary>
+        /// Tool di consegna della traduzione
+        /// </summary>
+        public const string SUBMIT_TRANSLATION_TOOL = "submit_translation";
+
+        /// <summary>
+        /// Tool di consegna della diagnosi
+        /// </summary>
+        public const string SUBMIT_DIAGNOSIS_TOOL = "submit_diagnosis";
+
+        /// <summary>
+        /// Elenco di submit_translation coi dialoghi e le canzoni
+        /// </summary>
+        public const string TRANSLATIONS_LIST = "translations";
+
+        /// <summary>
+        /// Elenco di submit_translation coi cartelli
+        /// </summary>
+        public const string SIGNS_LIST = "signs";
+
+        /// <summary>
+        /// Categoria della diagnosi per genere e numero di chi parla o di chi ascolta: si corregge solo col parlante indicato
+        /// </summary>
+        public const string GENDER_NUMBER_CATEGORY = "gender_number";
+
+        /// <summary>
+        /// Coppie accettate mostrate nella coda prima dell'intervallo richiesto
+        /// </summary>
+        public const int TAIL_PAIRS = 15;
+
+        /// <summary>
+        /// Richieste con risposta al massimo per una sequenza del riconoscimento dei tipi, dell'analisi o della fusione
+        /// </summary>
+        public const int MAX_ROUNDS = 3;
+
+        /// <summary>
+        /// Caratteri per token nella stima dell'ingresso
+        /// </summary>
+        public const int CHARS_PER_TOKEN = 4;
+
+        /// <summary>
+        /// Passo dell'analisi sulle forme di cortesia per le lingue senza forme grammaticali
+        /// </summary>
+        private const string GENERIC_ADDRESS_PROCEDURE = "Describe in register_rules how formal each recurring character is with the others.";
+
+        /// <summary>
+        /// Regola di traduzione sulle forme di cortesia per le lingue senza forme grammaticali
+        /// </summary>
+        private const string GENERIC_ADDRESS_RULE = "Keep the register of each speaker as described in register_rules.";
+
+        /// <summary>
+        /// Instructions di traduzione, ritentativo e blocco ridotto: un solo testo, perché il ritentativo trovi la cache del prefisso
+        /// </summary>
+        private const string TRANSLATION_INSTRUCTIONS = "You are a professional subtitle translator from {source_language} to {target_language}.\n" +
+            "The first message gives the user's context for the series when there is one, the approved glossary and the full source episode. The last message shows the latest accepted translations and names the cue ids to translate now.\n" +
+            "This is not a chat: nobody reads plain text. Deliver only by calling submit_translation once, with one entry per requested id in ascending order, in the list the last message names for it.\n" +
+            "When the last message lists rejected ids with error codes, deliver only the requested ids, fixing every listed error.\n" +
+            "\n" +
+            "{record_format}\n" +
+            "\n" +
+            "{translation_rules}";
+
+        /// <summary>
+        /// Blocco «Translation rules», lo stesso in tutte le chiamate che traducono
+        /// </summary>
+        private const string TRANSLATION_RULES = "Translation rules\n" +
+            "\n" +
+            "Cues\n" +
+            "- Deliver exactly one text for every requested id. Never merge, split, skip or add cues.\n" +
+            "- Line breaks are part of the cue text. Break lines at natural points in {target_language}. In a cue with two speakers each speaker keeps its own line and its leading dash.\n" +
+            "- A formatted span appears as ⟦n text⟧, numbered from 1 within each cue. Return every span of the source cue exactly once, with the same number and in the same order, around the {target_language} words that correspond to the formatted words. Spans never nest and stay in their own cue.\n" +
+            "- Write plain text: no markup, no tags, no braces, no angle brackets, no notes or explanations.\n" +
+            "\n" +
+            "Split sentences\n" +
+            "- A sentence can continue into the next cue: translate it as a whole and distribute it over the same cues, in order.\n" +
+            "\n" +
+            "Songs and signs\n" +
+            "- Cues marked [song] are lyrics: translate them as lyrics in {target_language}, keeping the meaning and the line breaks of each source cue.\n" +
+            "- Cues marked [sign] are on-screen text: translate them short, as a sign or title in {target_language} would read.\n" +
+            "\n" +
+            "Editorial rules\n" +
+            "- Write natural, idiomatic {target_language} subtitles. Render the dramatic function of each line rather than its words: jokes, idioms, insults, threats, swearing and crude words keep their effect and their strength, and every swear word or crude word of the source gets an equally crude word in the translation rather than a neutral paraphrase, with no softening or censorship.\n" +
+            "- Infer from the context and the glossary who speaks to whom, how many people are addressed, and the gender of speakers and addressees.\n" +
+            "- {address_rule}\n" +
+            "- Use the renderings of the glossary terms. Inflect a rendering only where {target_language} grammar requires it and the term is not marked invariable.\n" +
+            "- Keep honorifics and name suffixes that appear in the source unless the glossary gives a rendering for them.\n" +
+            "- Keep dialogue dashes and continuation ellipses where the source has them.";
+
+        /// <summary>
+        /// Instructions di D1: diagnosi di un blocco tradotto
+        /// </summary>
+        private const string DIAGNOSIS_INSTRUCTIONS = "You review {target_language} subtitles translated from {source_language}, cue by cue, with the source beside them.\n" +
+            "The first message gives the user's context for the series when there is one, the approved glossary and the full source episode. The last message gives one block: for every cue its source record, its current translation record and, when the code noticed something, a signal record.\n" +
+            "This is not a chat: nobody reads plain text. Deliver only by calling submit_diagnosis once. Deliver an empty issues list when the block needs no change.\n" +
+            "\n" +
+            "Report real problems only, with these categories.\n" +
+            "Meaning:\n" +
+            "- accuracy: meaning changed, mistranslation, false friend, a set phrase rendered with the wrong sense;\n" +
+            "- omission: content of the source lost, or content added;\n" +
+            "- untranslated: {source_language} text left by mistake, apart from names and terms the glossary keeps;\n" +
+            "- gender_number: wrong gender or number of a speaker or addressee;\n" +
+            "- address_form: address form against the glossary;\n" +
+            "- terminology: a rendering of the glossary terms missing or misused;\n" +
+            "- weakened_swearing: insults, threats, swearing or crude language of the source rendered weaker, more formal, censored or dropped (a translation as strong as the source or stronger is not an issue).\n" +
+            "Style:\n" +
+            "- fluency: unidiomatic or ungrammatical {target_language}, literal calque;\n" +
+            "- register: tone or formality that does not fit the speaker, apart from address forms and swearing;\n" +
+            "- consistency: the same thing rendered differently within the block or against the glossary;\n" +
+            "- split_sentence: a sentence continuing over several cues badly distributed over them;\n" +
+            "- formatting: a ⟦n text⟧ span around the wrong words.\n" +
+            "\n" +
+            "Signals point to cues worth checking. A signalled cue can be correct, and a correct cue stays as it is: report an issue only when a change makes the subtitle better. A cue with no accepted translation needs no issue: it is translated again.\n" +
+            "For each issue give the cue id, the category, the severity (minor, major, critical), what the source says and what the translation says on that point, a short explanation in {notes_language} and a suggestion: the full corrected text of the cue with every issue of that cue fixed, which replaces the translation as it is. A meaning issue always has a suggestion. When the source and the translation say the same thing, the issue is not in a meaning category.\n" +
+            "A correction that sets or changes the gender or number of a person is a gender_number issue, whatever else it fixes: name in speaker who speaks the cue and to whom, as the context shows it. Leave speaker null in the other issues.\n" +
+            "\n" +
+            "{record_format}";
+
+        /// <summary>
+        /// Definizione del tool submit_diagnosis, con gli enum di categoria e gravità riempiti dagli elenchi ammessi
+        /// </summary>
+        private const string SUBMIT_DIAGNOSIS_JSON = "{\"type\":\"function\",\"name\":\"" + SUBMIT_DIAGNOSIS_TOOL + "\",\"strict\":true," +
+            "\"description\":\"Report the problems found in the translation of the block. Empty list if there are none.\"," +
+            "\"parameters\":{\"type\":\"object\",\"properties\":{" +
+            "\"issues\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"integer\"}," +
+            "\"category\":{\"type\":\"string\",\"enum\":[]}," +
+            "\"severity\":{\"type\":\"string\",\"enum\":[]}," +
+            "\"source_says\":{\"type\":\"string\",\"description\":\"What the source cue says on this point.\"}," +
+            "\"translation_says\":{\"type\":\"string\",\"description\":\"What the current translation says on this point.\"}," +
+            "\"speaker\":{\"type\":[\"string\",\"null\"],\"description\":\"Who speaks the cue and to whom, as the context shows it; required for gender_number, null otherwise.\"}," +
+            "\"explanation\":{\"type\":\"string\",\"description\":\"Short explanation for the user.\"}," +
+            "\"suggestion\":{\"type\":[\"string\",\"null\"],\"description\":\"Full corrected text of the cue with every issue of the cue fixed, with line breaks as \\\\N and its ⟦n text⟧ spans; required for the meaning categories, null if you have none for the others.\"}}," +
+            "\"required\":[\"id\",\"category\",\"severity\",\"source_says\",\"translation_says\",\"speaker\",\"explanation\",\"suggestion\"],\"additionalProperties\":false}}}," +
+            "\"required\":[\"issues\"],\"additionalProperties\":false}}";
+
+        /// <summary>
+        /// Voce consegnata di una battuta, uguale nei due elenchi di submit_translation
+        /// </summary>
+        private const string TRANSLATION_ENTRY_JSON = "{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"integer\"}," +
+            "\"text\":{\"type\":\"string\",\"description\":\"Translated cue text. Line breaks as \\\\N; every ⟦n text⟧ span of the source cue exactly once, in order.\"}}," +
+            "\"required\":[\"id\",\"text\"],\"additionalProperties\":false}";
+
+        /// <summary>
+        /// Definizione del tool submit_translation: dialoghi e canzoni in translations, cartelli in signs. Una frase che continua sulla
+        /// battuta dopo resta nel suo elenco e non può finire su un cartello che sta in mezzo nell'ordine di lettura
+        /// </summary>
+        private const string SUBMIT_TRANSLATION_JSON = "{\"type\":\"function\",\"name\":\"" + SUBMIT_TRANSLATION_TOOL + "\",\"strict\":true," +
+            "\"description\":\"Deliver the translation of the requested cue ids: one entry per requested id, in ascending order, the dialogue and song cues in translations and the [sign] cues in signs. The code validates every cue and asks again only for the rejected ones.\"," +
+            "\"parameters\":{\"type\":\"object\",\"properties\":{" +
+            "\"" + TRANSLATIONS_LIST + "\":{\"type\":\"array\",\"description\":\"The requested dialogue and song cues; never a [sign] cue.\",\"items\":" + TRANSLATION_ENTRY_JSON + "}," +
+            "\"" + SIGNS_LIST + "\":{\"type\":\"array\",\"description\":\"The requested [sign] cues; empty when none is requested.\",\"items\":" + TRANSLATION_ENTRY_JSON + "}}," +
+            "\"required\":[\"" + TRANSLATIONS_LIST + "\",\"" + SIGNS_LIST + "\"],\"additionalProperties\":false}}";
+
+        #endregion
+
+        #region Variabili statiche
+
+        /// <summary>
+        /// Categorie ammesse di un problema della diagnosi
+        /// </summary>
+        public static readonly IReadOnlyList<string> DIAGNOSIS_CATEGORIES = new string[] { "accuracy", "omission", "untranslated", GENDER_NUMBER_CATEGORY, "address_form", "terminology", "weakened_swearing",
+            "fluency", "register", "consistency", "split_sentence", "formatting" };
+
+        /// <summary>
+        /// Categorie di senso: le sole il cui suggerimento entra nel file; le altre restano nella diagnosi del blocco
+        /// </summary>
+        public static readonly IReadOnlyList<string> MEANING_CATEGORIES = new string[] { "accuracy", "omission", "untranslated", GENDER_NUMBER_CATEGORY, "address_form", "terminology", "weakened_swearing" };
+
+        /// <summary>
+        /// Gravità ammesse di un problema della diagnosi
+        /// </summary>
+        public static readonly IReadOnlyList<string> DIAGNOSIS_SEVERITIES = new string[] { "minor", "major", "critical" };
+
+        /// <summary>
+        /// Forme di cortesia per lingua d'arrivo ISO 639-2; le lingue assenti non hanno forme e il glossario non ha addressing
+        /// </summary>
+        private static readonly Dictionary<string, string[]> s_addressForms = new Dictionary<string, string[]>(StringComparer.Ordinal)
+        {
+            { "ita", new string[] { "tu", "lei", "voi" } },
+            { "fra", new string[] { "tu", "vous" } },
+            { "deu", new string[] { "du", "Sie", "ihr" } },
+            { "spa", new string[] { "tú", "usted", "vosotros", "ustedes" } }
+        };
+
+        /// <summary>
+        /// Parte della regola sulle forme di cortesia che dice quali forme vanno a più persone
+        /// </summary>
+        private static readonly Dictionary<string, string> s_pluralAddressRules = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            { "ita", "voi addresses more than one person." },
+            { "fra", "vous also addresses more than one person." },
+            { "deu", "ihr addresses more than one person." },
+            { "spa", "vosotros and ustedes address more than one person." }
+        };
+
+        /// <summary>
+        /// Descrizione dell'enum delle forme nello schema, dove la lingua la fissa
+        /// </summary>
+        private static readonly Dictionary<string, string> s_addressFormDescriptions = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            { "ita", "tu: informal; lei: formal; voi: plural or archaic reverential." }
+        };
+
+        /// <summary>
+        /// Opzioni del JSON mandato al modello: rientro di uno spazio e caratteri non ASCII leggibili
+        /// </summary>
+        private static readonly JsonSerializerOptions s_modelJson = new JsonSerializerOptions
+        {
+            WriteIndented = true,
+            IndentSize = 1,
+            Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+        };
+
+        #endregion
+
+        #region Metodi pubblici
+
+        /// <summary>
+        /// Stima i token di un testo mandato al modello
+        /// </summary>
+        /// <param name="text">Testo</param>
+        /// <returns>Token stimati</returns>
+        public static int EstimateTokens(string text)
+        {
+            return (text.Length + CHARS_PER_TOKEN - 1) / CHARS_PER_TOKEN;
+        }
+
+        /// <summary>
+        /// Crea un elenco JSON di stringhe
+        /// </summary>
+        /// <param name="values">Valori</param>
+        /// <returns>Elenco JSON</returns>
+        public static JsonArray CreateArray(IEnumerable<string> values)
+        {
+            JsonArray array = new JsonArray();
+            foreach (string value in values)
+                array.Add(value);
+            return array;
+        }
+
+        /// <summary>
+        /// Scrive gli id come intervalli, per esempio 39-98 o 44,61-63
+        /// </summary>
+        /// <param name="ids">Id, in qualunque ordine</param>
+        /// <returns>Intervalli in ordine crescente</returns>
+        public static string FormatRanges(IReadOnlyList<int> ids)
+        {
+            List<int> sorted = new List<int>(ids);
+            sorted.Sort();
+            StringBuilder ranges = new StringBuilder();
+            for (int i = 0; i < sorted.Count; i++)
+            {
+                int start = i;
+                while (i + 1 < sorted.Count && sorted[i + 1] == sorted[i] + 1)
+                    i++;
+                if (ranges.Length > 0)
+                    ranges.Append(',');
+                ranges.Append(sorted[start].ToString(CultureInfo.InvariantCulture));
+                if (i > start)
+                    ranges.Append('-').Append(sorted[i].ToString(CultureInfo.InvariantCulture));
+            }
+
+            return ranges.ToString();
+        }
+
+        /// <summary>
+        /// Scrive il sorgente numerato: i record di tutte le battute traducibili, in ordine di id, che è l'ordine di lettura
+        /// </summary>
+        /// <param name="cues">Battute del file, escluse e copie comprese</param>
+        /// <returns>Sorgente numerato, un record per battuta</returns>
+        public static string FormatSource(IReadOnlyList<SubtitleCue> cues)
+        {
+            StringBuilder source = new StringBuilder();
+            foreach (SubtitleCue cue in cues.Where(c => c.Id.HasValue).OrderBy(c => c.Id.Value))
+            {
+                if (source.Length > 0)
+                    source.Append('\n');
+                source.Append(FormatRecord(cue.Id.Value, cue.Kind, cue.CleanText));
+            }
+
+            return source.ToString();
+        }
+
+        /// <summary>
+        /// Nome inglese di una lingua per i template
+        /// </summary>
+        /// <param name="language">Codice ISO 639-2</param>
+        /// <returns>Nome inglese, oppure il codice se il runtime non conosce la lingua</returns>
+        public static string GetEnglishName(string language)
+        {
+            string code = LanguageValidator.NormalizeToIso6392(language);
+            foreach (CultureInfo culture in CultureInfo.GetCultures(CultureTypes.NeutralCultures))
+            {
+                if (string.Equals(culture.ThreeLetterISOLanguageName, code, StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(culture.Name))
+                    return culture.EnglishName;
+            }
+
+            return code;
+        }
+
+        /// <summary>
+        /// Nome inglese della lingua dell'interfaccia, in cui il modello scrive i testi che legge l'utente
+        /// </summary>
+        /// <returns>Nome inglese della lingua dell'app</returns>
+        public static string GetNotesLanguage()
+        {
+            return CultureInfo.GetCultureInfo(AppText.Language).EnglishName;
+        }
+
+        /// <summary>
+        /// Forme di cortesia della lingua d'arrivo
+        /// </summary>
+        /// <param name="targetLanguage">Lingua d'arrivo ISO 639-2</param>
+        /// <returns>Forme, null per una lingua senza forme grammaticali</returns>
+        public static string[] GetAddressForms(string targetLanguage)
+        {
+            string[] forms;
+            return s_addressForms.TryGetValue(LanguageValidator.NormalizeToIso6392(targetLanguage), out forms) ? forms : null;
+        }
+
+        /// <summary>
+        /// Descrizione delle forme di cortesia nello schema del glossario
+        /// </summary>
+        /// <param name="targetLanguage">Lingua d'arrivo ISO 639-2</param>
+        /// <returns>Descrizione, vuota dove la lingua non la fissa</returns>
+        public static string GetAddressFormDescription(string targetLanguage)
+        {
+            string description;
+            return s_addressFormDescriptions.TryGetValue(LanguageValidator.NormalizeToIso6392(targetLanguage), out description) ? description : "";
+        }
+
+        /// <summary>
+        /// Passo dell'analisi sulle forme di cortesia della lingua d'arrivo
+        /// </summary>
+        /// <param name="targetLanguage">Lingua d'arrivo ISO 639-2</param>
+        /// <returns>Testo del passo per {address_procedure}</returns>
+        public static string GetAddressProcedure(string targetLanguage)
+        {
+            string[] forms = GetAddressForms(targetLanguage);
+            if (forms == null)
+                return GENERIC_ADDRESS_PROCEDURE;
+
+            // Articolo inglese davanti al nome della lingua: an Italian, a German
+            string name = GetEnglishName(targetLanguage);
+            string article = "AEIOU".IndexOf(char.ToUpperInvariant(name[0])) >= 0 ? "an " : "a ";
+            return "Decide the address form (" + string.Join(", ", forms) + ") between the recurring characters as " + article + name + " adaptation would, and fill addressing.";
+        }
+
+        /// <summary>
+        /// Instructions di traduzione, ritentativo e blocco ridotto coi segnaposto risolti: uguali per tutto il job
+        /// </summary>
+        /// <param name="sourceLanguage">Lingua d'origine ISO 639-2</param>
+        /// <param name="targetLanguage">Lingua d'arrivo ISO 639-2</param>
+        /// <returns>Testo delle instructions</returns>
+        public static string CreateTranslationInstructions(string sourceLanguage, string targetLanguage)
+        {
+            return FillInstructions(TRANSLATION_INSTRUCTIONS, sourceLanguage, targetLanguage);
+        }
+
+        /// <summary>
+        /// Instructions di D1 coi segnaposto risolti, con le spiegazioni nella lingua dell'interfaccia
+        /// </summary>
+        /// <param name="sourceLanguage">Lingua d'origine ISO 639-2</param>
+        /// <param name="targetLanguage">Lingua d'arrivo ISO 639-2</param>
+        /// <returns>Testo delle instructions</returns>
+        public static string CreateDiagnosisInstructions(string sourceLanguage, string targetLanguage)
+        {
+            return FillInstructions(DIAGNOSIS_INSTRUCTIONS.Replace("{notes_language}", GetNotesLanguage()), sourceLanguage, targetLanguage);
+        }
+
+        /// <summary>
+        /// Tool offerto da D1
+        /// </summary>
+        /// <returns>Array nuovo con submit_diagnosis</returns>
+        public static JsonArray CreateDiagnosisTools()
+        {
+            JsonNode tool = JsonNode.Parse(SUBMIT_DIAGNOSIS_JSON);
+            JsonNode issue = tool["parameters"]["properties"]["issues"]["items"]["properties"];
+            issue["category"]["enum"] = CreateArray(DIAGNOSIS_CATEGORIES);
+            issue["severity"]["enum"] = CreateArray(DIAGNOSIS_SEVERITIES);
+            return new JsonArray(tool);
+        }
+
+        /// <summary>
+        /// Tool offerti da traduzione, ritentativo e blocco ridotto, sempre nello stesso ordine
+        /// </summary>
+        /// <returns>Array nuovo con submit_translation</returns>
+        public static JsonArray CreateTranslationTools()
+        {
+            return new JsonArray(JsonNode.Parse(SUBMIT_TRANSLATION_JSON));
+        }
+
+        /// <summary>
+        /// Messaggio di prefisso: contesto della serie, glossario del job e sorgente numerato del file, uguale byte per byte fra le
+        /// chiamate di un file con lo stesso contesto e lo stesso glossario. Prima ciò che vale per tutto il progetto, poi ciò che
+        /// vale per il file: il contesto modificato apre semplicemente un prefisso nuovo
+        /// </summary>
+        /// <param name="context">Campo serie/contesto del progetto, vuoto se l'utente non l'ha scritto</param>
+        /// <param name="glossary">Glossario del job, congelato all'avvio</param>
+        /// <param name="fileName">Nome del file sorgente</param>
+        /// <param name="cues">Battute congelate del file, senza le copie dei cartelli in movimento</param>
+        /// <returns>Testo del primo messaggio</returns>
+        public static string CreateTranslationPrefix(string context, Glossary glossary, string fileName, IReadOnlyList<FrozenCue> cues)
+        {
+            GlossaryBuilder builder = new GlossaryBuilder(glossary.SourceLanguage, glossary.TargetLanguage);
+            StringBuilder message = new StringBuilder();
+            string trimmed = (context ?? "").Trim();
+            if (trimmed.Length > 0)
+                message.Append("SERIES CONTEXT (from the user):\n").Append(trimmed).Append("\n\n");
+            message.Append("GLOSSARY (approved):\n");
+            message.Append(ToModelJson(builder.ToToolJson(glossary, true)));
+            message.Append("\n\nSOURCE EPISODE: ").Append(fileName).Append(" (").Append(cues.Count.ToString(CultureInfo.InvariantCulture)).Append(" cues)");
+            foreach (FrozenCue cue in cues)
+                message.Append('\n').Append(FormatRecord(cue.Id, cue.Kind, cue.Text));
+
+            return message.ToString();
+        }
+
+        /// <summary>
+        /// Coda di traduzione, ritentativo e blocco ridotto: coppie accettate prima dell'intervallo, id richiesti e, per il ritentativo, gli scarti. Coppie e id
+        /// richiesti stanno in due elenchi, come nella consegna: dialoghi e canzoni contigui nell'ordine di lettura, poi i cartelli
+        /// </summary>
+        /// <param name="accepted">Ultime battute accettate prima del primo id richiesto, con la traduzione</param>
+        /// <param name="requested">Battute richieste, in ordine di id</param>
+        /// <param name="rejected">Righe del validatore della consegna precedente, vuote per traduzione e blocco ridotto</param>
+        /// <returns>Testo dell'ultimo messaggio</returns>
+        public static string CreateTranslationTail(IReadOnlyList<KeyValuePair<FrozenCue, string>> accepted, IReadOnlyList<FrozenCue> requested, IReadOnlyList<string> rejected)
+        {
+            StringBuilder message = new StringBuilder();
+            if (accepted.Count > 0)
+            {
+                message.Append("ACCEPTED TRANSLATIONS BEFORE THIS RANGE (latest ").Append(TAIL_PAIRS.ToString(CultureInfo.InvariantCulture)).Append(")");
+                foreach (bool signs in new bool[] { false, true })
+                {
+                    List<KeyValuePair<FrozenCue, string>> pairs = accepted.Where(pair => (pair.Key.Kind == SubtitleCueKind.Sign) == signs).ToList();
+                    if (pairs.Count == 0)
+                        continue;
+
+                    message.Append('\n').Append(signs ? "[sign] cues:" : "Dialogue and song cues:");
+                    foreach (KeyValuePair<FrozenCue, string> pair in pairs)
+                    {
+                        message.Append('\n').Append(FormatRecord(pair.Key.Id, pair.Key.Kind, pair.Key.Text));
+                        message.Append('\n').Append(FormatTranslationRecord(pair.Key.Id, pair.Key.Kind, pair.Value));
+                    }
+                }
+
+                message.Append("\n\n");
+            }
+
+            List<FrozenCue> requestedSigns = requested.Where(cue => cue.Kind == SubtitleCueKind.Sign).ToList();
+            List<FrozenCue> requestedCues = requested.Where(cue => cue.Kind != SubtitleCueKind.Sign).ToList();
+            if (requestedCues.Count > 0)
+                AppendRequested(message, "TRANSLATE", requestedCues).Append(" into translations.");
+            if (requestedCues.Count > 0 && requestedSigns.Count > 0)
+                message.Append('\n');
+            if (requestedSigns.Count > 0)
+                AppendRequested(message, "TRANSLATE [sign]", requestedSigns).Append(" into signs.");
+            if (rejected.Count > 0)
+                message.Append("\n\nREJECTED in the previous delivery of these ids:\n").Append(string.Join("\n", rejected));
+            return message.ToString();
+        }
+
+        /// <summary>
+        /// Coda di D1: id del blocco e, per ogni battuta, sorgente, traduzione attuale e segnali
+        /// </summary>
+        /// <param name="cues">Battute del blocco, in ordine di id</param>
+        /// <param name="current">Traduzione attuale per id, null per una battuta senza testo accettato</param>
+        /// <param name="signals">Segnali per id, assenti per le battute senza segnali</param>
+        /// <returns>Testo dell'ultimo messaggio</returns>
+        public static string CreateDiagnosisTail(IReadOnlyList<FrozenCue> cues, IReadOnlyDictionary<int, string> current, IReadOnlyDictionary<int, List<string>> signals)
+        {
+            StringBuilder message = new StringBuilder();
+            AppendRequested(message, "REVIEW", cues).Append(".\n");
+            foreach (FrozenCue cue in cues)
+            {
+                string text;
+                current.TryGetValue(cue.Id, out text);
+                message.Append('\n').Append(FormatRecord(cue.Id, cue.Kind, cue.Text));
+                message.Append('\n').Append(FormatTranslationRecord(cue.Id, cue.Kind, text));
+                List<string> cueSignals;
+                if (signals.TryGetValue(cue.Id, out cueSignals) && cueSignals.Count > 0)
+                    message.Append('\n').Append(FormatSignalRecord(cue.Id, cueSignals));
+            }
+
+            return message.ToString();
+        }
+
+        /// <summary>
+        /// Serializza un nodo JSON per il testo dei messaggi al modello
+        /// </summary>
+        /// <param name="node">Nodo da scrivere</param>
+        /// <returns>JSON rientrato di uno spazio, con accenti e segni leggibili</returns>
+        public static string ToModelJson(JsonNode node)
+        {
+            return node.ToJsonString(s_modelJson);
+        }
+
+        /// <summary>
+        /// Crea un messaggio user della Responses API
+        /// </summary>
+        /// <param name="text">Testo del messaggio</param>
+        /// <returns>Item del messaggio</returns>
+        public static JsonObject CreateUserMessage(string text)
+        {
+            return new JsonObject { ["role"] = "user", ["content"] = text };
+        }
+
+        /// <summary>
+        /// Crea il tool_choice che forza uno dei tool offerti
+        /// </summary>
+        /// <param name="tools">Tool della richiesta</param>
+        /// <param name="index">Posizione del tool da forzare</param>
+        /// <returns>Scelta del tool</returns>
+        public static JsonObject CreateForcedToolChoice(JsonArray tools, int index)
+        {
+            return new JsonObject { ["type"] = "function", ["name"] = tools[index]["name"].DeepClone() };
+        }
+
+        #endregion
+
+        #region Metodi privati
+
+        /// <summary>
+        /// Risolve i segnaposto comuni delle instructions: formato a record, regole di traduzione con le forme di cortesia, lingue
+        /// </summary>
+        /// <param name="template">Template delle instructions</param>
+        /// <param name="sourceLanguage">Lingua d'origine ISO 639-2</param>
+        /// <param name="targetLanguage">Lingua d'arrivo ISO 639-2</param>
+        /// <returns>Testo delle instructions</returns>
+        private static string FillInstructions(string template, string sourceLanguage, string targetLanguage)
+        {
+            // Regola sulle forme di cortesia: quelle della lingua d'arrivo, o il registro di ogni personaggio dove la lingua non ne ha
+            string[] forms = GetAddressForms(targetLanguage);
+            string addressRule = forms == null ? GENERIC_ADDRESS_RULE : "Use the address form (" + string.Join(", ", forms) + ") the glossary gives for each speaker and addressee; " +
+                s_pluralAddressRules[LanguageValidator.NormalizeToIso6392(targetLanguage)];
+            string rules = TRANSLATION_RULES.Replace("{address_rule}", addressRule);
+            return template.Replace("{record_format}", RECORD_FORMAT).Replace("{translation_rules}", rules)
+                .Replace("{source_language}", GetEnglishName(sourceLanguage)).Replace("{target_language}", GetEnglishName(targetLanguage));
+        }
+
+        /// <summary>
+        /// Aggiunge la riga degli id richiesti col loro numero
+        /// </summary>
+        /// <param name="message">Coda in costruzione</param>
+        /// <param name="verb">TRANSLATE, TRANSLATE [sign] o REVIEW</param>
+        /// <param name="requested">Battute richieste, in ordine di id</param>
+        /// <returns>La coda, per chiudere la riga</returns>
+        private static StringBuilder AppendRequested(StringBuilder message, string verb, IReadOnlyList<FrozenCue> requested)
+        {
+            List<int> ids = new List<int>();
+            foreach (FrozenCue cue in requested)
+                ids.Add(cue.Id);
+
+            return message.Append(verb).Append(" cue ids ").Append(FormatRanges(ids)).Append(" (").Append(ids.Count.ToString(CultureInfo.InvariantCulture)).Append(" cues)");
+        }
+
+        /// <summary>
+        /// Testata di un record: id e, per canzoni e cartelli, [song] o [sign]; il dialogo non ha segno
+        /// </summary>
+        /// <param name="id">Id della battuta</param>
+        /// <param name="kind">Tipo della battuta</param>
+        /// <returns>Testata</returns>
+        private static string FormatHeader(int id, SubtitleCueKind kind)
+        {
+            string header = id.ToString(CultureInfo.InvariantCulture);
+            if (kind == SubtitleCueKind.Song)
+                header += " [song]";
+            else if (kind == SubtitleCueKind.Sign)
+                header += " [sign]";
+
+            return header;
+        }
+
+        /// <summary>
+        /// Scrive una battuta nel formato a record: testata con id e tipo, tab e testo su una riga, con gli a capo come \N
+        /// </summary>
+        /// <param name="id">Id della battuta</param>
+        /// <param name="kind">Tipo della battuta</param>
+        /// <param name="text">Testo pulito</param>
+        /// <returns>Record della battuta</returns>
+        private static string FormatRecord(int id, SubtitleCueKind kind, string text)
+        {
+            return FormatHeader(id, kind) + "\t" + text.Replace("\n", LINE_BREAK_MARK);
+        }
+
+        /// <summary>
+        /// Scrive un record di traduzione: testata seguita da « =>», poi tab e testo; senza testo resta la sola testata
+        /// </summary>
+        /// <param name="id">Id della battuta</param>
+        /// <param name="kind">Tipo della battuta</param>
+        /// <param name="text">Traduzione, null per una battuta senza traduzione accettata</param>
+        /// <returns>Record di traduzione</returns>
+        private static string FormatTranslationRecord(int id, SubtitleCueKind kind, string text)
+        {
+            string header = FormatHeader(id, kind) + " =>";
+            return text == null ? header : header + "\t" + text.Replace("\n", LINE_BREAK_MARK);
+        }
+
+        /// <summary>
+        /// Scrive un record di segnali: testata «id !», tab e un segnale per riga
+        /// </summary>
+        /// <param name="id">Id della battuta</param>
+        /// <param name="signals">Segnali nella forma CODICE: dettaglio</param>
+        /// <returns>Record dei segnali</returns>
+        private static string FormatSignalRecord(int id, IReadOnlyList<string> signals)
+        {
+            return id.ToString(CultureInfo.InvariantCulture) + " !\t" + string.Join("\n\t", signals);
+        }
+
+        #endregion
+    }
+}

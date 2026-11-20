@@ -2,6 +2,7 @@ using RemuxForge.Core.Localization;
 using RemuxForge.Core.Models;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -39,6 +40,27 @@ namespace RemuxForge.Core.Ai
             "gpt-4o-transcribe", "gpt-4o-mini-transcribe", "gpt-4o-mini-tts", "gpt-4o-search", "gpt-4o-mini-search",
             "gpt-4o-mini-realtime", "gpt-4o-mini-audio", "computer-use"
         };
+
+        /// <summary>
+        /// Livelli di ragionamento offerti con la API key, il cui elenco modelli non li dichiara
+        /// </summary>
+        private static readonly string[] API_KEY_REASONING_LEVELS = new string[] { "low", "medium", "high" };
+
+        /// <summary>
+        /// Livello di ragionamento predefinito con la API key
+        /// </summary>
+        private const string API_KEY_DEFAULT_REASONING_LEVEL = "medium";
+
+        /// <summary>
+        /// Passo in caratteri con cui si annuncia la quantità di risposta già scritta
+        /// </summary>
+        private const int WRITING_STEP_CHARS = 1000;
+
+        /// <summary>
+        /// Attesa massima degli header e fra due righe dello stream. Durante il ragionamento il servizio tace: il limite lo copre con
+        /// margine ampio
+        /// </summary>
+        private static readonly TimeSpan STREAM_IDLE_TIMEOUT = TimeSpan.FromMinutes(10);
 
         #endregion
 
@@ -78,7 +100,7 @@ namespace RemuxForge.Core.Ai
             this._credentialService = credentialService;
             this._oauthFlow = oauthFlow;
             this._httpClient = new HttpClient();
-            this._httpClient.Timeout = TimeSpan.FromMinutes(10);
+            this._httpClient.Timeout = STREAM_IDLE_TIMEOUT;
             this._refreshLock = new SemaphoreSlim(1, 1);
         }
 
@@ -109,15 +131,16 @@ namespace RemuxForge.Core.Ai
                         status = (int)response.StatusCode;
                     }
                 }
-                catch (HttpRequestException ex)
+                catch (Exception ex) when (ex is HttpRequestException || ex is IOException || (ex is OperationCanceledException && !cancellationToken.IsCancellationRequested))
                 {
+                    // Il timeout del client arriva come annullamento senza che l'operazione sia ferma
                     throw new AiServiceException(AiErrorKind.Network, AppText.F("ai.error.network", ex.Message), ex);
                 }
             }
 
-            JsonObject root = AiOAuthFlow.TryParseObject(body);
+            JsonObject root = AiJson.TryParseObject(body);
             if (status < 200 || status >= 300)
-                throw CreateError(credentials.Mode, status, root != null ? root["error"] as JsonObject : null);
+                throw CreateError(credentials.Mode, status, root != null ? root["error"] as JsonObject : null, null);
 
             if (root == null)
                 throw new AiServiceException(AiErrorKind.InvalidResponse, AppText.T("ai.error.invalidResponse"));
@@ -130,14 +153,24 @@ namespace RemuxForge.Core.Ai
                 for (int i = 0; i < models.Count; i++)
                 {
                     JsonObject model = models[i] as JsonObject;
-                    if (model == null || AiOAuthFlow.GetString(model, "visibility") != "list")
+                    if (model == null || AiJson.GetString(model, "visibility") != "list")
                         continue;
 
                     AiModelInfo info = new AiModelInfo();
-                    info.Id = AiOAuthFlow.GetString(model, "slug");
-                    info.DisplayName = AiOAuthFlow.GetString(model, "display_name");
+                    info.Id = AiJson.GetString(model, "slug");
+                    info.DisplayName = AiJson.GetString(model, "display_name");
                     if (string.IsNullOrEmpty(info.DisplayName))
                         info.DisplayName = info.Id;
+                    info.DefaultReasoningLevel = AiJson.GetString(model, "default_reasoning_level");
+
+                    JsonArray levels = model["supported_reasoning_levels"] as JsonArray;
+                    for (int j = 0; levels != null && j < levels.Count; j++)
+                    {
+                        string effort = AiJson.GetString(levels[j] as JsonObject, "effort");
+                        if (!string.IsNullOrEmpty(effort))
+                            info.SupportedReasoningLevels.Add(effort);
+                    }
+
                     if (!string.IsNullOrEmpty(info.Id))
                         result.Add(info);
                 }
@@ -147,13 +180,15 @@ namespace RemuxForge.Core.Ai
                 for (int i = 0; i < data.Count; i++)
                 {
                     JsonObject model = data[i] as JsonObject;
-                    string id = model != null ? AiOAuthFlow.GetString(model, "id") : "";
+                    string id = model != null ? AiJson.GetString(model, "id") : "";
                     if (string.IsNullOrEmpty(id) || IsExcludedApiKeyModel(id))
                         continue;
 
                     AiModelInfo info = new AiModelInfo();
                     info.Id = id;
                     info.DisplayName = id;
+                    info.DefaultReasoningLevel = API_KEY_DEFAULT_REASONING_LEVEL;
+                    info.SupportedReasoningLevels.AddRange(API_KEY_REASONING_LEVELS);
                     result.Add(info);
                 }
             }
@@ -163,59 +198,70 @@ namespace RemuxForge.Core.Ai
         }
 
         /// <summary>
-        /// Esegue una richiesta Responses in streaming senza stato lato server
+        /// Esegue una richiesta Responses in streaming senza stato lato server, con un solo tentativo: il retry spetta al chiamante
         /// </summary>
-        /// <param name="model">Modello</param>
-        /// <param name="instructions">Istruzioni di sistema</param>
-        /// <param name="input">Storico completo degli item di input</param>
-        /// <param name="tools">Tool disponibili</param>
+        /// <param name="request">Richiesta</param>
         /// <param name="cancellationToken">Token di annullamento</param>
-        /// <returns>Item di output del modello, da rimandare invariati nel giro successivo</returns>
-        public async Task<List<JsonObject>> CreateResponseAsync(string model, string instructions, JsonArray input, JsonArray tools, CancellationToken cancellationToken)
+        /// <returns>Item di output, consumo ed esito, completo o troncato</returns>
+        public async Task<AiResponseResult> CreateResponseAsync(AiResponseRequest request, CancellationToken cancellationToken)
         {
+            if (request == null)
+                throw new ArgumentNullException(nameof(request));
+
             AiCredentials credentials = await this.GetAuthorizedCredentialsAsync(cancellationToken);
             JsonObject body = new JsonObject();
 
-            body["model"] = model;
-            body["instructions"] = instructions;
-            body["input"] = input.DeepClone();
-            if (tools != null && tools.Count > 0)
-                body["tools"] = tools.DeepClone();
+            body["model"] = request.Model;
+            if (!string.IsNullOrEmpty(request.ReasoningEffort))
+                body["reasoning"] = new JsonObject { ["effort"] = request.ReasoningEffort };
+            body["instructions"] = request.Instructions;
+            body["input"] = request.Input.DeepClone();
+            if (request.Tools != null && request.Tools.Count > 0)
+                body["tools"] = request.Tools.DeepClone();
+            if (request.ToolChoice != null)
+                body["tool_choice"] = request.ToolChoice.DeepClone();
+
+            // La chiave di cache nel body serve anche al piano ChatGPT, che senza riusa la cache solo fra richieste identiche
+            if (!string.IsNullOrEmpty(request.PromptCacheKey))
+                body["prompt_cache_key"] = request.PromptCacheKey;
 
             // Senza stato lato server il ragionamento torna al modello solo come contenuto cifrato
             body["store"] = false;
             body["stream"] = true;
             body["include"] = new JsonArray("reasoning.encrypted_content");
 
-            using (HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Post, API_BASE_URL + "/responses"))
+            using (HttpRequestMessage message = new HttpRequestMessage(HttpMethod.Post, API_BASE_URL + "/responses"))
             {
-                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", GetBearer(credentials));
-                request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/event-stream"));
-                request.Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json");
+                message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", GetBearer(credentials));
+                message.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/event-stream"));
+                if (!string.IsNullOrEmpty(request.SessionId))
+                    message.Headers.TryAddWithoutValidation("session_id", request.SessionId);
+                message.Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json");
+                Report(request.Progress, AiStreamStage.Sent, "");
 
                 try
                 {
-                    using (HttpResponseMessage response = await this._httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken))
+                    using (HttpResponseMessage response = await this._httpClient.SendAsync(message, HttpCompletionOption.ResponseHeadersRead, cancellationToken))
                     {
                         if (!response.IsSuccessStatusCode)
                         {
-                            JsonObject error = AiOAuthFlow.TryParseObject(await response.Content.ReadAsStringAsync(cancellationToken));
-                            throw CreateError(credentials.Mode, (int)response.StatusCode, error != null ? error["error"] as JsonObject : null);
+                            string errorText = await response.Content.ReadAsStringAsync(cancellationToken);
+                            JsonObject error = AiJson.TryParseObject(errorText);
+                            throw CreateError(credentials.Mode, (int)response.StatusCode, error != null ? error["error"] as JsonObject : null, HttpRetryDelay.ReadRetryAfter(response.Headers.RetryAfter));
                         }
 
                         using (Stream stream = await response.Content.ReadAsStreamAsync(cancellationToken))
                         using (StreamReader reader = new StreamReader(stream, Encoding.UTF8))
                         {
-                            return await ReadStreamAsync(reader, credentials.Mode, cancellationToken);
+                            AiResponseResult result = await ReadStreamAsync(reader, credentials.Mode, request.Progress, cancellationToken);
+                            result.HttpStatus = (int)response.StatusCode;
+                            return result;
                         }
                     }
                 }
-                catch (HttpRequestException ex)
+                catch (Exception ex) when (ex is HttpRequestException || ex is IOException || (ex is OperationCanceledException && !cancellationToken.IsCancellationRequested))
                 {
-                    throw new AiServiceException(AiErrorKind.Network, AppText.F("ai.error.network", ex.Message), ex);
-                }
-                catch (IOException ex)
-                {
+                    // Il timeout del client e lo stream fermo arrivano come annullamento senza che l'operazione sia ferma
                     throw new AiServiceException(AiErrorKind.Network, AppText.F("ai.error.network", ex.Message), ex);
                 }
             }
@@ -273,19 +319,33 @@ namespace RemuxForge.Core.Ai
         }
 
         /// <summary>
-        /// Legge lo stream SSE della Responses API e raccoglie gli item completati
+        /// Legge lo stream SSE della Responses API fino all'evento finale e avvisa dei cambi di stato: coda, ragionamento, ricerche
+        /// web, fonti citate, scrittura della risposta o di una chiamata di funzione con la quantità già scritta, rifiuto
         /// </summary>
         /// <param name="reader">Lettore dello stream</param>
         /// <param name="mode">Modalità di accesso, per la mappatura degli errori</param>
+        /// <param name="progress">Avviso dei cambi di stato, null se non serve</param>
         /// <param name="cancellationToken">Token di annullamento</param>
-        /// <returns>Item di output</returns>
-        private static async Task<List<JsonObject>> ReadStreamAsync(StreamReader reader, AiConnectionMode mode, CancellationToken cancellationToken)
+        /// <returns>Item di output, consumo ed esito</returns>
+        private static async Task<AiResponseResult> ReadStreamAsync(StreamReader reader, AiConnectionMode mode, Action<AiStreamProgress> progress, CancellationToken cancellationToken)
         {
             List<JsonObject> doneItems = new List<JsonObject>();
-            string line;
+            string createdCacheKey = "";
+            bool refusalReported = false;
+            string searchItemId = "";
+            string searchQuery = "";
+            int written = 0;
 
-            while ((line = await reader.ReadLineAsync(cancellationToken)) != null)
+            // HttpClient.Timeout copre solo l'attesa degli header: uno stream fermo senza chiudersi si annulla e il chiamante lo
+            // converte in errore di rete come una connessione caduta; ogni riga ricevuta riapre l'attesa
+            using CancellationTokenSource idle = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            while (true)
             {
+                idle.CancelAfter(STREAM_IDLE_TIMEOUT);
+                string line = await reader.ReadLineAsync(idle.Token);
+                if (line == null)
+                    break;
+
                 if (!line.StartsWith("data:", StringComparison.Ordinal))
                     continue;
 
@@ -293,86 +353,200 @@ namespace RemuxForge.Core.Ai
                 if (data == "[DONE]")
                     break;
 
-                JsonObject streamEvent = AiOAuthFlow.TryParseObject(data);
-                string type = streamEvent != null ? AiOAuthFlow.GetString(streamEvent, "type") : "";
+                JsonObject streamEvent = AiJson.TryParseObject(data);
+                string type = streamEvent != null ? AiJson.GetString(streamEvent, "type") : "";
 
-                if (type == "response.output_item.done")
+                if (type == "response.created")
+                {
+                    createdCacheKey = AiJson.GetString(streamEvent["response"] as JsonObject, "prompt_cache_key");
+                    Report(progress, AiStreamStage.Started, "");
+                }
+                else if (type == "response.queued")
+                {
+                    Report(progress, AiStreamStage.Queued, "");
+                }
+                else if (type == "response.in_progress")
+                {
+                    Report(progress, AiStreamStage.Started, "");
+                }
+                else if (type == "response.output_item.added")
+                {
+                    JsonObject item = streamEvent["item"] as JsonObject;
+                    string itemType = item != null ? AiJson.GetString(item, "type") : "";
+                    if (itemType == "reasoning")
+                    {
+                        Report(progress, AiStreamStage.Reasoning, "");
+                    }
+                    else if (itemType == "web_search_call")
+                    {
+                        searchItemId = AiJson.GetString(item, "id");
+                        searchQuery = GetSearchQuery(item);
+                        Report(progress, AiStreamStage.WebSearch, searchQuery);
+                    }
+                    else if (itemType == "message" || itemType == "function_call")
+                    {
+                        refusalReported = false;
+                        written = 0;
+                        Report(progress, AiStreamStage.Writing, "");
+                    }
+                }
+                else if (type == "response.web_search_call.in_progress" || type == "response.web_search_call.searching")
+                {
+                    Report(progress, AiStreamStage.WebSearch, AiJson.GetString(streamEvent, "item_id") == searchItemId ? searchQuery : "");
+                }
+                else if (type == "response.output_text.annotation.added")
+                {
+                    JsonObject annotation = streamEvent["annotation"] as JsonObject;
+                    if (annotation != null && AiJson.GetString(annotation, "type") == "url_citation")
+                    {
+                        string title = AiJson.GetString(annotation, "title");
+                        Report(progress, AiStreamStage.Citation, string.IsNullOrEmpty(title) ? AiJson.GetString(annotation, "url") : title);
+                    }
+                }
+                else if (type == "response.output_text.delta" || type == "response.function_call_arguments.delta")
+                {
+                    // La quantità scritta si annuncia a ogni migliaio di caratteri: abbastanza per vederla crescere senza ridisegnare a ogni pezzo
+                    int before = written / WRITING_STEP_CHARS;
+                    written += AiJson.GetString(streamEvent, "delta").Length;
+                    if (written / WRITING_STEP_CHARS > before)
+                        Report(progress, AiStreamStage.Writing, (written / WRITING_STEP_CHARS * WRITING_STEP_CHARS).ToString("N0", CultureInfo.CurrentCulture));
+                }
+                else if (type == "response.refusal.delta")
+                {
+                    if (!refusalReported)
+                    {
+                        refusalReported = true;
+                        Report(progress, AiStreamStage.Refusal, "");
+                    }
+                }
+                else if (type == "response.output_item.done")
                 {
                     JsonObject item = streamEvent["item"] as JsonObject;
                     if (item != null)
                         doneItems.Add((JsonObject)item.DeepClone());
+
+                    // L'azione della ricerca, con query o pagina, arriva completa solo nell'item finito
+                    if (item != null && AiJson.GetString(item, "type") == "web_search_call")
+                    {
+                        JsonObject action = item["action"] as JsonObject;
+                        string actionType = action != null ? AiJson.GetString(action, "type") : "";
+                        if (actionType == "open_page")
+                            Report(progress, AiStreamStage.WebPage, AiJson.GetString(action, "url"));
+                        else if (actionType == "find_in_page")
+                            Report(progress, AiStreamStage.WebFind, AiJson.GetString(action, "pattern"));
+                        else
+                            Report(progress, AiStreamStage.WebSearchDone, GetSearchQuery(item));
+                    }
                 }
-                else if (type == "response.completed")
+                else if (type == "response.completed" || type == "response.incomplete")
                 {
-                    // Con store:false l'output finale può arrivare vuoto: valgono gli item raccolti dallo stream
                     JsonObject responseObject = streamEvent["response"] as JsonObject;
                     JsonArray output = responseObject != null ? responseObject["output"] as JsonArray : null;
-                    if (output == null || output.Count == 0)
-                        return doneItems;
+                    AiResponseResult result = new AiResponseResult();
 
-                    List<JsonObject> result = new List<JsonObject>();
-                    for (int i = 0; i < output.Count; i++)
+                    // Con store:false l'output finale può arrivare vuoto: valgono gli item raccolti dallo stream
+                    if (output == null || output.Count == 0)
                     {
-                        JsonObject item = output[i] as JsonObject;
-                        if (item != null)
-                            result.Add((JsonObject)item.DeepClone());
+                        result.Items = doneItems;
+                    }
+                    else
+                    {
+                        for (int i = 0; i < output.Count; i++)
+                        {
+                            JsonObject item = output[i] as JsonObject;
+                            if (item != null)
+                                result.Items.Add((JsonObject)item.DeepClone());
+                        }
+                    }
+
+                    // La chiave applicata dal servizio sta nella risposta finale; se manca vale quella dell'evento iniziale
+                    result.PromptCacheKey = AiJson.GetString(responseObject, "prompt_cache_key");
+                    if (string.IsNullOrEmpty(result.PromptCacheKey))
+                        result.PromptCacheKey = createdCacheKey;
+                    result.Usage = ReadUsage(responseObject);
+
+                    if (type == "response.incomplete")
+                    {
+                        result.Status = AiResponseStatus.Incomplete;
+                        result.IncompleteReason = AiJson.GetString(responseObject != null ? responseObject["incomplete_details"] as JsonObject : null, "reason");
                     }
 
                     return result;
                 }
                 else if (type == "response.failed")
                 {
+                    // Anche la risposta fallita può riportare il consumo: resta nell'errore per il registro delle chiamate
                     JsonObject responseObject = streamEvent["response"] as JsonObject;
-                    throw CreateError(mode, 0, responseObject != null ? responseObject["error"] as JsonObject : null);
-                }
-                else if (type == "response.incomplete")
-                {
-                    throw new AiServiceException(AiErrorKind.InvalidResponse, AppText.T("ai.error.incomplete"));
+                    AiServiceException failed = CreateError(mode, 0, responseObject != null ? responseObject["error"] as JsonObject : null, null);
+                    if (responseObject != null && responseObject["usage"] is JsonObject)
+                        failed.Usage = ReadUsage(responseObject);
+                    throw failed;
                 }
                 else if (type == "error")
                 {
                     JsonObject error = streamEvent["error"] as JsonObject;
-                    throw CreateError(mode, 0, error != null ? error : streamEvent);
+                    throw CreateError(mode, 0, error != null ? error : streamEvent, null);
                 }
             }
 
-            // Lo stream valido termina sempre con response.completed
+            // Lo stream valido termina sempre con response.completed o response.incomplete
             throw new AiServiceException(AiErrorKind.InvalidResponse, AppText.T("ai.error.incomplete"));
         }
 
         /// <summary>
-        /// Converte un errore del servizio nella categoria con messaggio localizzato
+        /// Converte un errore del servizio nella categoria con messaggio localizzato, conservando codice, stato e attesa chiesta
         /// </summary>
         /// <param name="mode">Modalità di accesso</param>
         /// <param name="status">Stato HTTP, zero per errori dello stream</param>
         /// <param name="error">Oggetto errore del servizio</param>
+        /// <param name="retryAfter">Attesa letta dall'header Retry-After</param>
         /// <returns>Eccezione</returns>
-        private static AiServiceException CreateError(AiConnectionMode mode, int status, JsonObject error)
+        private static AiServiceException CreateError(AiConnectionMode mode, int status, JsonObject error, TimeSpan? retryAfter)
         {
-            string code = error != null ? AiOAuthFlow.GetString(error, "code") : "";
-            string message = error != null ? AiOAuthFlow.GetString(error, "message") : "";
+            string code = error != null ? AiJson.GetString(error, "code") : "";
+            string message = error != null ? AiJson.GetString(error, "message") : "";
+            string param = error != null ? AiJson.GetString(error, "param") : "";
+            AiErrorKind kind;
+            string text;
 
             if (code == "subscription_sharing_usage_limit_exceeded" || (status == 429 && string.IsNullOrEmpty(code)) || code == "rate_limit_exceeded" || code == "insufficient_quota")
-                return new AiServiceException(AiErrorKind.UsageLimit, AppText.T(mode == AiConnectionMode.ChatGptAccount ? "ai.error.usageLimitAccount" : "ai.error.usageLimitApiKey"));
-
-            if (code == "subscription_sharing_user_not_eligible")
-                return new AiServiceException(AiErrorKind.NotEligible, AppText.T("ai.error.notEligible"));
-
-            if (code == "subscription_sharing_usage_unavailable" || status == 503)
-                return new AiServiceException(AiErrorKind.Unavailable, AppText.T("ai.error.unavailable"));
-
-            if (code == "subscription_sharing_invalid_user" || status == 401)
             {
-                if (mode == AiConnectionMode.ApiKey)
-                    return new AiServiceException(AiErrorKind.InvalidApiKey, AppText.T("ai.error.invalidApiKey"));
-
-                return new AiServiceException(AiErrorKind.SignInRequired, AppText.T("ai.error.signInRequired"));
+                kind = AiErrorKind.UsageLimit;
+                text = AppText.T(mode == AiConnectionMode.ChatGptAccount ? "ai.error.usageLimitAccount" : "ai.error.usageLimitApiKey");
+            }
+            else if (code == "subscription_sharing_user_not_eligible")
+            {
+                kind = AiErrorKind.NotEligible;
+                text = AppText.T("ai.error.notEligible");
+            }
+            else if (code == "subscription_sharing_usage_unavailable" || status == 503)
+            {
+                kind = AiErrorKind.Unavailable;
+                text = AppText.T("ai.error.unavailable");
+            }
+            else if (code == "subscription_sharing_invalid_user" || status == 401)
+            {
+                kind = mode == AiConnectionMode.ApiKey ? AiErrorKind.InvalidApiKey : AiErrorKind.SignInRequired;
+                text = AppText.T(mode == AiConnectionMode.ApiKey ? "ai.error.invalidApiKey" : "ai.error.signInRequired");
+            }
+            else if (code == "subscription_sharing_unsupported_capability")
+            {
+                kind = AiErrorKind.UnsupportedCapability;
+                text = AppText.F("ai.error.unsupported", string.IsNullOrEmpty(message) ? code : message);
+            }
+            else if (code == "subscription_sharing_route_not_supported")
+            {
+                kind = AiErrorKind.Unsupported;
+                text = AppText.F("ai.error.unsupported", string.IsNullOrEmpty(message) ? code : message);
+            }
+            else
+            {
+                // Con la API key un parametro rifiutato arriva come 400 generico: il nome in error.param permette di toglierlo e ripetere
+                kind = mode == AiConnectionMode.ApiKey && status == 400 && code == "unsupported_parameter" && !string.IsNullOrEmpty(param) ? AiErrorKind.UnsupportedCapability : AiErrorKind.Unknown;
+                text = AppText.F("ai.error.service", status, string.IsNullOrEmpty(message) ? code : message);
             }
 
-            if (code == "subscription_sharing_unsupported_capability" || code == "subscription_sharing_route_not_supported")
-                return new AiServiceException(AiErrorKind.Unsupported, AppText.F("ai.error.unsupported", string.IsNullOrEmpty(message) ? code : message));
-
-            return new AiServiceException(AiErrorKind.Unknown, AppText.F("ai.error.service", status, string.IsNullOrEmpty(message) ? code : message));
+            return new AiServiceException(kind, text, code, status, retryAfter, param);
         }
 
         /// <summary>
@@ -409,6 +583,81 @@ namespace RemuxForge.Core.Ai
             }
 
             return false;
+        }
+
+        /// <summary>
+        /// Avvisa di un cambio di stato dello stream
+        /// </summary>
+        /// <param name="progress">Destinatario, null se non serve</param>
+        /// <param name="stage">Stato</param>
+        /// <param name="text">Testo dello stato, vuoto se non ne ha</param>
+        private static void Report(Action<AiStreamProgress> progress, AiStreamStage stage, string text)
+        {
+            if (progress != null)
+                progress(new AiStreamProgress(stage, text));
+        }
+
+        /// <summary>
+        /// Legge la query di un item web_search_call: action.query, altrimenti le action.queries unite
+        /// </summary>
+        /// <param name="item">Item della ricerca</param>
+        /// <returns>Query, vuota se il servizio non la dice</returns>
+        private static string GetSearchQuery(JsonObject item)
+        {
+            JsonObject action = item["action"] as JsonObject;
+            if (action == null)
+                return "";
+
+            string query = AiJson.GetString(action, "query");
+            JsonArray queries = action["queries"] as JsonArray;
+            if (!string.IsNullOrEmpty(query) || queries == null)
+                return query;
+
+            List<string> parts = new List<string>();
+            for (int i = 0; i < queries.Count; i++)
+            {
+                JsonValue value = queries[i] as JsonValue;
+                string part;
+                if (value != null && value.TryGetValue<string>(out part) && !string.IsNullOrEmpty(part))
+                    parts.Add(part);
+            }
+
+            return string.Join(" · ", parts);
+        }
+
+        /// <summary>
+        /// Legge il consumo di token dalla risposta finale dello stream
+        /// </summary>
+        /// <param name="responseObject">Oggetto response dell'evento, anche null</param>
+        /// <returns>Consumo, coi campi assenti a null</returns>
+        private static AiUsage ReadUsage(JsonObject responseObject)
+        {
+            JsonObject usage = responseObject != null ? responseObject["usage"] as JsonObject : null;
+            JsonObject toolUsage = responseObject != null ? responseObject["tool_usage"] as JsonObject : null;
+            AiUsage result = new AiUsage();
+            result.InputTokens = GetOptionalLong(usage, "input_tokens");
+            result.CachedTokens = GetOptionalLong(usage != null ? usage["input_tokens_details"] as JsonObject : null, "cached_tokens");
+            result.CacheWriteTokens = GetOptionalLong(usage != null ? usage["input_tokens_details"] as JsonObject : null, "cache_write_tokens");
+            result.OutputTokens = GetOptionalLong(usage, "output_tokens");
+            result.ReasoningTokens = GetOptionalLong(usage != null ? usage["output_tokens_details"] as JsonObject : null, "reasoning_tokens");
+            result.WebSearchRequests = GetOptionalLong(toolUsage != null ? toolUsage["web_search"] as JsonObject : null, "num_requests");
+            return result;
+        }
+
+        /// <summary>
+        /// Legge una proprietà numerica facoltativa da un oggetto JSON
+        /// </summary>
+        /// <param name="source">Oggetto JSON, anche null</param>
+        /// <param name="name">Nome proprietà</param>
+        /// <returns>Valore o null se assente</returns>
+        private static long? GetOptionalLong(JsonObject source, string name)
+        {
+            JsonValue value = source != null ? source[name] as JsonValue : null;
+            long result;
+            if (value != null && value.TryGetValue<long>(out result))
+                return result;
+
+            return null;
         }
 
         #endregion

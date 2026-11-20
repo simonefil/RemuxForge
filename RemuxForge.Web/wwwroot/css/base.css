@@ -85,3 +85,25 @@ table {
     background: var(--rz-text-selection-background-color);
     color: var(--rz-text-selection-color);
 }
+
+/* Lingua singola (LanguageChipsComponent): il chip compatto sta nell'altezza degli altri input */
+.rf-language-single .rz-chip {
+    max-width: 100%;
+    min-height: 0;
+    height: auto;
+    padding-block: 0;
+}
+
+.rf-language-single .rz-chip-text {
+    overflow: hidden;
+    line-height: 1.2;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.rf-language-single .rz-chip .rz-button {
+    height: auto;
+    min-height: 0;
+    padding-block: 0;
+    line-height: 1;
+}

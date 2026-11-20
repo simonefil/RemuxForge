@@ -1,0 +1,26 @@
+<RadzenStack AlignItems="AlignItems.Center" JustifyContent="JustifyContent.Center" Gap="@(Compact ? "0.5rem" : "1rem")" class="rf-tool-empty">
+    <RadzenText TextStyle="@(Compact ? TextStyle.H6 : TextStyle.H4)" TagName="@HeadingTag">@Title</RadzenText>
+    @ChildContent
+</RadzenStack>
+
+@code {
+    /// <summary>
+    /// Titolo dello stato vuoto
+    /// </summary>
+    [Parameter] public string Title { get; set; }
+
+    /// <summary>
+    /// True per lo stato vuoto di un elenco dentro la pagina, con titolo e spazi più piccoli
+    /// </summary>
+    [Parameter] public bool Compact { get; set; }
+
+    /// <summary>
+    /// Livello del titolo nella pagina
+    /// </summary>
+    [Parameter] public TagName HeadingTag { get; set; } = TagName.H2;
+
+    /// <summary>
+    /// Contenuto sotto il titolo, ad esempio il pulsante che riempie l'elenco
+    /// </summary>
+    [Parameter] public RenderFragment ChildContent { get; set; }
+}

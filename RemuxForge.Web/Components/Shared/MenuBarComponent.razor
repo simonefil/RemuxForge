@@ -140,6 +140,8 @@
             }),
             this.CreateMenu(AppText.T("web.menu.help"), UiCommandMenuSection.Help)
         };
+        // Una sezione senza comandi, come File e Azioni nella home, non mostra un menu vuoto
+        this._menus.RemoveAll(menu => menu.Items.Count == 0);
 
         this._menuKey = this.BuildMenuKey();
     }

@@ -3,7 +3,9 @@ using RemuxForge.Core.Analysis.Edit.Extraction;
 using RemuxForge.Core.Configuration;
 using RemuxForge.Core.Infrastructure;
 using RemuxForge.Core.Localization;
+using RemuxForge.Core.MediaCatalog;
 using RemuxForge.Core.Media;
+using RemuxForge.Core.Toolbox.SubtitleTranslation;
 using RemuxForge.Core.Tools;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -15,6 +17,7 @@ using Microsoft.Extensions.Hosting;
 using Radzen;
 using RemuxForge.Web.Components;
 using RemuxForge.Web.Services;
+using RemuxForge.Web.Services.Toolbox;
 using System;
 using System.Collections.Generic;
 using System.Text.Json;
@@ -166,11 +169,22 @@ namespace RemuxForge.Web
             builder.Services.AddSingleton<MergeOrchestrator>();
             builder.Services.AddSingleton<SplitOrchestrator>();
             builder.Services.AddSingleton<MetadataOrchestrator>();
+            builder.Services.AddSingleton<VideoToMkvOrchestrator>();
+            builder.Services.AddSingleton<TrackExtractionOrchestrator>();
+            builder.Services.AddSingleton<AddTracksOrchestrator>();
+            builder.Services.AddSingleton<ToolboxCatalog>();
             builder.Services.AddSingleton<UpdateCheckService>();
             builder.Services.AddSingleton(new AiCredentialService(AppSettingsService.Instance.ConfigFolder));
             builder.Services.AddSingleton<AiOAuthFlow>();
             builder.Services.AddSingleton<OpenAiResponsesClient>();
             builder.Services.AddSingleton<AiAuthService>();
+            builder.Services.AddSingleton(new MediaCatalogSettingsService(AppSettingsService.Instance.ConfigFolder));
+            builder.Services.AddSingleton<MediaCatalogSourceProvider>();
+            builder.Services.AddSingleton<MediaCatalogImageDownloader>();
+            builder.Services.AddSingleton<TranslationModelProviderFactory>();
+            builder.Services.AddSingleton(new TranslationProjectStore(AppSettingsService.Instance.ConfigFolder));
+            builder.Services.AddSingleton(new TranslationJobStore(AppSettingsService.Instance.ConfigFolder));
+            builder.Services.AddSingleton<SubtitleTranslationOrchestrator>();
             builder.Services.AddHostedService(provider => provider.GetRequiredService<UpdateCheckService>());
             builder.Services.AddRadzenComponents();
             builder.Services.AddRazorComponents().AddInteractiveServerComponents();
@@ -216,14 +230,11 @@ namespace RemuxForge.Web
                 return;
             }
 
-            MergeOrchestrator mergeOrchestrator = app.Services.GetRequiredService<MergeOrchestrator>();
-            SplitOrchestrator splitOrchestrator = app.Services.GetRequiredService<SplitOrchestrator>();
-            MetadataOrchestrator metadataOrchestrator = app.Services.GetRequiredService<MetadataOrchestrator>();
+            ToolboxCatalog toolboxCatalog = app.Services.GetRequiredService<ToolboxCatalog>();
             app.Lifetime.ApplicationStopping.Register(() =>
             {
-                mergeOrchestrator.RequestStop();
-                splitOrchestrator.Stop();
-                metadataOrchestrator.Stop();
+                foreach (ToolboxCard card in toolboxCatalog.Cards)
+                    toolboxCatalog.GetOrchestrator(card).Stop();
             });
 
             app.Start();

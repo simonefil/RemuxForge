@@ -13,7 +13,6 @@ namespace RemuxForge.Web.Services
         None = 0,
         Menu = 1,
         Toolbar = 2,
-        Status = 4,
         ContextMenu = 8
     }
 
@@ -43,7 +42,6 @@ namespace RemuxForge.Web.Services
         {
             this.Label = "";
             this.ToolbarLabel = "";
-            this.StatusLabel = "";
             this.Shortcut = "";
             this.Icon = "";
             this.Callback = null;
@@ -105,12 +103,17 @@ namespace RemuxForge.Web.Services
         }
 
         /// <summary>
-        /// Restituisce l'etichetta per la status bar
+        /// Verifica se il tasto premuto è la scorciatoia del comando
         /// </summary>
-        /// <returns>Etichetta specifica o principale</returns>
-        public string GetStatusLabel()
+        /// <param name="key">Tasto premuto</param>
+        /// <param name="ctrl">Flag Ctrl</param>
+        /// <returns>True se la scorciatoia del comando è il tasto premuto, con o senza Ctrl come indicato</returns>
+        public bool Matches(string key, bool ctrl)
         {
-            return string.IsNullOrEmpty(this.StatusLabel) ? this.Label : this.StatusLabel;
+            if (string.IsNullOrEmpty(key))
+                return false;
+
+            return string.Equals(this.Shortcut, ctrl ? "Ctrl+" + key.ToUpperInvariant() : key, StringComparison.OrdinalIgnoreCase);
         }
 
         /// <summary>
@@ -122,16 +125,14 @@ namespace RemuxForge.Web.Services
         /// <returns>True se almeno un comando usa la scorciatoia e nessuno di quelli che la usano è attivo</returns>
         public static bool IsShortcutDisabled(IReadOnlyList<UiCommandDefinition> commands, string key, bool ctrl)
         {
-            string shortcut;
             bool found = false;
 
-            if (commands == null || string.IsNullOrEmpty(key))
+            if (commands == null)
                 return false;
 
-            shortcut = ctrl ? "Ctrl+" + key.ToUpperInvariant() : key;
             for (int i = 0; i < commands.Count; i++)
             {
-                if (commands[i] == null || !string.Equals(commands[i].Shortcut, shortcut, StringComparison.OrdinalIgnoreCase))
+                if (commands[i] == null || !commands[i].Matches(key, ctrl))
                     continue;
                 if (!commands[i].Disabled)
                     return false;
@@ -156,11 +157,6 @@ namespace RemuxForge.Web.Services
         public string ToolbarLabel { get; set; }
 
         /// <summary>
-        /// Etichetta alternativa per status bar
-        /// </summary>
-        public string StatusLabel { get; set; }
-
-        /// <summary>
         /// Scorciatoia visualizzata
         /// </summary>
         public string Shortcut { get; set; }
@@ -174,11 +170,6 @@ namespace RemuxForge.Web.Services
         /// Ordine nella toolbar
         /// </summary>
         public int ToolbarOrder { get; set; }
-
-        /// <summary>
-        /// Ordine nella status bar
-        /// </summary>
-        public int StatusOrder { get; set; }
 
         /// <summary>
         /// Destinazioni di rendering

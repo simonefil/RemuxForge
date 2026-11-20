@@ -1,0 +1,70 @@
+@inherits ToolboxBatchPageBase<VideoToMkvOrchestrator, VideoToMkvRecord>
+
+@{
+    List<VideoToMkvRecord> records = Orchestrator.GetRecords();
+    bool busy = Orchestrator.IsBusy;
+}
+<div class="rf-panel rf-tool-page">
+    <ToolboxOutputOptions Orchestrator="@Orchestrator" JsModule="@JsModule" Id="video-to-mkv" />
+
+    @if (records.Count == 0)
+    {
+        <ToolboxEmptyState Title="@AppText.T("web.toolbox.videoToMkv.emptyTitle")">
+            <RadzenButton Text="@AppText.T("web.toolbox.list.addFiles")" Icon="add" Disabled="@busy" Click="@AddFilesAsync" />
+        </ToolboxEmptyState>
+    }
+    else
+    {
+        <RadzenDataGrid TItem="VideoToMkvRecord"
+                        Data="@records"
+                        class="rf-data-grid rf-tool-grid"
+                        AllowAlternatingRows="false"
+                        AllowColumnResize="true"
+                        AllowPaging="false"
+                        AllowSorting="false"
+                        Density="Density.Compact"
+                        GridLines="DataGridGridLines.Both">
+            <Columns>
+                <RadzenDataGridColumn TItem="VideoToMkvRecord" Title="@AppText.T("web.dashboard.file")" Width="32%" MinWidth="2.5rem">
+                    <Template Context="record"><span title="@record.InputPath">@System.IO.Path.GetFileName(record.InputPath)</span></Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="VideoToMkvRecord" Title="@AppText.T("web.toolbox.list.container")" Width="8%" MinWidth="2.5rem">
+                    <Template Context="record"><CellText Text="@System.IO.Path.GetExtension(record.InputPath).TrimStart('.').ToUpperInvariant()" /></Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="VideoToMkvRecord" Title="@AppText.T("web.toolbox.list.size")" Width="8%" MinWidth="2.5rem">
+                    <Template Context="record"><CellText Text="@Utils.FormatSize(record.Size)" /></Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="VideoToMkvRecord" Title="@AppText.T("web.dashboard.status")" Width="13%" MinWidth="2.5rem">
+                    <Template Context="record">
+                        <ToolboxStatusBadge Result="@record.Result" TextPrefix="web.toolbox.videoToMkv" />
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="VideoToMkvRecord" Title="@AppText.T("web.toolbox.list.result")" Width="34%" MinWidth="2.5rem">
+                    <Template Context="record">
+                        <ToolboxResultCell Result="@record.Result" />
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="VideoToMkvRecord" Width="5%" MinWidth="3rem" TextAlign="TextAlign.Center">
+                    <Template Context="record">
+                        <RadzenButton Icon="delete" Variant="Variant.Text" ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.Small" Disabled="@busy"
+                                      title="@AppText.T("web.toolbox.list.remove")" aria-label="@(AppText.T("web.toolbox.list.remove") + " " + System.IO.Path.GetFileName(record.InputPath))"
+                                      Click="@(() => Orchestrator.Remove(record))" />
+                    </Template>
+                </RadzenDataGridColumn>
+            </Columns>
+        </RadzenDataGrid>
+    }
+</div>
+
+@code {
+    /// <summary>
+    /// Estensioni proposte dal browser: i contenitori accettati tranne il Matroska, che non ha nulla da convertire
+    /// </summary>
+    private static readonly List<string> s_extensions = new List<string>(Array.FindAll(MediaContainerFormats.Extensions, e => !MediaContainerFormats.IsMatroska(e)));
+
+    /// <inheritdoc />
+    protected override List<string> FileExtensions
+    {
+        get { return s_extensions; }
+    }
+}

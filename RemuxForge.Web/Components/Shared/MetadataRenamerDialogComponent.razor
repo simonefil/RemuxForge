@@ -28,7 +28,7 @@
                                           MinWidth="2.5rem"
                                           MaxWidth="720px">
                         <Template Context="item">
-                            <span title="@(!string.IsNullOrEmpty(item.ErrorMessage) ? item.ErrorMessage : item.NewName)">@item.NewName</span>
+                            <span title="@(!string.IsNullOrEmpty(item.ErrorMessage) ? item.NewName + "\n" + item.ErrorMessage : item.NewName)">@item.NewName</span>
                         </Template>
                     </RadzenDataGridColumn>
                 </Columns>
@@ -36,16 +36,16 @@
         </div>
 
         <div class="renamer-config">
-            <div class="renamer-method-selector">
-                <RadzenLabel Text="@AppText.T("web.rename.methodLabel")" Component="RenamerMethodType" />
-                <RadzenDropDown TValue="RenameMethodType" Name="RenamerMethodType" Data="@MethodTypes" @bind-Value="this._selectedMethodType" @bind-Value:after="this.HandleMethodTypeChanged">
-                    <Template Context="type">@GetRenameMethodTypeLabel((RenameMethodType)type)</Template>
-                    <ValueTemplate Context="type">@GetRenameMethodTypeLabel((RenameMethodType)type)</ValueTemplate>
-                </RadzenDropDown>
-                <RadzenButton class="renamer-add-btn" Text="@AppText.T("web.rename.add")" Icon="add" Size="ButtonSize.Small" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@this.HandleAddMethod" />
-            </div>
+            <div class="form-stack renamer-params">
+                <div class="form-row">
+                    <RadzenLabel class="form-label" Text="@AppText.T("web.rename.methodLabel")" Component="RenamerMethodType" />
+                    <RadzenDropDown TValue="RenameMethodType" Name="RenamerMethodType" Data="@MethodTypes" @bind-Value="this._selectedMethodType" @bind-Value:after="this.HandleMethodTypeChanged">
+                        <Template Context="type">@GetRenameMethodTypeLabel((RenameMethodType)type)</Template>
+                        <ValueTemplate Context="type">@GetRenameMethodTypeLabel((RenameMethodType)type)</ValueTemplate>
+                    </RadzenDropDown>
+                    <RadzenButton Text="@AppText.T("web.rename.add")" Icon="add" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Disabled="@(!this.HasEditingMethodInput())" Click="@this.HandleAddMethod" />
+                </div>
 
-            <div class="renamer-params">
                 @if (!string.IsNullOrEmpty(this._paramsError))
                 {
                     <RadzenAlert AlertStyle="AlertStyle.Danger" Variant="Variant.Flat" Shade="Shade.Lighter" AllowClose="false" class="renamer-params-error">@this._paramsError</RadzenAlert>
@@ -53,33 +53,37 @@
 
                 @if (this._selectedMethodType == RenameMethodType.Replace)
                 {
-                    <div class="renamer-param-row">
-                        <RadzenLabel Text="@AppText.T("web.rename.searchLabel")" Component="RenamerSearchText" />
+                    <div class="form-row">
+                        <RadzenLabel class="form-label" Text="@AppText.T("web.rename.searchLabel")" Component="RenamerSearchText" />
                         <RadzenTextBox Name="RenamerSearchText" @bind-Value="this._editingMethod.SearchText" @bind-Value:after="this.RecalculatePreview" Immediate="true" />
                     </div>
-                    <div class="renamer-param-row">
-                        <RadzenLabel Text="@AppText.T("web.rename.replaceLabel")" Component="RenamerReplaceText" />
+                    <div class="form-row">
+                        <RadzenLabel class="form-label" Text="@AppText.T("web.rename.replaceLabel")" Component="RenamerReplaceText" />
                         <RadzenTextBox Name="RenamerReplaceText" @bind-Value="this._editingMethod.ReplaceText" @bind-Value:after="this.RecalculatePreview" Immediate="true" />
                     </div>
-                    <LabeledSwitchComponent CssClass="renamer-checkbox-row" Label="@AppText.T("web.rename.caseSensitive")" Value="@this._editingMethod.CaseSensitive" ValueChanged="@((bool value) => { this._editingMethod.CaseSensitive = value; this.RecalculatePreview(); })" />
-                    <LabeledSwitchComponent CssClass="renamer-checkbox-row" Label="@AppText.T("web.rename.useRegex")" Value="@this._editingMethod.UseRegex" ValueChanged="@((bool value) => { this._editingMethod.UseRegex = value; this.RecalculatePreview(); })" />
+                    <div class="form-row form-row-offset">
+                        <LabeledSwitchComponent Label="@AppText.T("web.rename.caseSensitive")" Value="@this._editingMethod.CaseSensitive" ValueChanged="@((bool value) => { this._editingMethod.CaseSensitive = value; this.RecalculatePreview(); })" />
+                        <LabeledSwitchComponent Label="@AppText.T("web.rename.useRegex")" Value="@this._editingMethod.UseRegex" ValueChanged="@((bool value) => { this._editingMethod.UseRegex = value; this.RecalculatePreview(); })" />
+                    </div>
                 }
                 else if (this._selectedMethodType == RenameMethodType.Add)
                 {
-                    <div class="renamer-param-row">
-                        <RadzenLabel Text="@AppText.T("web.rename.textLabel")" Component="RenamerInsertText" />
+                    <div class="form-row">
+                        <RadzenLabel class="form-label" Text="@AppText.T("web.rename.textLabel")" Component="RenamerInsertText" />
                         <RadzenTextBox Name="RenamerInsertText" @bind-Value="this._editingMethod.InsertText" @bind-Value:after="this.RecalculatePreview" Immediate="true" />
                     </div>
-                    <div class="renamer-param-row">
-                        <RadzenLabel Text="@AppText.T("web.rename.positionLabel")" Component="RenamerInsertPosition" />
+                    <div class="form-row">
+                        <RadzenLabel class="form-label" Text="@AppText.T("web.rename.positionLabel")" Component="RenamerInsertPosition" />
                         <RadzenNumeric TValue="int" Name="RenamerInsertPosition" @bind-Value="this._editingMethod.InsertPosition" @bind-Value:after="this.RecalculatePreview" />
                     </div>
-                    <LabeledSwitchComponent CssClass="renamer-checkbox-row" Label="@AppText.T("web.rename.fromEnd")" Value="@this._editingMethod.FromEnd" ValueChanged="@((bool value) => { this._editingMethod.FromEnd = value; this.RecalculatePreview(); })" />
+                    <div class="form-row form-row-offset">
+                        <LabeledSwitchComponent Label="@AppText.T("web.rename.fromEnd")" Value="@this._editingMethod.FromEnd" ValueChanged="@((bool value) => { this._editingMethod.FromEnd = value; this.RecalculatePreview(); })" />
+                    </div>
                 }
                 else if (this._selectedMethodType == RenameMethodType.Remove)
                 {
-                    <div class="renamer-param-row">
-                        <RadzenLabel Text="@AppText.T("web.rename.modeLabel")" Component="RenamerRemoveByPattern" />
+                    <div class="form-row">
+                        <RadzenLabel class="form-label" Text="@AppText.T("web.rename.modeLabel")" Component="RenamerRemoveByPattern" />
                         <RadzenDropDown TValue="bool" Name="RenamerRemoveByPattern" Data="@RemoveModes" @bind-Value="this._editingMethod.RemoveByPattern" @bind-Value:after="this.RecalculatePreview">
                             <Template Context="value">@GetRemoveModeLabel((bool)value)</Template>
                             <ValueTemplate Context="value">@GetRemoveModeLabel((bool)value)</ValueTemplate>
@@ -88,37 +92,41 @@
 
                     @if (!this._editingMethod.RemoveByPattern)
                     {
-                        <div class="renamer-param-row">
-                            <RadzenLabel Text="@AppText.T("web.rename.startLabel")" Component="RenamerRemoveStartIndex" />
+                        <div class="form-row">
+                            <RadzenLabel class="form-label" Text="@AppText.T("web.rename.positionLabel")" Component="RenamerRemoveStartIndex" />
                             <RadzenNumeric TValue="int" Name="RenamerRemoveStartIndex" @bind-Value="this._editingMethod.RemoveStartIndex" @bind-Value:after="this.RecalculatePreview" />
                         </div>
-                        <div class="renamer-param-row">
-                            <RadzenLabel Text="@AppText.T("web.rename.countLabel")" Component="RenamerRemoveCount" />
+                        <div class="form-row">
+                            <RadzenLabel class="form-label" Text="@AppText.T("web.rename.countLabel")" Component="RenamerRemoveCount" />
                             <RadzenNumeric TValue="int" Name="RenamerRemoveCount" @bind-Value="this._editingMethod.RemoveCount" @bind-Value:after="this.RecalculatePreview" />
                         </div>
-                        <LabeledSwitchComponent CssClass="renamer-checkbox-row" Label="@AppText.T("web.rename.fromEnd")" Value="@this._editingMethod.RemoveFromEnd" ValueChanged="@((bool value) => { this._editingMethod.RemoveFromEnd = value; this.RecalculatePreview(); })" />
+                        <div class="form-row form-row-offset">
+                            <LabeledSwitchComponent Label="@AppText.T("web.rename.fromEnd")" Value="@this._editingMethod.RemoveFromEnd" ValueChanged="@((bool value) => { this._editingMethod.RemoveFromEnd = value; this.RecalculatePreview(); })" />
+                        </div>
                     }
                     else
                     {
-                        <div class="renamer-param-row">
-                            <RadzenLabel Text="@AppText.T("web.rename.patternLabel")" Component="RenamerRemovePattern" />
+                        <div class="form-row">
+                            <RadzenLabel class="form-label" Text="@AppText.T("web.rename.textLabel")" Component="RenamerRemovePattern" />
                             <RadzenTextBox Name="RenamerRemovePattern" @bind-Value="this._editingMethod.RemovePattern" @bind-Value:after="this.RecalculatePreview" Immediate="true" />
                         </div>
-                        <LabeledSwitchComponent CssClass="renamer-checkbox-row" Label="@AppText.T("web.rename.caseSensitive")" Value="@this._editingMethod.RemovePatternCaseSensitive" ValueChanged="@((bool value) => { this._editingMethod.RemovePatternCaseSensitive = value; this.RecalculatePreview(); })" />
-                        <LabeledSwitchComponent CssClass="renamer-checkbox-row" Label="@AppText.T("web.rename.useRegex")" Value="@this._editingMethod.RemovePatternUseRegex" ValueChanged="@((bool value) => { this._editingMethod.RemovePatternUseRegex = value; this.RecalculatePreview(); })" />
+                        <div class="form-row form-row-offset">
+                            <LabeledSwitchComponent Label="@AppText.T("web.rename.caseSensitive")" Value="@this._editingMethod.RemovePatternCaseSensitive" ValueChanged="@((bool value) => { this._editingMethod.RemovePatternCaseSensitive = value; this.RecalculatePreview(); })" />
+                            <LabeledSwitchComponent Label="@AppText.T("web.rename.useRegex")" Value="@this._editingMethod.RemovePatternUseRegex" ValueChanged="@((bool value) => { this._editingMethod.RemovePatternUseRegex = value; this.RecalculatePreview(); })" />
+                        </div>
                     }
                 }
                 else if (this._selectedMethodType == RenameMethodType.NewCase)
                 {
-                    <div class="renamer-param-row">
-                        <RadzenLabel Text="@AppText.T("web.rename.modeLabel")" Component="RenamerCaseMode" />
+                    <div class="form-row">
+                        <RadzenLabel class="form-label" Text="@AppText.T("web.rename.modeLabel")" Component="RenamerCaseMode" />
                         <RadzenDropDown TValue="int" Name="RenamerCaseMode" Data="@CaseModeOptions" @bind-Value="this._editingMethod.CaseMode" @bind-Value:after="this.RecalculatePreview">
                             <Template Context="value">@GetCaseModeLabel((int)value)</Template>
                             <ValueTemplate Context="value">@GetCaseModeLabel((int)value)</ValueTemplate>
                         </RadzenDropDown>
                     </div>
-                    <div class="renamer-param-row">
-                        <RadzenLabel Text="@AppText.T("web.rename.scopeLabel")" Component="RenamerCaseScope" />
+                    <div class="form-row">
+                        <RadzenLabel class="form-label" Text="@AppText.T("web.rename.scopeLabel")" Component="RenamerCaseScope" />
                         <RadzenDropDown TValue="int" Name="RenamerCaseScope" Data="@CaseScopeOptions" @bind-Value="this._editingMethod.CaseScope" @bind-Value:after="this.RecalculatePreview">
                             <Template Context="value">@GetCaseScopeLabel((int)value)</Template>
                             <ValueTemplate Context="value">@GetCaseScopeLabel((int)value)</ValueTemplate>
@@ -127,32 +135,52 @@
                 }
                 else if (this._selectedMethodType == RenameMethodType.NewName)
                 {
-                    <div class="renamer-param-row">
-                        <RadzenLabel Text="@AppText.T("web.rename.patternLabel")" Component="RenamerNamePattern" />
+                    <div class="form-row">
+                        <RadzenLabel class="form-label" Text="@AppText.T("web.rename.patternLabel")" Component="RenamerNamePattern" />
                         <RadzenTextBox Name="RenamerNamePattern" @bind-Value="this._editingMethod.NamePattern" @bind-Value:after="this.RecalculatePreview" Immediate="true" />
                     </div>
-                    <div class="renamer-tag-help">
-                        @AppText.T("web.rename.tagsLabel") &lt;Name&gt; &lt;Ext&gt; &lt;Folder&gt;
-                        &lt;Inc:start:step:pad&gt;
-                        &lt;Date:format&gt;
-                        &lt;Rand:min:max&gt;
+                    <div class="form-row form-row-offset form-note">
+                        <span class="renamer-tag-help">
+                            @AppText.T("web.rename.tagsLabel") &lt;Name&gt; &lt;Ext&gt; &lt;Folder&gt;
+                            &lt;Inc:start:step:pad&gt;
+                            &lt;Date:format&gt;
+                            &lt;Rand:min:max&gt;
+                        </span>
+                    </div>
+                }
+                else if (this._selectedMethodType == RenameMethodType.Catalog)
+                {
+                    <div class="form-row">
+                        <RadzenLabel class="form-label" Text="@AppText.T("web.rename.patternLabel")" Component="RenamerCatalogPattern" />
+                        <RadzenTextBox Name="RenamerCatalogPattern" @bind-Value="this._editingMethod.CatalogPattern" @bind-Value:after="this.RecalculatePreview" Immediate="true" />
+                    </div>
+                    <div class="form-row">
+                        <span class="form-label">@AppText.T("web.rename.catalogMatchLabel")</span>
+                        <span class="renamer-catalog-title" title="@this._editingMethod.CatalogTitle">@(this._editingMethod.CatalogValues.Count > 0 ? this._editingMethod.CatalogTitle : AppText.T("web.rename.catalogNotMatched"))</span>
+                        <RadzenButton Text="@AppText.T("web.rename.catalogMatch")" Icon="travel_explore" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@this.HandleCatalogMatchAsync" />
+                    </div>
+                    <div class="form-row form-row-offset form-note">
+                        <span class="renamer-tag-help">
+                            @AppText.T("web.rename.tagsLabel") &lt;Series&gt; &lt;Season:2&gt; &lt;Episode:2&gt; &lt;Absolute:3&gt; &lt;Title&gt; &lt;Year&gt;
+                            &lt;Name&gt; &lt;Ext&gt; &lt;Folder&gt;
+                        </span>
                     </div>
                 }
                 else if (this._selectedMethodType == RenameMethodType.Trim)
                 {
-                    <div class="renamer-param-row">
-                        <RadzenLabel Text="@AppText.T("web.rename.charsLabel")" Component="RenamerTrimCharacters" />
+                    <div class="form-row">
+                        <RadzenLabel class="form-label" Text="@AppText.T("web.rename.charsLabel")" Component="RenamerTrimCharacters" />
                         <RadzenTextBox Name="RenamerTrimCharacters" @bind-Value="this._editingMethod.TrimCharacters" @bind-Value:after="this.RecalculatePreview" Immediate="true" />
                     </div>
-                    <div class="renamer-param-row">
-                        <RadzenLabel Text="@AppText.T("web.rename.locationLabel")" Component="RenamerTrimLocation" />
+                    <div class="form-row">
+                        <RadzenLabel class="form-label" Text="@AppText.T("web.rename.locationLabel")" Component="RenamerTrimLocation" />
                         <RadzenDropDown TValue="int" Name="RenamerTrimLocation" Data="@TrimLocationOptions" @bind-Value="this._editingMethod.TrimLocation" @bind-Value:after="this.RecalculatePreview">
                             <Template Context="value">@GetTrimLocationLabel((int)value)</Template>
                             <ValueTemplate Context="value">@GetTrimLocationLabel((int)value)</ValueTemplate>
                         </RadzenDropDown>
                     </div>
-                    <div class="renamer-param-row">
-                        <RadzenLabel Text="@AppText.T("web.rename.scopeLabel")" Component="RenamerTrimScope" />
+                    <div class="form-row">
+                        <RadzenLabel class="form-label" Text="@AppText.T("web.rename.scopeLabel")" Component="RenamerTrimScope" />
                         <RadzenDropDown TValue="int" Name="RenamerTrimScope" Data="@TrimScopeOptions" @bind-Value="this._editingMethod.TrimScope" @bind-Value:after="this.RecalculatePreview">
                             <Template Context="value">@GetTrimScopeLabel((int)value)</Template>
                             <ValueTemplate Context="value">@GetTrimScopeLabel((int)value)</ValueTemplate>
@@ -171,14 +199,8 @@
                     <div class="renamer-stack-item">
                         <span class="renamer-stack-item-name" title="@method.GetDisplayName()">@method.GetDisplayName()</span>
                         <div class="renamer-stack-item-actions">
-                            @if (i > 0)
-                            {
-                                <RadzenButton Icon="arrow_upward" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" Click="@(() => this.HandleMoveUp(i))" title="@AppText.T("web.rename.moveUp")" aria-label="@AppText.T("web.rename.moveUp")" />
-                            }
-                            @if (i < this._methodStack.Count - 1)
-                            {
-                                <RadzenButton Icon="arrow_downward" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" Click="@(() => this.HandleMoveDown(i))" title="@AppText.T("web.rename.moveDown")" aria-label="@AppText.T("web.rename.moveDown")" />
-                            }
+                            <RadzenButton Icon="arrow_upward" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" Disabled="@(i == 0)" Click="@(() => this.HandleMoveUp(i))" title="@AppText.T("web.rename.moveUp")" aria-label="@AppText.T("web.rename.moveUp")" />
+                            <RadzenButton Icon="arrow_downward" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" Disabled="@(i == this._methodStack.Count - 1)" Click="@(() => this.HandleMoveDown(i))" title="@AppText.T("web.rename.moveDown")" aria-label="@AppText.T("web.rename.moveDown")" />
                             <RadzenButton Icon="content_copy" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" Click="@(() => this.HandleDuplicateMethod(i))" title="@AppText.T("web.rename.duplicate")" aria-label="@AppText.T("web.rename.duplicate")" />
                             <RadzenButton Icon="delete" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Danger" Click="@(() => this.HandleRemoveMethod(i))" title="@AppText.T("web.rename.remove")" aria-label="@AppText.T("web.rename.remove")" />
                         </div>
@@ -204,7 +226,7 @@
     /// </summary>
     private static readonly List<RenameMethodType> MethodTypes = new List<RenameMethodType>
     {
-        RenameMethodType.Replace, RenameMethodType.Add, RenameMethodType.Remove, RenameMethodType.NewCase, RenameMethodType.NewName, RenameMethodType.Trim
+        RenameMethodType.Replace, RenameMethodType.Add, RenameMethodType.Remove, RenameMethodType.NewCase, RenameMethodType.NewName, RenameMethodType.Trim, RenameMethodType.Catalog
     };
 
     /// <summary>
@@ -474,6 +496,10 @@
         {
             result = !string.IsNullOrEmpty(this._editingMethod.TrimCharacters);
         }
+        else if (this._selectedMethodType == RenameMethodType.Catalog)
+        {
+            result = this._editingMethod.CatalogValues.Count > 0 && !string.IsNullOrEmpty(this._editingMethod.CatalogPattern);
+        }
 
         return result;
     }
@@ -594,15 +620,33 @@
     }
 
     /// <summary>
+    /// Abbina i file a un titolo del catalogo; il pattern passa a quello di default del tipo abbinato se non è stato cambiato
+    /// </summary>
+    private async Task HandleCatalogMatchAsync()
+    {
+        Dictionary<string, object> parameters = new Dictionary<string, object>();
+        parameters.Add(nameof(MediaCatalogMatchDialogComponent.Files), this._entries.ConvertAll(entry => entry.FullPath));
+        parameters.Add(nameof(MediaCatalogMatchDialogComponent.RenameMode), true);
+
+        MediaCatalogRenameMatch match = await AppDialogs.OpenAsync<MediaCatalogMatchDialogComponent>(this.DialogService, AppText.T("web.mediaCatalogMatch.title"), parameters,
+            AppDialogs.CreateOptions(AppDialogs.WIDTH_AI_WIZARD, null, null), null) as MediaCatalogRenameMatch;
+        if (match == null)
+            return;
+
+        string pattern = this._editingMethod.CatalogPattern;
+        if (string.IsNullOrEmpty(pattern) || pattern == RenameMethod.CATALOG_SERIES_PATTERN || pattern == RenameMethod.CATALOG_MOVIE_PATTERN)
+            this._editingMethod.CatalogPattern = match.Kind == MediaCatalogKind.Movie ? RenameMethod.CATALOG_MOVIE_PATTERN : RenameMethod.CATALOG_SERIES_PATTERN;
+
+        this._editingMethod.CatalogTitle = match.Title;
+        this._editingMethod.CatalogValues = match.Values;
+        this.RecalculatePreview();
+    }
+
+    /// <summary>
     /// Aggiunge il metodo in editing alla pipeline
     /// </summary>
     private void HandleAddMethod()
     {
-        if (!this.HasEditingMethodInput())
-        {
-            return;
-        }
-
         string error = this.ValidateEditingMethod();
         if (!string.IsNullOrEmpty(error))
         {

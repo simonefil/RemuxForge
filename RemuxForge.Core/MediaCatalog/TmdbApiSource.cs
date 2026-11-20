@@ -1,0 +1,386 @@
+using RemuxForge.Core.Configuration;
+using RemuxForge.Core.Localization;
+using RemuxForge.Core.Models;
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.Linq;
+using System.Net.Http;
+using System.Net.Http.Headers;
+using System.Text.Json.Nodes;
+using System.Threading;
+using System.Threading.Tasks;
+
+namespace RemuxForge.Core.MediaCatalog
+{
+    /// <summary>
+    /// Fonte The Movie Database tramite API v3, con la credenziale dell'utente: API Read Access Token oppure API key
+    /// </summary>
+    public class TmdbApiSource : MediaCatalogApiSourceBase
+    {
+        #region Costanti
+
+        /// <summary>
+        /// Indirizzo base dell'API v3
+        /// </summary>
+        private const string API_BASE_URL = "https://api.themoviedb.org/3";
+
+        /// <summary>
+        /// Indirizzo base dei poster alla dimensione originale
+        /// </summary>
+        public const string IMAGE_BASE_URL = "https://image.tmdb.org/t/p/original";
+
+        /// <summary>
+        /// Lingua di ripiego dei testi
+        /// </summary>
+        private const string FALLBACK_LANGUAGE = "en";
+
+        #endregion
+
+        #region Variabili di classe
+
+        /// <summary>
+        /// Legge la credenziale corrente dalle impostazioni
+        /// </summary>
+        private readonly Func<string> _credentialProvider;
+
+        #endregion
+
+        #region Costruttore
+
+        /// <summary>
+        /// Costruttore
+        /// </summary>
+        /// <param name="credentialProvider">Lettura della credenziale TMDB dell'utente dalle impostazioni</param>
+        public TmdbApiSource(Func<string> credentialProvider)
+        {
+            this._credentialProvider = credentialProvider;
+        }
+
+        #endregion
+
+        #region Metodi pubblici
+
+        /// <summary>
+        /// Catalogo servito dalla fonte
+        /// </summary>
+        public override MediaCatalogProvider Provider { get { return MediaCatalogProvider.Tmdb; } }
+
+        /// <summary>
+        /// Cerca serie o film per titolo
+        /// </summary>
+        /// <param name="kind">Serie o film</param>
+        /// <param name="query">Testo cercato</param>
+        /// <param name="year">Anno di prima uscita, null per non filtrare</param>
+        /// <param name="language">Codice ISO 639-2/T dei testi</param>
+        /// <param name="cancellationToken">Token di annullamento</param>
+        /// <returns>Risultati</returns>
+        public override async Task<List<MediaCatalogSearchHit>> SearchAsync(MediaCatalogKind kind, string query, int? year, string language, CancellationToken cancellationToken)
+        {
+            List<MediaCatalogSearchHit> result = new List<MediaCatalogSearchHit>();
+            bool movie = kind == MediaCatalogKind.Movie;
+            string url = API_BASE_URL + (movie ? "/search/movie" : "/search/tv") + "?query=" + Uri.EscapeDataString(query ?? "") + "&include_adult=false&language=" + ToTmdbLanguage(language);
+            if (year.HasValue)
+                url += (movie ? "&primary_release_year=" : "&first_air_date_year=") + year.Value.ToString(CultureInfo.InvariantCulture);
+
+            JsonNode root = await this.GetJsonAsync(url, cancellationToken);
+            if (root["results"] is not JsonArray results)
+                return result;
+
+            foreach (JsonNode item in results)
+            {
+                long? id = item != null ? ReadLong(item["id"]) : null;
+                if (!id.HasValue)
+                    continue;
+
+                MediaCatalogSearchHit hit = new MediaCatalogSearchHit();
+                hit.Key = id.Value.ToString(CultureInfo.InvariantCulture);
+                hit.Kind = kind;
+                hit.Title = ReadString(item[movie ? "title" : "name"]);
+                string original = ReadString(item[movie ? "original_title" : "original_name"]);
+                hit.OriginalTitle = original == hit.Title ? "" : original;
+                hit.Year = ReadDate(item[movie ? "release_date" : "first_air_date"])?.Year;
+                hit.Overview = ReadString(item["overview"]);
+                result.Add(hit);
+                if (result.Count == SEARCH_LIMIT)
+                    break;
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// Serie con le stagioni e il numero di episodi di ognuna
+        /// </summary>
+        /// <param name="key">ID TMDB della serie</param>
+        /// <param name="language">Codice ISO 639-2/T dei testi</param>
+        /// <param name="cancellationToken">Token di annullamento</param>
+        /// <returns>Serie</returns>
+        public override async Task<MediaCatalogSeries> GetSeriesAsync(string key, string language, CancellationToken cancellationToken)
+        {
+            string id = this.ParseKey(key);
+            string tmdbLanguage = ToTmdbLanguage(language);
+            JsonNode data = await this.GetJsonAsync(API_BASE_URL + "/tv/" + id + "?language=" + tmdbLanguage + "&append_to_response=translations", cancellationToken);
+
+            MediaCatalogSeries series = new MediaCatalogSeries();
+            series.Key = key;
+            series.Id = ReadLong(data["id"]);
+            series.Title = PickText(ReadString(data["name"]), data, "name", ReadString(data["original_name"]));
+            series.Year = ReadDate(data["first_air_date"])?.Year;
+            series.PosterUrl = ToImageUrl(ReadString(data["poster_path"]));
+            ReadGenres(data["genres"] as JsonArray, series.Genres);
+
+            if (data["seasons"] is JsonArray seasons)
+            {
+                foreach (JsonNode season in seasons)
+                {
+                    MediaCatalogSeason item = season != null ? AddSeason(series, ReadLong(season["season_number"])) : null;
+                    if (item == null)
+                        continue;
+
+                    item.EpisodeCount = (int?)ReadLong(season["episode_count"]);
+                    item.PosterUrl = ToImageUrl(ReadString(season["poster_path"]));
+                }
+            }
+
+            return series;
+        }
+
+        /// <summary>
+        /// Episodi delle stagioni scelte nell'ordine di messa in onda, già completi di testi e persone: una richiesta per stagione
+        /// </summary>
+        /// <param name="series">Serie letta da GetSeriesAsync</param>
+        /// <param name="seasonNumbers">Numeri delle stagioni scelte</param>
+        /// <param name="language">Codice ISO 639-2/T dei testi</param>
+        /// <param name="cancellationToken">Token di annullamento</param>
+        /// <returns>Episodi ordinati per stagione e numero</returns>
+        public override async Task<List<MediaCatalogEpisode>> GetEpisodesAsync(MediaCatalogSeries series, List<int> seasonNumbers, string language, CancellationToken cancellationToken)
+        {
+            List<MediaCatalogEpisode> result = new List<MediaCatalogEpisode>();
+            string id = this.ParseKey(series.Key);
+            string tmdbLanguage = ToTmdbLanguage(language);
+
+            // Una stagione per volta, per non caricare il servizio
+            foreach (int seasonNumber in seasonNumbers)
+            {
+                result.AddRange(await this.ReadSeasonAsync(id, seasonNumber, tmdbLanguage, cancellationToken));
+            }
+            SortEpisodes(result);
+            return result;
+        }
+
+        /// <summary>
+        /// Nulla da completare: la stagione porta già tutti i dati degli episodi
+        /// </summary>
+        /// <param name="series">Serie letta da GetSeriesAsync</param>
+        /// <param name="episodes">Episodi letti da GetEpisodesAsync</param>
+        /// <param name="language">Codice ISO 639-2/T dei testi</param>
+        /// <param name="progress">Avanzamento in episodi, può essere null</param>
+        /// <param name="cancellationToken">Token di annullamento</param>
+        public override Task CompleteEpisodesAsync(MediaCatalogSeries series, List<MediaCatalogEpisode> episodes, string language, IProgress<MediaCatalogProgress> progress, CancellationToken cancellationToken)
+        {
+            return Task.CompletedTask;
+        }
+
+        /// <summary>
+        /// Film completo
+        /// </summary>
+        /// <param name="key">ID TMDB del film</param>
+        /// <param name="language">Codice ISO 639-2/T dei testi</param>
+        /// <param name="cancellationToken">Token di annullamento</param>
+        /// <returns>Film</returns>
+        public override async Task<MediaCatalogMovie> GetMovieAsync(string key, string language, CancellationToken cancellationToken)
+        {
+            string id = this.ParseKey(key);
+            JsonNode data = await this.GetJsonAsync(API_BASE_URL + "/movie/" + id + "?language=" + ToTmdbLanguage(language) + "&append_to_response=credits,translations", cancellationToken);
+
+            MediaCatalogMovie movie = new MediaCatalogMovie();
+            movie.Key = key;
+            movie.Id = ReadLong(data["id"]);
+            movie.Title = PickText(ReadString(data["title"]), data, "title", ReadString(data["original_title"]));
+            movie.ReleaseDate = ReadDate(data["release_date"]);
+            movie.Year = movie.ReleaseDate?.Year;
+            movie.Overview = PickText(ReadString(data["overview"]), data, "overview", "");
+            movie.PosterUrl = ToImageUrl(ReadString(data["poster_path"]));
+            ReadGenres(data["genres"] as JsonArray, movie.Genres);
+            ReadCrew(data["credits"]?["crew"] as JsonArray, movie.Directors, movie.Writers);
+            ReadCast(data["credits"]?["cast"] as JsonArray, movie.Actors);
+            return movie;
+        }
+
+        #endregion
+
+        #region Metodi protetti
+
+        /// <summary>
+        /// La credenziale TMDB non scade: un 401 è una credenziale sbagliata
+        /// </summary>
+        protected override bool CanRenewAuthorization { get { return false; } }
+
+        /// <summary>
+        /// Mette la credenziale sulla richiesta: il Read Access Token (JWT) va nell'header Bearer, l'API key nel parametro api_key
+        /// </summary>
+        /// <param name="request">Richiesta da autorizzare</param>
+        /// <param name="renew">Ignorato: la credenziale non si rinnova</param>
+        /// <param name="cancellationToken">Token di annullamento</param>
+        protected override Task AuthorizeAsync(HttpRequestMessage request, bool renew, CancellationToken cancellationToken)
+        {
+            string credential = (this._credentialProvider() ?? "").Trim();
+            if (credential.Length == 0)
+                throw new MediaCatalogException(AppText.F("mediaCatalog.error.notConfigured", this.DisplayName));
+
+            if (credential.Contains('.'))
+                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", credential);
+            else
+                request.RequestUri = new Uri(request.RequestUri.AbsoluteUri + (request.RequestUri.Query.Length > 0 ? "&" : "?") + "api_key=" + Uri.EscapeDataString(credential));
+
+            return Task.CompletedTask;
+        }
+
+        #endregion
+
+        #region Metodi privati
+
+        /// <summary>
+        /// Episodi di una stagione con testi, troupe, cast regolare della stagione e guest star; i testi mancanti si completano in inglese
+        /// </summary>
+        /// <param name="id">ID della serie</param>
+        /// <param name="seasonNumber">Numero della stagione</param>
+        /// <param name="tmdbLanguage">Codice lingua TMDB</param>
+        /// <param name="cancellationToken">Token di annullamento</param>
+        /// <returns>Episodi della stagione</returns>
+        private async Task<List<MediaCatalogEpisode>> ReadSeasonAsync(string id, int seasonNumber, string tmdbLanguage, CancellationToken cancellationToken)
+        {
+            List<MediaCatalogEpisode> result = new List<MediaCatalogEpisode>();
+            string seasonUrl = API_BASE_URL + "/tv/" + id + "/season/" + seasonNumber.ToString(CultureInfo.InvariantCulture);
+            JsonNode data = await this.GetJsonOrNullAsync(seasonUrl + "?language=" + tmdbLanguage + "&append_to_response=credits", cancellationToken);
+            if (data == null || data["episodes"] is not JsonArray episodes)
+                return result;
+
+            // Il cast regolare è della stagione; ogni episodio aggiunge le sue guest star
+            List<string> regularCast = new List<string>();
+            ReadCast(data["credits"]?["cast"] as JsonArray, regularCast);
+
+            bool missingText = false;
+            foreach (JsonNode item in episodes)
+            {
+                if (item == null)
+                    continue;
+
+                MediaCatalogEpisode episode = new MediaCatalogEpisode();
+                episode.Id = ReadLong(item["id"]);
+                episode.SeasonNumber = seasonNumber;
+                episode.EpisodeNumber = (int)(ReadLong(item["episode_number"]) ?? 0);
+                episode.Title = ReadString(item["name"]);
+                episode.Overview = ReadString(item["overview"]);
+                episode.AiredDate = ReadDate(item["air_date"]);
+                ReadCrew(item["crew"] as JsonArray, episode.Directors, episode.Writers);
+                episode.Actors.AddRange(regularCast);
+                ReadCast(item["guest_stars"] as JsonArray, episode.Actors);
+                missingText |= episode.Title.Length == 0 || episode.Overview.Length == 0;
+                result.Add(episode);
+            }
+
+            if (missingText && tmdbLanguage != FALLBACK_LANGUAGE)
+            {
+                JsonNode english = await this.GetJsonOrNullAsync(seasonUrl + "?language=" + FALLBACK_LANGUAGE, cancellationToken);
+                if (english != null && english["episodes"] is JsonArray englishEpisodes)
+                    FillMissingTexts(result, englishEpisodes);
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// Converte la lingua dell'app nel codice ISO 639-1 di TMDB; inglese se non ne ha uno
+        /// </summary>
+        /// <param name="language">Codice ISO 639-2/T</param>
+        /// <returns>Codice lingua TMDB</returns>
+        private static string ToTmdbLanguage(string language)
+        {
+            string code = LanguageValidator.ToIso6391(language);
+            return code.Length > 0 ? code : FALLBACK_LANGUAGE;
+        }
+
+        /// <summary>
+        /// Testo nella lingua chiesta, poi in inglese dalle traduzioni del record, poi il valore originale
+        /// </summary>
+        /// <param name="requested">Valore restituito nella lingua chiesta</param>
+        /// <param name="record">Record con append_to_response=translations</param>
+        /// <param name="field">Campo nei dati della traduzione: name, title o overview</param>
+        /// <param name="original">Valore nella lingua originale</param>
+        /// <returns>Testo</returns>
+        private static string PickText(string requested, JsonNode record, string field, string original)
+        {
+            if (requested.Length > 0)
+                return requested;
+
+            if (record["translations"]?["translations"] is JsonArray translations)
+            {
+                foreach (JsonNode translation in translations)
+                {
+                    if (translation != null && ReadString(translation["iso_639_1"]) == FALLBACK_LANGUAGE)
+                    {
+                        string text = ReadString(translation["data"]?[field]);
+                        if (text.Length > 0)
+                            return text;
+                    }
+                }
+            }
+
+            return original;
+        }
+
+        /// <summary>
+        /// Registi (job Director) e sceneggiatori (dipartimento Writing) da una troupe
+        /// </summary>
+        /// <param name="crew">Array crew</param>
+        /// <param name="directors">Registi</param>
+        /// <param name="writers">Sceneggiatori</param>
+        private static void ReadCrew(JsonArray crew, List<string> directors, List<string> writers)
+        {
+            if (crew == null)
+                return;
+
+            foreach (JsonNode member in crew)
+            {
+                if (member == null)
+                    continue;
+
+                string name = ReadString(member["name"]);
+                if (ReadString(member["job"]) == "Director")
+                    AddDistinct(directors, name);
+                else if (ReadString(member["department"]) == "Writing")
+                    AddDistinct(writers, name);
+            }
+        }
+
+        /// <summary>
+        /// Attori di un cast nell'ordine dei crediti, aggiunti in coda a quelli già presenti
+        /// </summary>
+        /// <param name="cast">Array cast o guest_stars</param>
+        /// <param name="actors">Attori</param>
+        private static void ReadCast(JsonArray cast, List<string> actors)
+        {
+            if (cast == null)
+                return;
+
+            foreach (JsonNode member in SortByCreditOrder(cast, "order"))
+            {
+                AddDistinct(actors, ReadString(member["name"]));
+            }
+        }
+
+        /// <summary>
+        /// URL assoluto di un'immagine TMDB, vuoto se assente
+        /// </summary>
+        /// <param name="path">Percorso restituito dall'API</param>
+        /// <returns>URL assoluto</returns>
+        private static string ToImageUrl(string path)
+        {
+            return path.Length > 0 ? IMAGE_BASE_URL + path : "";
+        }
+
+        #endregion
+    }
+}

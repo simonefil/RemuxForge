@@ -1,0 +1,237 @@
+@using RemuxForge.Core.Ai
+@using RemuxForge.Core.Toolbox.SubtitleTranslation
+@using RemuxForge.Web.Services.Toolbox
+@inherits AppDialogContentBase
+@inject NotificationService NotificationService
+@inject OpenAiResponsesClient ResponsesClient
+
+@* Modelli e livelli di ragionamento per passo *@
+<div class="rf-dialog rf-translation-models" @ref="DialogContent">
+    <div class="rf-dialog-body">
+        @if (_loading)
+        {
+            <RadzenProgressBarCircular ShowValue="false" Mode="ProgressBarMode.Indeterminate" Size="ProgressBarCircularSize.Small" />
+        }
+        else if (_models.Count > 0)
+        {
+            <div class="rf-translation-models-grid">
+                <span></span>
+                <span class="rf-tool-label">@AppText.T("web.toolbox.subtitleTranslation.models.difficulty")</span>
+                <span class="rf-tool-label">@AppText.T("web.toolbox.subtitleTranslation.models.model")</span>
+                <span class="rf-tool-label">@AppText.T("web.toolbox.subtitleTranslation.models.reasoning")</span>
+                @for (int i = 0; i < s_phases.Length; i++)
+                {
+                    int phase = i;
+                    <div class="rf-translation-models-phase">
+                        <RadzenLabel class="rf-tool-label" Text="@AppText.T("web.toolbox.subtitleTranslation.models.phase." + s_phases[phase])" Component="@("TranslationModel" + s_phases[phase])" />
+                    </div>
+                    <RadzenBadge IsPill="true" BadgeStyle="@s_difficultyStyles[phase]" Text="@AppText.T("web.toolbox.subtitleTranslation.models.difficulty." + s_difficulties[phase])" />
+                    <RadzenDropDown TValue="string" Name="@("TranslationModel" + s_phases[phase])" Data="@_phaseModels[phase]" TextProperty="DisplayName" ValueProperty="Id" Value="@_selectedModels[phase]"
+                                    Disabled="@_locked[phase]" Change="@((object value) => ChangeModel(phase, (string)value))" />
+                    <RadzenDropDown TValue="string" Data="@(_phaseModels[phase].Find(m => m.Id == _selectedModels[phase])?.SupportedReasoningLevels ?? new List<string>())" Value="@_selectedEfforts[phase]"
+                                    Disabled="@(_locked[phase] || string.IsNullOrEmpty(_selectedModels[phase]))"
+                                    aria-label="@(AppText.T("web.toolbox.subtitleTranslation.models.reasoning") + " " + AppText.T("web.toolbox.subtitleTranslation.models.phase." + s_phases[phase]))"
+                                    Change="@((object value) => ChangeEffort(phase, (string)value))" />
+                }
+            </div>
+            <div class="rf-translation-models-parallel">
+                <RadzenLabel class="rf-tool-label" Text="@AppText.T("web.toolbox.subtitleTranslation.models.parallelFiles")" Component="TranslationParallelFiles" />
+                <RadzenNumeric TValue="int" Name="TranslationParallelFiles" class="rf-translation-models-parallel-input" Value="@_parallelFiles"
+                               Min="@TranslationProjectOptions.MIN_PARALLEL_FILES" Max="@TranslationProjectOptions.MAX_PARALLEL_FILES"
+                               Change="@((int value) => _parallelFiles = value)" />
+            </div>
+        }
+    </div>
+    <div class="rf-dialog-footer">
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <RadzenAlert AlertStyle="AlertStyle.Danger" Variant="Variant.Flat" Shade="Shade.Lighter" AllowClose="false" class="rf-dialog-message">@_error</RadzenAlert>
+        }
+        <RadzenButton Text="@AppText.T("web.common.cancel")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@(() => CloseDialog())" />
+        <RadzenButton Text="@AppText.T("web.toolbox.subtitleTranslation.models.save")" Icon="check"
+                      Disabled="@(_loading || _models.Count == 0 || _parallelFiles < TranslationProjectOptions.MIN_PARALLEL_FILES || _parallelFiles > TranslationProjectOptions.MAX_PARALLEL_FILES)"
+                      Click="@Save" />
+    </div>
+</div>
+
+@code {
+    #region Variabili statiche
+
+    /// <summary>
+    /// Passi con un modello, nell'ordine del dialog: analisi, traduzione, revisione
+    /// </summary>
+    private static readonly string[] s_phases = new string[] { "analysis", "translation", "review" };
+
+    /// <summary>
+    /// Difficoltà di ciascun passo, nell'ordine di s_phases
+    /// </summary>
+    private static readonly string[] s_difficulties = new string[] { "high", "medium", "high" };
+
+    /// <summary>
+    /// Colore del badge di ciascun passo, nell'ordine di s_phases
+    /// </summary>
+    private static readonly BadgeStyle[] s_difficultyStyles = new BadgeStyle[] { BadgeStyle.Danger, BadgeStyle.Warning, BadgeStyle.Danger };
+
+    #endregion
+
+    #region Parametri
+
+    /// <summary>
+    /// Orchestratore della card
+    /// </summary>
+    [Parameter] public SubtitleTranslationOrchestrator Orchestrator { get; set; }
+
+    #endregion
+
+    #region Variabili di classe
+
+    /// <summary>
+    /// Modelli dell'accesso
+    /// </summary>
+    private List<AiModelInfo> _models = new List<AiModelInfo>();
+
+    /// <summary>
+    /// Modello scelto per passo
+    /// </summary>
+    private string[] _selectedModels = new string[3];
+
+    /// <summary>
+    /// Livello scelto per passo
+    /// </summary>
+    private string[] _selectedEfforts = new string[3];
+
+    /// <summary>
+    /// Modelli offerti per passo: quelli dell'accesso, o solo quello congelato nel job
+    /// </summary>
+    private List<AiModelInfo>[] _phaseModels = new List<AiModelInfo>[3];
+
+    /// <summary>
+    /// True per i passi del giro col job già creato: modello e livello restano quelli del job
+    /// </summary>
+    private bool[] _locked = new bool[3];
+
+    /// <summary>
+    /// File tradotti in parallelo
+    /// </summary>
+    private int _parallelFiles = TranslationProjectOptions.DEFAULT_PARALLEL_FILES;
+
+    /// <summary>
+    /// True mentre si leggono i modelli
+    /// </summary>
+    private bool _loading = true;
+
+    /// <summary>
+    /// Errore della lettura dei modelli
+    /// </summary>
+    private string _error = "";
+
+    #endregion
+
+    #region Metodi protetti
+
+    /// <summary>
+    /// Legge i modelli e riempie le tendine coi valori del progetto; col job i passi del giro mostrano modello e livello del job
+    /// così come sono, senza scelta
+    /// </summary>
+    /// <returns>Task di inizializzazione</returns>
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            this._models = await this.ResponsesClient.ListModelsAsync(CancellationToken.None);
+        }
+        catch (AiServiceException ex)
+        {
+            this._error = ex.Message;
+            this._models = new List<AiModelInfo>();
+        }
+
+        TranslationProject project = this.Orchestrator.Project;
+        TranslationJob job = this.Orchestrator.Job;
+        TranslationPhaseModels phaseModels = job != null ? job.Models : project.Models;
+        TranslationPhaseModels phaseEfforts = job != null ? job.ReasoningEfforts : project.ReasoningEfforts;
+        string[] models = new string[] { project.Models.Analysis, phaseModels.Translation, phaseModels.Review };
+        string[] efforts = new string[] { project.ReasoningEfforts.Analysis, phaseEfforts.Translation, phaseEfforts.Review };
+        this._parallelFiles = project.Options.MaxParallelFiles;
+
+        // Le tendine partono dai valori del progetto, vuote se il passo non ha ancora un modello o se l'accesso non offre il suo
+        for (int i = 0; i < s_phases.Length; i++)
+        {
+            AiModelInfo model = this._models.Find(m => m.Id == models[i]);
+            this._locked[i] = job != null && i > 0;
+            this._phaseModels[i] = this._models;
+            if (!this._locked[i] && AiModelChoice.IsUnknown(this._models, models[i]))
+            {
+                this.NotificationService.Notify(NotificationSeverity.Error, AppText.T("web.toolbox.subtitleTranslation.notifyModelMissing"),
+                    AppText.F("web.toolbox.subtitleTranslation.modelMissing", AppText.T("web.toolbox.subtitleTranslation.models.phase." + s_phases[i])), 8000);
+                models[i] = "";
+                efforts[i] = "";
+            }
+            this._selectedModels[i] = string.IsNullOrEmpty(models[i]) ? null : models[i];
+            this._selectedEfforts[i] = AiModelChoice.EffortFor(model, efforts[i]);
+            if (this._locked[i])
+            {
+                this._phaseModels[i] = new List<AiModelInfo>
+                {
+                    new AiModelInfo { Id = models[i], DisplayName = model != null ? model.DisplayName : models[i], SupportedReasoningLevels = new List<string> { efforts[i] ?? "" } }
+                };
+                this._selectedEfforts[i] = efforts[i];
+            }
+        }
+
+        this._loading = false;
+    }
+
+    #endregion
+
+    #region Metodi privati
+
+    /// <summary>
+    /// Cambia il modello di un passo: un livello che il nuovo modello non supporta torna al suo default
+    /// </summary>
+    /// <param name="phase">Passo</param>
+    /// <param name="modelId">Modello scelto</param>
+    private void ChangeModel(int phase, string modelId)
+    {
+        AiModelInfo model = this._models.Find(m => m.Id == modelId);
+        if (model == null)
+            return;
+
+        this._selectedModels[phase] = model.Id;
+        this._selectedEfforts[phase] = AiModelChoice.EffortFor(model, this._selectedEfforts[phase]);
+    }
+
+    /// <summary>
+    /// Cambia il livello di ragionamento di un passo
+    /// </summary>
+    /// <param name="phase">Passo</param>
+    /// <param name="effort">Livello scelto</param>
+    private void ChangeEffort(int phase, string effort)
+    {
+        this._selectedEfforts[phase] = effort;
+    }
+
+    /// <summary>
+    /// Salva le scelte e i file in parallelo nel progetto
+    /// </summary>
+    private void Save()
+    {
+        TranslationPhaseModels models = new TranslationPhaseModels
+        {
+            Analysis = this._selectedModels[0] ?? "",
+            Translation = this._selectedModels[1] ?? "",
+            Review = this._selectedModels[2] ?? ""
+        };
+        TranslationPhaseModels efforts = new TranslationPhaseModels
+        {
+            Analysis = this._selectedEfforts[0] ?? "",
+            Translation = this._selectedEfforts[1] ?? "",
+            Review = this._selectedEfforts[2] ?? ""
+        };
+
+        this.Orchestrator.SetModels(models, efforts, this._parallelFiles);
+        this.CloseDialog(true);
+    }
+
+    #endregion
+}

@@ -4,6 +4,7 @@
         {
             <RadzenButton Icon="@command.Icon"
                           Text="@command.GetToolbarLabel()"
+                          title="@GetTooltip(command)"
                           Disabled="@command.Disabled"
                           Variant="@((command.Disabled || command.DangerToolbar) ? Variant.Outlined : Variant.Filled)"
                           ButtonStyle="@(command.DangerToolbar ? ButtonStyle.Danger : ButtonStyle.Primary)"
@@ -20,6 +21,7 @@
         {
             <RadzenButton Icon="@command.Icon"
                           Text="@command.GetToolbarLabel()"
+                          title="@GetTooltip(command)"
                           Disabled="@command.Disabled"
                           Variant="@((command.Disabled || command.DangerToolbar) ? Variant.Outlined : Variant.Filled)"
                           ButtonStyle="@(command.DangerToolbar ? ButtonStyle.Danger : ButtonStyle.Primary)"
@@ -67,6 +69,16 @@
 
         result.Sort((left, right) => left.ToolbarOrder.CompareTo(right.ToolbarOrder));
         return result;
+    }
+
+    /// <summary>
+    /// Tooltip del pulsante: etichetta seguita dalla scorciatoia, se il comando ne ha una
+    /// </summary>
+    /// <param name="command">Comando del pulsante</param>
+    /// <returns>Testo del tooltip</returns>
+    private string GetTooltip(UiCommandDefinition command)
+    {
+        return string.IsNullOrEmpty(command.Shortcut) ? command.GetToolbarLabel() : command.GetToolbarLabel() + " (" + command.Shortcut + ")";
     }
 
     /// <summary>

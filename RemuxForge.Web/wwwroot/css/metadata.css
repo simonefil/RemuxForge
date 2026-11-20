@@ -1031,6 +1031,19 @@ tr.metadata-diff-removed > td {
     font-weight: 600;
 }
 
+/* Campi del passo richiesta del wizard AI */
+.rz-dropdown.metadata-ai-model {
+    max-width: 40ch;
+}
+
+.rz-dropdown.metadata-ai-effort {
+    max-width: 20ch;
+}
+
+.rz-numeric.metadata-ai-rounds {
+    max-width: 12ch;
+}
+
 /* Elenco file della preview del wizard AI */
 .rz-listbox.metadata-ai-preview-files {
     flex: 0 0 35%;
@@ -1043,4 +1056,171 @@ tr.metadata-diff-removed > td {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+/* Abbinamento dei file ai dati del catalogo */
+.catalog-match-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--rz-gap);
+    min-width: 0;
+}
+
+.catalog-match-steps {
+    display: flex;
+    flex-wrap: wrap;
+    gap: calc(var(--rz-gap) * 0.5);
+}
+
+.catalog-match-grid {
+    max-height: 55vh;
+}
+
+.catalog-match-loading {
+    display: flex;
+    flex-direction: column;
+    gap: calc(var(--rz-gap) * 0.5);
+}
+
+.catalog-match-rows tr[draggable="true"] {
+    cursor: grab;
+}
+
+.catalog-match-rows tr[data-unpaired] > td {
+    background: var(--rz-warning-lighter);
+}
+
+.catalog-match-missing {
+    color: var(--rz-text-secondary-color);
+}
+
+.catalog-match-episode {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    min-width: 0;
+}
+
+/* Nell'abbinamento file ed episodi si leggono interi: vanno a capo invece di essere troncati */
+.catalog-match-episode > span {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.catalog-match-rows .rz-grid-table td .rz-cell-data {
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.catalog-match-handle {
+    flex-shrink: 0;
+    color: var(--rz-text-secondary-color);
+}
+
+/* «Nessun episodio» parte dove parte il testo degli episodi, dopo la maniglia */
+.catalog-match-no-episode {
+    padding-inline-start: calc(var(--rz-icon-size) + 0.25rem);
+}
+
+.catalog-match-actions {
+    display: inline-flex;
+    gap: 0.125rem;
+}
+
+.catalog-match-preview table {
+    table-layout: fixed;
+}
+
+.catalog-match-preview th.catalog-match-preview-field {
+    width: 22%;
+}
+
+.catalog-match-preview th.catalog-match-preview-level {
+    width: 14rem;
+}
+
+.catalog-match-preview td {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Finestra stretta: ogni riga va in colonna, come i pannelli affiancati delle altre dialog; i testi vanno a capo invece di essere troncati */
+@media (max-width: 760px) {
+    /* L'etichetta va su una riga sua: niente stacco dai pulsanti, parte dal bordo come le altre */
+    .metadata-preview-file-label {
+        margin-left: 0;
+    }
+
+    .catalog-match-stacked .rz-grid-table > thead {
+        display: none;
+    }
+
+    .catalog-match-stacked .rz-grid-table,
+    .catalog-match-stacked .rz-grid-table > tbody {
+        display: block;
+        width: 100%;
+    }
+
+    .catalog-match-stacked .rz-grid-table > tbody > tr {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+    }
+
+    .catalog-match-stacked .rz-grid-table > tbody > tr > td {
+        width: auto !important;
+        min-width: 0;
+    }
+
+    .catalog-match-stacked .rz-grid-table > tbody > tr > td:first-child {
+        grid-column: 1 / -1;
+        font-weight: 600;
+    }
+
+    .catalog-match-hits .rz-grid-table td .rz-cell-data {
+        white-space: normal;
+        overflow-wrap: anywhere;
+    }
+
+    /* La trama resta su una riga, intera nel tooltip, come nella finestra larga */
+    .catalog-match-hits .rz-grid-table td:last-child .rz-cell-data {
+        white-space: nowrap;
+    }
+
+    .catalog-match-hits .rz-grid-table > tbody > tr > td:last-child {
+        grid-column: 1 / -1;
+    }
+
+    .catalog-match-preview thead {
+        display: none;
+    }
+
+    .catalog-match-preview table,
+    .catalog-match-preview tbody {
+        display: block;
+        width: 100%;
+    }
+
+    /* Un campo è un blocco: le sue righe hanno lo stesso sfondo, il separatore sta fra un campo e l'altro */
+    .catalog-match-preview tr {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        border-bottom: 1px solid var(--rz-base-300);
+    }
+
+    .catalog-match-preview tr > td {
+        min-width: 0;
+        border: 0 !important;
+        background: transparent !important;
+    }
+
+    .catalog-match-preview td.metadata-preview-before,
+    .catalog-match-preview td.metadata-preview-after {
+        grid-column: 1 / -1;
+    }
+
+    .catalog-match-preview table td .rz-cell-data {
+        white-space: normal;
+        overflow-wrap: anywhere;
+    }
 }

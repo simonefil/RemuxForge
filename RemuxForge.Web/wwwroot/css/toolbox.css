@@ -1,0 +1,629 @@
+/* Home a card: brand nell'header e griglia delle card */
+
+.rf-brand {
+    display: flex;
+    align-items: center;
+    gap: calc(var(--rz-gap) * 0.75);
+    min-height: 3rem;
+}
+
+.rf-brand-logo {
+    display: block;
+    width: 2.25rem;
+    height: 2.25rem;
+    border-radius: var(--rz-border-radius);
+}
+
+.rf-brand-name {
+    font-size: var(--rz-text-subtitle1-font-size);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+}
+
+.rf-toolbox-home {
+    min-height: 0;
+    overflow-y: auto;
+    padding: calc(var(--rz-gap) * 2) calc(var(--rz-gap) * 1.5);
+}
+
+.rf-toolbox-grid {
+    display: grid;
+    /* Colonne di larghezza contenuta e centrate: poche card non si allargano fino ai bordi */
+    grid-template-columns: repeat(auto-fit, minmax(17rem, 20rem));
+    justify-content: center;
+    gap: calc(var(--rz-gap) * 1.25);
+}
+
+.rf-toolbox-grid-item {
+    display: flex;
+    min-width: 0;
+}
+
+.rf-toolbox-card.rz-card {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    gap: calc(var(--rz-gap) * 0.5);
+    min-width: 0;
+    cursor: pointer;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.rf-toolbox-card.rz-card:not(.rf-toolbox-card-locked):hover {
+    border-color: var(--rz-primary);
+    box-shadow: var(--rz-shadow-2);
+}
+
+.rf-toolbox-card.rz-card:focus-visible {
+    outline: var(--rz-outline-width, 2px) solid var(--rz-outline-color, var(--rz-primary));
+    outline-offset: 2px;
+}
+
+/* L'ultima card usata ha il bordo del colore primario anche senza hover */
+.rf-toolbox-card.rf-toolbox-card-last.rz-card {
+    border-color: var(--rz-primary);
+}
+
+/* Con un'operazione in corso le altre card restano visibili ma non si aprono, e il passaggio del mouse non le cambia */
+.rf-toolbox-card.rf-toolbox-card-locked.rz-card {
+    cursor: not-allowed;
+    opacity: 0.62;
+    box-shadow: none;
+}
+
+.rf-toolbox-card-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--rz-gap);
+    margin-bottom: calc(var(--rz-gap) * 0.25);
+}
+
+.rf-toolbox-card-icon {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    width: 3rem;
+    height: 3rem;
+    border-radius: var(--rz-border-radius);
+    background: var(--rz-primary-lighter);
+    color: var(--rz-on-primary-lighter);
+}
+
+.rf-toolbox-card-icon .rzi {
+    font-size: 1.75rem;
+}
+
+.rf-toolbox-card-badges {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: calc(var(--rz-gap) * 0.25);
+}
+
+.rf-toolbox-card .rf-toolbox-card-title {
+    margin: 0;
+}
+
+.rf-toolbox-card .rf-toolbox-card-description {
+    margin: 0;
+    color: var(--rz-text-secondary-color);
+}
+
+/* Pagine dei tool: opzioni di uscita in alto, elenco dei file sotto */
+
+.rf-tool-page {
+    width: calc(100% - var(--rz-gap) * 1.5);
+    height: calc(100% - var(--rz-gap) * 0.75);
+    margin: calc(var(--rz-gap) * 0.75) calc(var(--rz-gap) * 0.75) 0;
+}
+
+.rf-tool-options {
+    display: flex;
+    flex-shrink: 0;
+    flex-direction: column;
+    gap: calc(var(--rz-gap) * 0.25);
+    padding: calc(var(--rz-gap) * 0.5) var(--rz-gap);
+    border-bottom: var(--rz-border-base-600);
+}
+
+/* Altezza fissa come il campo Cartella: la barra non cambia altezza quando il campo compare o sparisce */
+.rf-tool-options-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: calc(var(--rz-gap) * 0.75) calc(var(--rz-gap) * 2);
+    min-height: 2.5rem;
+}
+
+.rf-tool-options .rf-tool-hint {
+    margin: 0;
+    color: var(--rz-text-secondary-color);
+}
+
+.rf-tool-options .rf-tool-hint-error {
+    color: var(--rz-danger);
+}
+
+.rf-tool-options .rz-textbox.rf-tool-input-invalid,
+.rf-tool-options .rz-textbox.rf-tool-input-invalid:hover,
+.rf-tool-options .rz-textbox.rf-tool-input-invalid:focus {
+    border-color: var(--rz-danger);
+}
+
+.rf-tool-field {
+    display: flex;
+    align-items: center;
+    gap: calc(var(--rz-gap) * 0.5);
+    min-width: 0;
+}
+
+.rf-tool-path-field {
+    flex: 1 1 28rem;
+}
+
+.rf-tool-label {
+    flex-shrink: 0;
+    color: var(--rz-text-secondary-color);
+    white-space: nowrap;
+}
+
+.rf-tool-path-input {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.rf-tool-empty {
+    flex: 1 1 auto;
+    padding: calc(var(--rz-gap) * 2);
+    text-align: center;
+}
+
+.rf-tool-page .rf-tool-grid {
+    flex: 1 1 auto;
+    height: auto;
+    min-height: 0;
+}
+
+/* Estrazione tracce: due viste a schede che riempiono la pagina, tendine di filtro in testata alla vista per tipo */
+
+.rf-tool-page .rf-tool-tabs {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.rf-tool-page .rf-tool-tabs > .rz-tabview-panels {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
+    padding: 0;
+}
+
+.rf-tool-page .rf-tool-tabs .rz-tabview-panel {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.rf-tool-filters {
+    display: flex;
+    flex-shrink: 0;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: calc(var(--rz-gap) * 0.75) calc(var(--rz-gap) * 2);
+    padding: calc(var(--rz-gap) * 0.5) var(--rz-gap);
+}
+
+.rf-tool-filter {
+    width: 14rem;
+}
+
+.rf-tool-page .rf-tool-muted {
+    color: var(--rz-text-secondary-color);
+}
+
+/* Le tracce stanno dentro la riga del video: la loro intestazione scorre con la riga invece di restare in cima sopra quella dei video.
+   Radzen rende sticky sia la testata sia le sue celle, quindi si fermano tutte e due */
+.rf-tool-page .rf-tool-track-grid.rz-data-grid .rz-grid-table > thead,
+.rf-tool-page .rf-tool-track-grid.rz-data-grid .rz-grid-table > thead > tr > th {
+    position: static;
+    z-index: auto;
+}
+
+/* Aggiungi tracce: testata della traccia aggiunta, indicatore dell'abbinamento e due elenchi affiancati che scorrono insieme,
+   con righe della stessa altezza perché la riga i di sinistra resti accanto alla riga i di destra */
+
+.rf-tool-options .rf-addtracks-heading {
+    font-weight: 600;
+    color: var(--rz-text-color);
+}
+
+.rf-addtracks-language,
+.rf-addtracks-name {
+    width: 14rem;
+}
+
+
+.rf-addtracks-delay {
+    width: 8rem;
+}
+
+/* Etichette lunghe come «Europa occidentale, con l'euro (ISO-8859-15)»: la tendina aperta le mostra per intero */
+.rf-addtracks-charset {
+    width: 16rem;
+}
+
+.rf-tool-options .rf-addtracks-hint-icon {
+    margin-inline-end: 0.25rem;
+    font-size: 1rem;
+    vertical-align: text-bottom;
+}
+
+.rf-addtracks-pairing {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: calc(var(--rz-gap) * 0.75);
+    padding: calc(var(--rz-gap) * 0.5) var(--rz-gap);
+    border-bottom: var(--rz-border-base-600);
+}
+
+.rf-addtracks-pairing .rf-addtracks-pairing-error {
+    font-weight: 600;
+}
+
+.rf-addtracks-heads,
+.rf-addtracks-lists {
+    display: flex;
+    gap: var(--rz-gap);
+    padding: 0 var(--rz-gap);
+}
+
+.rf-addtracks-lists {
+    flex: 1 1 auto;
+    align-items: flex-start;
+    min-height: 0;
+    overflow-y: auto;
+    padding-bottom: calc(var(--rz-gap) * 0.5);
+}
+
+.rf-addtracks-videos {
+    flex: 3 1 0;
+    min-width: 0;
+}
+
+.rf-addtracks-tracks {
+    flex: 2 1 0;
+    min-width: 0;
+}
+
+.rf-addtracks-list-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--rz-gap);
+    padding: calc(var(--rz-gap) * 0.5) 0;
+}
+
+.rf-addtracks-list-head h2 {
+    margin: 0;
+}
+
+.rf-addtracks-list .rf-tool-empty {
+    padding: calc(var(--rz-gap) * 1.5) var(--rz-gap);
+    border: var(--rz-border-base-600);
+    border-radius: var(--rz-border-radius);
+}
+
+/* Le griglie non scorrono da sole: scorre l'area che le contiene, e la testata resta in cima a quell'area */
+.rf-tool-page .rf-addtracks-grid.rz-data-grid,
+.rf-tool-page .rf-addtracks-grid .rz-data-grid-data {
+    height: auto;
+    overflow: visible;
+}
+
+.rf-tool-page .rf-addtracks-grid .rz-grid-table > thead > tr > th,
+.rf-tool-page .rf-addtracks-grid .rz-grid-table > tbody > tr > td {
+    height: 2.75rem;
+    vertical-align: middle;
+}
+
+.rf-tool-page .rf-addtracks-grid tr[draggable="true"] {
+    cursor: grab;
+}
+
+.rf-tool-page .rf-addtracks-grid tr[data-unpaired] > td {
+    background: var(--rz-warning-lighter);
+}
+
+.rf-addtracks-file {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    max-width: 100%;
+}
+
+/* Motivi e contenuti lunghi vanno a capo su due righe al massimo: la riga resta alta quanto quella accanto, il testo intero è nel tooltip */
+.rf-addtracks-wrap {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-height: 1.05;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.rf-addtracks-handle {
+    flex-shrink: 0;
+    color: var(--rz-text-tertiary-color);
+    font-size: 1.125rem;
+}
+
+.rf-addtracks-actions {
+    display: inline-flex;
+    gap: 0.125rem;
+}
+
+.rf-tool-page .rf-addtracks-unpaired-text {
+    color: var(--rz-text-color);
+    font-weight: 600;
+}
+
+.rf-tool-page .rf-addtracks-blocked-text {
+    color: var(--rz-danger);
+}
+
+/* Traduzione sottotitoli AI: elenco dei progetti, passi del progetto con i dati in testata, glossario a schede e registro delle chiamate in fondo */
+
+.rf-translation {
+    overflow: auto;
+}
+
+.rf-translation .rf-translation-heading {
+    margin: 0;
+    padding: calc(var(--rz-gap) * 0.5) var(--rz-gap);
+}
+
+.rf-translation .rf-translation-steps {
+    flex-shrink: 0;
+    padding: calc(var(--rz-gap) * 0.5) var(--rz-gap) 0;
+}
+
+/* Contenuto del passo: occupa lo spazio fra i passi e il registro delle chiamate e scorre da sé, così il registro resta in fondo */
+.rf-translation .rf-translation-body {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
+    overflow: auto;
+}
+
+.rf-translation-name {
+    width: 20rem;
+}
+
+.rf-translation-language {
+    width: 12rem;
+}
+
+
+.rf-translation .rf-translation-context {
+    flex: 1 1 auto;
+    align-items: flex-start;
+}
+
+.rf-translation .rf-translation-context .rz-textarea {
+    flex: 1 1 auto;
+    min-width: 0;
+    resize: vertical;
+}
+
+/* Stima nel passo Glossario: etichetta e valori vicini */
+.rf-translation .rf-translation-estimate {
+    gap: calc(var(--rz-gap) * 0.25) calc(var(--rz-gap) * 0.75);
+    min-height: 2rem;
+}
+
+.rf-translation-loaded {
+    display: flex;
+    align-items: center;
+    gap: calc(var(--rz-gap) * 0.5);
+    margin: calc(var(--rz-gap) * 0.5) var(--rz-gap) 0;
+    padding: calc(var(--rz-gap) * 0.25) calc(var(--rz-gap) * 0.75);
+    border: var(--rz-border-base-300);
+    border-radius: var(--rz-border-radius);
+}
+
+.rf-translation-loaded .rf-translation-loaded-remove {
+    margin-inline-start: auto;
+}
+
+.rf-translation-encoding {
+    width: 100%;
+}
+
+.rf-translation-file,
+.rf-translation-cell {
+    overflow-wrap: anywhere;
+    white-space: normal;
+}
+
+.rf-translation-rejected {
+    display: block;
+    color: var(--rz-danger);
+    white-space: normal;
+}
+
+.rf-translation-thinking {
+    display: flex;
+    justify-content: center;
+    margin-block: calc(var(--rz-gap) * 1.5);
+}
+
+.rf-translation .rf-translation-tabs {
+    flex: 0 0 auto;
+}
+
+.rf-translation-origin {
+    margin-inline-start: calc(var(--rz-gap) * 0.375);
+    vertical-align: middle;
+}
+
+.rf-translation-cell-input {
+    width: 100%;
+}
+
+.rf-translation-actions {
+    display: inline-flex;
+    gap: 0.125rem;
+}
+
+.rf-translation .rf-translation-add {
+    align-self: flex-start;
+    margin: var(--rz-gap);
+}
+
+.rf-translation-texts {
+    display: flex;
+    flex-direction: column;
+    gap: calc(var(--rz-gap) * 0.5);
+    padding: calc(var(--rz-gap) * 0.5) var(--rz-gap);
+}
+
+.rf-translation-texts .rf-tool-field {
+    align-items: flex-start;
+}
+
+.rf-translation-texts .rf-tool-label {
+    width: 10rem;
+}
+
+.rf-translation-texts .rz-textarea {
+    flex: 1 1 auto;
+    min-width: 0;
+    resize: vertical;
+}
+
+.rf-translation-blocks {
+    display: flex;
+    align-items: center;
+    gap: calc(var(--rz-gap) * 0.5);
+}
+
+.rf-translation-blocks .rf-translation-blocks-bar {
+    flex: 1 1 auto;
+    min-width: 2rem;
+    height: 0.375rem;
+}
+
+.rf-translation .rf-translation-calls {
+    flex-shrink: 0;
+    margin: calc(var(--rz-gap) * 0.75) var(--rz-gap);
+}
+
+.rf-translation .rf-translation-calls-grid {
+    max-height: 40vh;
+}
+
+.rf-translation .rf-translation-job,
+.rf-translation .rf-translation-files {
+    min-height: 6rem;
+}
+
+.rf-translation-calls-detail {
+    padding: calc(var(--rz-gap) * 0.25) var(--rz-gap);
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+/* Revisione: griglia intera come le altre del passo, segni evidenziati, modifica nella cella */
+.rf-translation .rf-translation-review {
+    flex: 0 0 auto;
+}
+
+.rf-translation-shared {
+    margin-inline-end: 0.25rem;
+    font-size: 1rem;
+    vertical-align: middle;
+}
+
+.rf-translation-review-file {
+    width: 24rem;
+    max-width: 100%;
+}
+
+.rf-translation-times {
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.rf-translation-review .rf-translation-cell {
+    white-space: pre-line;
+}
+
+.rf-translation-mark {
+    padding: 0 0.125rem;
+    border-radius: 0.125rem;
+    background-color: var(--rz-warning-lighter);
+    color: var(--rz-warning-darker);
+}
+
+.rf-translation-cue,
+.rf-translation-cue-edit {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.25rem;
+}
+
+.rf-translation-cue .rf-translation-cell {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.rf-translation-cue-input {
+    flex: 1 1 auto;
+    min-width: 0;
+    resize: vertical;
+}
+
+.rf-translation-warnings {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+}
+
+.rf-translation-untranslated {
+    color: var(--rz-warning);
+}
+
+/* Dialog dei modelli: griglia passo, difficoltà, modello, ragionamento */
+
+.rf-translation-models-grid {
+    display: grid;
+    grid-template-columns: auto auto minmax(0, 1fr) 8rem;
+    gap: calc(var(--rz-gap) * 0.5) calc(var(--rz-gap) * 0.75);
+    align-items: center;
+}
+
+.rf-translation-models-parallel {
+    display: flex;
+    align-items: center;
+    gap: calc(var(--rz-gap) * 0.75);
+    margin-top: var(--rz-gap);
+}
+
+.rf-translation-models-parallel-input {
+    width: 6rem;
+}
+
+.rf-translation-models-phase {
+    display: flex;
+    align-items: center;
+    gap: calc(var(--rz-gap) * 0.25);
+}

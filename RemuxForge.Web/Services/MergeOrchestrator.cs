@@ -940,7 +940,7 @@ namespace RemuxForge.Web.Services
         /// <summary>
         /// Richiede stop cooperativo dell'operazione corrente
         /// </summary>
-        public void RequestStop()
+        public override void Stop()
         {
             lock (this.StateLock)
             {

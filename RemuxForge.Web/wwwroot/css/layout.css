@@ -597,6 +597,11 @@
     color: var(--rz-grid-selected-color);
 }
 
+/* Con la selezione multipla Maiuscolo-clic estende la selezione delle righe, non quella del testo */
+.browse-table-multiple .browse-row {
+    user-select: none;
+}
+
 .browse-table .browse-row:focus-visible {
     outline: 2px solid var(--rz-primary);
     outline-offset: -2px;
@@ -622,10 +627,22 @@
 }
 
 /* Larghezze colonne */
+.browse-col-check { width: 2.75rem; }
 .browse-col-name { width: auto; }
 .browse-col-size { width: calc(14ch + 1.3rem); }
 .browse-col-date { width: 22ch; }
 .browse-col-type { width: 14ch; }
+
+.browse-table tbody td.browse-col-check {
+    padding-block: 0 !important;
+    vertical-align: middle;
+}
+
+/* Contatore dei file scelti, a sinistra dei pulsanti del footer */
+.browse-selection-count {
+    margin-inline-end: auto;
+    color: var(--rz-text-secondary-color);
+}
 
 /* Barra Find */
 .browse-find-bar {
@@ -651,10 +668,50 @@
 /* ============================================================
    Form fields for dialogs
    ============================================================ */
+/* Colonna delle etichette dei form: le righe senza etichetta rientrano della stessa misura */
+:root {
+    --rf-form-label-width: 18ch;
+    --rf-form-gap: 1ch;
+}
+
 .form-row {
     display: flex;
+    min-height: var(--rz-input-height);
     align-items: center;
+    column-gap: var(--rf-form-gap);
     line-height: 1.5em;
+}
+
+/* Righe una sotto l'altra con la stessa distanza */
+.form-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5em;
+}
+
+/* Riga senza etichetta: i controlli partono dal bordo dei campi; gli switch affiancati, se non c'è spazio, vanno a capo */
+.form-row.form-row-offset {
+    flex-wrap: wrap;
+    column-gap: var(--rz-gap);
+    padding-inline-start: calc(var(--rf-form-label-width) + var(--rf-form-gap));
+}
+
+/* Contenitore di un controllo composto che occupa il resto della riga */
+.form-field {
+    flex: 1;
+    min-width: 0;
+}
+
+/* Nota sotto un campo, allineata ai campi */
+.form-row.form-note {
+    min-height: 0;
+    color: var(--rz-text-secondary-color);
+}
+
+/* Pulsante accanto a un campo: stessa altezza del campo */
+.form-row > .rz-button {
+    flex: 0 0 auto;
+    height: var(--rz-input-height);
 }
 
 .config-help-pane {
@@ -697,43 +754,8 @@
     }
 }
 
-@media (max-width: 760px) {
-    .browse-content {
-        grid-template-columns: minmax(0, 1fr);
-        grid-template-rows: auto minmax(0, 1fr);
-    }
-
-    .browse-roots {
-        display: flex;
-        gap: 0.35rem;
-        padding: 0.35rem;
-        overflow-x: auto;
-        overflow-y: hidden;
-        border-right: 0;
-        border-bottom: 1px solid var(--rz-base-300);
-    }
-
-    .browse-roots-title {
-        display: none;
-    }
-
-    .browse-root-item {
-        width: auto;
-        min-width: max-content;
-    }
-
-    .form-row {
-        flex-wrap: wrap;
-        row-gap: 0.25rem;
-    }
-
-    .form-label {
-        width: 100%;
-    }
-}
-
 .form-label {
-    width: 18ch;
+    width: var(--rf-form-label-width);
     flex-shrink: 0;
     color: var(--rz-text-secondary-color);
 }
@@ -777,8 +799,12 @@ textarea.form-input {
     margin-inline-start: var(--rz-gap);
 }
 
+/* Switch affiancati senza etichetta a sinistra: la distanza la dà il column-gap della riga */
+.form-row.form-row-offset > .ui-switch + .ui-switch {
+    margin-inline-start: 0;
+}
+
 .btn-browse {
-    margin-left: 1ch;
     white-space: nowrap;
 }
 
@@ -795,3 +821,48 @@ textarea.form-input {
     font-size: var(--rz-text-caption-font-size);
     font-weight: normal;
 }
+
+@media (max-width: 760px) {
+    .browse-content {
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-rows: auto minmax(0, 1fr);
+    }
+
+    .browse-roots {
+        display: flex;
+        gap: 0.35rem;
+        padding: 0.35rem;
+        overflow-x: auto;
+        overflow-y: hidden;
+        border-right: 0;
+        border-bottom: 1px solid var(--rz-base-300);
+    }
+
+    .browse-roots-title {
+        display: none;
+    }
+
+    .browse-root-item {
+        width: auto;
+        min-width: max-content;
+    }
+
+    .form-row {
+        flex-wrap: wrap;
+        row-gap: 0.25rem;
+    }
+
+    .form-label {
+        width: 100%;
+    }
+
+    .form-row.form-row-offset {
+        padding-inline-start: 0;
+    }
+
+    /* Un campo di testo stretto fra i pulsanti va su una riga sua, i pulsanti sotto */
+    .form-row > .rz-textbox {
+        flex-basis: 14rem;
+    }
+}
+

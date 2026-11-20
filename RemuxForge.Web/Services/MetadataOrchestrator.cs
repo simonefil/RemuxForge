@@ -1,4 +1,5 @@
 using RemuxForge.Core.Configuration;
+using RemuxForge.Core.Infrastructure;
 using RemuxForge.Core.Localization;
 using RemuxForge.Core.Metadata;
 using RemuxForge.Core.Models;
@@ -210,6 +211,23 @@ namespace RemuxForge.Web.Services
         }
 
         /// <summary>
+        /// Scrive modifiche dirette su più file in un solo giro; i file temporanei si cancellano alla fine, anche se il giro non parte
+        /// </summary>
+        /// <param name="edits">Modifiche per file</param>
+        /// <param name="tempFiles">File temporanei usati dalle modifiche</param>
+        /// <returns>True se il giro è partito</returns>
+        public bool ApplyDirectChanges(List<MetadataDirectEdit> edits, List<string> tempFiles)
+        {
+            if (this.TryRunExclusive(() => this.ApplyDirectWorker(edits, tempFiles)))
+                return true;
+
+            for (int i = 0; i < tempFiles.Count; i++)
+                FileHelper.DeleteTempFile(tempFiles[i]);
+
+            return false;
+        }
+
+        /// <summary>
         /// Indica se l'applicazione richiede una conferma esplicita e ne descrive la portata
         /// </summary>
         /// <param name="selectedIndex">Indice record selezionato, oppure -1 per tutti i record</param>
@@ -268,7 +286,7 @@ namespace RemuxForge.Web.Services
         /// <summary>
         /// Richiede stop cooperativo
         /// </summary>
-        public void Stop()
+        public override void Stop()
         {
             this.RequestStop(AppText.T("web.metadata.stopRequested"));
         }
@@ -657,16 +675,6 @@ namespace RemuxForge.Web.Services
         /// <param name="changes">Modifiche manuali validate dalla UI</param>
         private void ApplyManualWorker(int selectedIndex, List<MkvMetadataChange> changes)
         {
-            MkvMetadataRecord sourceRecord;
-            MkvMetadataRecord manualRecord;
-            MkvMetadataOptions runtimeOptions;
-            MkvMetadataExecutionResult result;
-            MetadataExecutionService executor;
-            MetadataFileScanner scanner;
-            List<MkvMetadataRecord> refreshedRecords;
-            string mediaInfoPath;
-            string outputFile;
-
             this.SetBusy(true, AppText.T("web.metadata.progress.manualEdit"));
             try
             {
@@ -676,186 +684,7 @@ namespace RemuxForge.Web.Services
                     return;
                 }
 
-                for (int i = 0; i < changes.Count; i++)
-                {
-                    MkvMetadataChange change = changes[i];
-                    bool isPosition = change.OperationType == MkvMetadataOperationType.SetField && MetadataTrackPositionHelper.IsPositionField(change.FieldKey);
-
-                    // L'unico remux ammesso dall'editor manuale e' lo spostamento di una
-                    // traccia dentro il suo tipo: rimuovere tracce resta lavoro da preset
-                    if ((change.RequiresRemux && !isPosition) || change.OperationType == MkvMetadataOperationType.RemoveTrack)
-                        throw new InvalidOperationException(AppText.T("web.metadata.manualEdit.remuxNotAllowed"));
-
-                    if (change.OperationType == MkvMetadataOperationType.SetTagField || change.OperationType == MkvMetadataOperationType.ClearTagField)
-                    {
-                        MetadataTagDefinition tag;
-                        string normalizedValue;
-                        string errorMessage;
-                        if (!MetadataTagRegistry.ValidateWritable(change.FieldKey, change.Scope, out errorMessage))
-                            throw new InvalidOperationException(errorMessage);
-
-                        if (change.OperationType == MkvMetadataOperationType.SetTagField)
-                        {
-                            if (!MetadataTagRegistry.TryGet(change.FieldKey, out tag))
-                                throw new InvalidOperationException(AppText.F("metadata.validation.tagNotWritable", change.FieldKey));
-
-                            if (!MetadataTagRegistry.ValidateWritableValue(change.FieldKey, change.Scope, change.AfterValue, tag.IsClearable, out normalizedValue, out errorMessage))
-                                throw new InvalidOperationException(errorMessage);
-
-                            change.AfterValue = normalizedValue;
-                        }
-
-                        continue;
-                    }
-
-                    if (change.OperationType == MkvMetadataOperationType.SetField || change.OperationType == MkvMetadataOperationType.ClearField)
-                    {
-                        MetadataFieldDefinition field;
-                        string errorMessage;
-                        string normalizedValue;
-                        if (!MetadataFieldRegistry.TryGet(change.FieldKey, out field))
-                            throw new InvalidOperationException(AppText.F("metadata.validation.unknownField", change.FieldKey));
-
-                        if (!MetadataFieldRegistry.ValidateWritable(change.FieldKey, out errorMessage))
-                            throw new InvalidOperationException(errorMessage);
-
-                        if (change.OperationType == MkvMetadataOperationType.ClearField && !field.IsClearable)
-                            throw new InvalidOperationException(AppText.F("web.metadata.manualEdit.fieldNotClearable", field.Label));
-
-                        if (change.OperationType == MkvMetadataOperationType.SetField)
-                        {
-                            if (!MetadataFieldRegistry.ValidateWritableValue(change.FieldKey, change.AfterValue, field.IsClearable, out normalizedValue, out errorMessage))
-                                throw new InvalidOperationException(errorMessage);
-
-                            change.AfterValue = normalizedValue;
-                        }
-
-                        continue;
-                    }
-
-                    if (change.OperationType == MkvMetadataOperationType.EditChapters)
-                    {
-                        HashSet<string> uids = new HashSet<string>(StringComparer.Ordinal);
-                        for (int c = 0; c < change.Chapters.Count; c++)
-                        {
-                            MkvMetadataChapterInfo chapter = change.Chapters[c];
-                            if (string.IsNullOrEmpty(chapter.Uid) || !uids.Add(chapter.Uid) || chapter.StartNs < 0 || chapter.EditionIndex < 0)
-                                throw new InvalidOperationException(AppText.T("web.metadata.manualEdit.chaptersInvalid"));
-                        }
-
-                        continue;
-                    }
-
-                    throw new InvalidOperationException(AppText.T("web.metadata.manualEdit.operationNotAllowed"));
-                }
-
-                lock (this.StateLock)
-                {
-                    if (selectedIndex < 0 || selectedIndex >= this._records.Count)
-                        throw new InvalidOperationException(AppText.T("web.dashboard.noFileSelected"));
-
-                    sourceRecord = this._records[selectedIndex];
-                    sourceRecord.Status = MkvMetadataStatus.Running;
-                    sourceRecord.ErrorMessage = "";
-
-                    manualRecord = new MkvMetadataRecord();
-                    manualRecord.InputFile = sourceRecord.InputFile;
-                    manualRecord.FileSize = sourceRecord.FileSize;
-                    manualRecord.RelativeFolder = sourceRecord.RelativeFolder;
-                    manualRecord.Status = sourceRecord.Status;
-                    manualRecord.AnalysisStatus = MkvMetadataAnalysisStatus.Analyzed;
-                    manualRecord.ExecutionMode = this._options.Metadata.OutputPolicy == MkvMetadataOutputPolicy.OutputPath ? MkvMetadataExecutionMode.CopyPropEdit : MkvMetadataExecutionMode.PropEdit;
-                    manualRecord.FileInfo = MetadataModelCloner.CloneFileInfo(sourceRecord.OriginalFileInfo != null ? sourceRecord.OriginalFileInfo : sourceRecord.FileInfo);
-                    manualRecord.OriginalFileInfo = MetadataModelCloner.CloneFileInfo(manualRecord.FileInfo);
-                    manualRecord.Changes = new List<MkvMetadataChange>(changes);
-                    manualRecord.ChangeCount = changes.Count;
-                    manualRecord.MatchCount = 0;
-                }
-
-                // Le posizioni si applicano al modello come fa l'analisi: l'esecuzione ricava
-                // --track-order dall'ordine in cui le tracce restano in FileInfo
-                foreach (string trackKind in new string[] { "video", "audio", "subtitles" })
-                {
-                    Dictionary<string, int> requested = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-                    for (int i = 0; i < changes.Count; i++)
-                    {
-                        int position;
-                        if (changes[i].OperationType != MkvMetadataOperationType.SetField || changes[i].TrackKind != trackKind || !MetadataTrackPositionHelper.IsPositionField(changes[i].FieldKey))
-                            continue;
-
-                        if (!int.TryParse(changes[i].AfterValue, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out position))
-                            throw new InvalidOperationException(AppText.F("metadata.error.trackPositionInvalid", changes[i].TrackSelector, changes[i].AfterValue));
-
-                        requested[changes[i].TrackSelector] = position;
-                    }
-
-                    if (requested.Count == 0)
-                        continue;
-
-                    MetadataTrackPositionHelper.Apply(manualRecord.FileInfo, trackKind, requested, null);
-                    manualRecord.ExecutionMode = MkvMetadataExecutionMode.MkvMerge;
-                }
-
-                this.NotifyRecordsChanged();
-
-                runtimeOptions = new MkvMetadataOptions();
-                runtimeOptions.SourcePath = this._options.Metadata.SourcePath;
-                runtimeOptions.PresetPath = this._options.Metadata.PresetPath;
-                runtimeOptions.OutputPolicy = this._options.Metadata.OutputPolicy;
-                runtimeOptions.OutputDir = this._options.Metadata.OutputDir;
-                runtimeOptions.Recursive = this._options.Metadata.Recursive;
-                runtimeOptions.PreserveFolderStructure = this._options.Metadata.PreserveFolderStructure;
-                runtimeOptions.OverwriteOutput = this._options.Metadata.OverwriteOutput;
-                runtimeOptions.DryRun = false;
-
-                outputFile = MetadataExecutionService.BuildOutputFile(manualRecord, runtimeOptions);
-                if (runtimeOptions.OutputPolicy == MkvMetadataOutputPolicy.OutputPath && !runtimeOptions.OverwriteOutput && File.Exists(outputFile))
-                    throw new InvalidOperationException(AppText.F("metadata.error.outputExists", outputFile));
-
-                executor = new MetadataExecutionService(
-                    AppSettingsService.Instance.Settings.Tools.MkvMergePath,
-                    AppSettingsService.Instance.Settings.Tools.MkvPropEditPath,
-                    AppSettingsService.Instance.Settings.Tools.MkvExtractPath);
-
-                result = executor.Execute(manualRecord, runtimeOptions);
-                if (result.ExitCode != 0)
-                {
-                    this.UpdateRecordStatus(selectedIndex, MkvMetadataStatus.Error, result.ErrorMessage);
-                    this.AppendLog(AppText.F("web.metadata.manualEdit.error", result.ErrorMessage));
-                    return;
-                }
-
-                if (runtimeOptions.OutputPolicy == MkvMetadataOutputPolicy.Overwrite)
-                {
-                    mediaInfoPath = AppSettingsService.Instance.Settings.Tools.MediaInfoPath;
-                    if (string.IsNullOrEmpty(mediaInfoPath))
-                        mediaInfoPath = "mediainfo";
-
-                    scanner = new MetadataFileScanner(new MetadataMediaInfoReader(mediaInfoPath));
-                    refreshedRecords = scanner.Scan(manualRecord.InputFile, false);
-                    if (refreshedRecords.Count > 0)
-                    {
-                        executor.PopulateExistingTags(refreshedRecords[0]);
-                        new MetadataContainerReader(AppSettingsService.Instance.Settings.Tools.MkvMergePath, AppSettingsService.Instance.Settings.Tools.MkvExtractPath).PopulateContainerInfo(refreshedRecords[0]);
-                        refreshedRecords[0].Status = MkvMetadataStatus.Completed;
-                        lock (this.StateLock)
-                        {
-                            this._records[selectedIndex] = refreshedRecords[0];
-                        }
-
-                        this.NotifyRecordsChanged();
-                    }
-                    else
-                    {
-                        this.UpdateRecordStatus(selectedIndex, MkvMetadataStatus.Completed, "");
-                    }
-                }
-                else
-                {
-                    this.UpdateRecordStatus(selectedIndex, MkvMetadataStatus.Completed, "");
-                }
-
-                this.AppendLog(AppText.F("web.metadata.manualEdit.completed", result.OutputFile));
+                this.AppendLog(AppText.F("web.metadata.manualEdit.completed", this.ExecuteDirectChanges(selectedIndex, changes)));
             }
             catch (Exception ex)
             {
@@ -866,6 +695,273 @@ namespace RemuxForge.Web.Services
             {
                 this.SetBusy(false, "");
             }
+        }
+
+        /// <summary>
+        /// Worker scrittura delle modifiche dirette su più file, un file per volta; i file temporanei si cancellano alla fine
+        /// </summary>
+        /// <param name="edits">Modifiche per file</param>
+        /// <param name="tempFiles">File temporanei usati dalle modifiche</param>
+        private void ApplyDirectWorker(List<MetadataDirectEdit> edits, List<string> tempFiles)
+        {
+            List<MkvMetadataRecord> records;
+            int successCount = 0;
+            int errorCount = 0;
+
+            this.SetBusy(true, AppText.T("web.metadata.progress.catalog"));
+            try
+            {
+                for (int i = 0; i < edits.Count; i++)
+                {
+                    int index = -1;
+
+                    if (this.StopRequested)
+                        break;
+
+                    this.ReportProgress(i, edits.Count, Path.GetFileName(edits[i].InputFile));
+                    records = this.GetRecords();
+                    for (int r = 0; r < records.Count; r++)
+                    {
+                        if (string.Equals(records[r].InputFile, edits[i].InputFile, StringComparison.Ordinal))
+                        {
+                            index = r;
+                            break;
+                        }
+                    }
+
+                    // Il try sta dentro il ciclo: un file che non si scrive non ferma gli altri
+                    try
+                    {
+                        if (index < 0)
+                            throw new InvalidOperationException(AppText.T("web.dashboard.noFileSelected"));
+
+                        this.AppendLog(AppText.F("web.metadata.catalog.fileWritten", this.ExecuteDirectChanges(index, edits[i].Changes)));
+                        successCount++;
+                    }
+                    catch (Exception ex)
+                    {
+                        errorCount++;
+                        this.UpdateRecordStatus(index, MkvMetadataStatus.Error, ex.Message);
+                        this.AppendLog(AppText.F("web.metadata.recordApplyError", Path.GetFileName(edits[i].InputFile), ex.Message));
+                    }
+                }
+
+                this.OnApplyCompleted?.Invoke(successCount, errorCount);
+            }
+            finally
+            {
+                for (int i = 0; i < tempFiles.Count; i++)
+                    FileHelper.DeleteTempFile(tempFiles[i]);
+
+                this.SetBusy(false, "");
+            }
+        }
+
+        /// <summary>
+        /// Valida, scrive e rilegge le modifiche dirette di un record, con la politica di output delle opzioni correnti
+        /// </summary>
+        /// <param name="index">Indice record</param>
+        /// <param name="changes">Modifiche dirette</param>
+        /// <returns>File scritto</returns>
+        private string ExecuteDirectChanges(int index, List<MkvMetadataChange> changes)
+        {
+            MkvMetadataRecord sourceRecord;
+            MkvMetadataRecord manualRecord;
+            MkvMetadataOptions runtimeOptions;
+            MkvMetadataExecutionResult result;
+            MetadataExecutionService executor;
+            MetadataFileScanner scanner;
+            List<MkvMetadataRecord> refreshedRecords;
+            string mediaInfoPath;
+            string outputFile;
+
+            for (int i = 0; i < changes.Count; i++)
+            {
+                MkvMetadataChange change = changes[i];
+                bool isPosition = change.OperationType == MkvMetadataOperationType.SetField && MetadataTrackPositionHelper.IsPositionField(change.FieldKey);
+
+                // L'unico remux ammesso dall'editor manuale e' lo spostamento di una
+                // traccia dentro il suo tipo: rimuovere tracce resta lavoro da preset
+                if ((change.RequiresRemux && !isPosition) || change.OperationType == MkvMetadataOperationType.RemoveTrack)
+                    throw new InvalidOperationException(AppText.T("web.metadata.manualEdit.remuxNotAllowed"));
+
+                if (change.OperationType == MkvMetadataOperationType.SetTagField || change.OperationType == MkvMetadataOperationType.ClearTagField)
+                {
+                    MetadataTagDefinition tag;
+                    string normalizedValue;
+                    string errorMessage;
+                    if (!MetadataTagRegistry.ValidateWritable(change.FieldKey, change.Scope, out errorMessage))
+                        throw new InvalidOperationException(errorMessage);
+
+                    if (change.OperationType == MkvMetadataOperationType.SetTagField)
+                    {
+                        if (!MetadataTagRegistry.TryGet(change.FieldKey, out tag))
+                            throw new InvalidOperationException(AppText.F("metadata.validation.tagNotWritable", change.FieldKey));
+
+                        if (!MetadataTagRegistry.ValidateWritableValue(change.FieldKey, change.Scope, change.AfterValue, tag.IsClearable, out normalizedValue, out errorMessage))
+                            throw new InvalidOperationException(errorMessage);
+
+                        change.AfterValue = normalizedValue;
+                    }
+
+                    continue;
+                }
+
+                if (change.OperationType == MkvMetadataOperationType.SetField || change.OperationType == MkvMetadataOperationType.ClearField)
+                {
+                    MetadataFieldDefinition field;
+                    string errorMessage;
+                    string normalizedValue;
+                    if (!MetadataFieldRegistry.TryGet(change.FieldKey, out field))
+                        throw new InvalidOperationException(AppText.F("metadata.validation.unknownField", change.FieldKey));
+
+                    if (!MetadataFieldRegistry.ValidateWritable(change.FieldKey, out errorMessage))
+                        throw new InvalidOperationException(errorMessage);
+
+                    if (change.OperationType == MkvMetadataOperationType.ClearField && !field.IsClearable)
+                        throw new InvalidOperationException(AppText.F("web.metadata.manualEdit.fieldNotClearable", field.Label));
+
+                    if (change.OperationType == MkvMetadataOperationType.SetField)
+                    {
+                        if (!MetadataFieldRegistry.ValidateWritableValue(change.FieldKey, change.AfterValue, field.IsClearable, out normalizedValue, out errorMessage))
+                            throw new InvalidOperationException(errorMessage);
+
+                        change.AfterValue = normalizedValue;
+                    }
+
+                    continue;
+                }
+
+                if (change.OperationType == MkvMetadataOperationType.EditChapters)
+                {
+                    HashSet<string> uids = new HashSet<string>(StringComparer.Ordinal);
+                    for (int c = 0; c < change.Chapters.Count; c++)
+                    {
+                        MkvMetadataChapterInfo chapter = change.Chapters[c];
+                        if (string.IsNullOrEmpty(chapter.Uid) || !uids.Add(chapter.Uid) || chapter.StartNs < 0 || chapter.EditionIndex < 0)
+                            throw new InvalidOperationException(AppText.T("web.metadata.manualEdit.chaptersInvalid"));
+                    }
+
+                    continue;
+                }
+
+                if (change.OperationType == MkvMetadataOperationType.SetAttachment)
+                {
+                    if (change.Scope != MkvMetadataTargetScope.Container || string.IsNullOrEmpty(change.AttachmentName))
+                        throw new InvalidOperationException(AppText.T("web.metadata.manualEdit.operationNotAllowed"));
+
+                    if (string.IsNullOrEmpty(change.AttachmentSourcePath) || !File.Exists(change.AttachmentSourcePath))
+                        throw new InvalidOperationException(AppText.F("metadata.execution.attachmentSourceMissing", change.AttachmentSourcePath));
+
+                    continue;
+                }
+
+                throw new InvalidOperationException(AppText.T("web.metadata.manualEdit.operationNotAllowed"));
+            }
+
+            lock (this.StateLock)
+            {
+                if (index < 0 || index >= this._records.Count)
+                    throw new InvalidOperationException(AppText.T("web.dashboard.noFileSelected"));
+
+                sourceRecord = this._records[index];
+                sourceRecord.Status = MkvMetadataStatus.Running;
+                sourceRecord.ErrorMessage = "";
+
+                manualRecord = new MkvMetadataRecord();
+                manualRecord.InputFile = sourceRecord.InputFile;
+                manualRecord.FileSize = sourceRecord.FileSize;
+                manualRecord.RelativeFolder = sourceRecord.RelativeFolder;
+                manualRecord.Status = sourceRecord.Status;
+                manualRecord.AnalysisStatus = MkvMetadataAnalysisStatus.Analyzed;
+                manualRecord.ExecutionMode = this._options.Metadata.OutputPolicy == MkvMetadataOutputPolicy.OutputPath ? MkvMetadataExecutionMode.CopyPropEdit : MkvMetadataExecutionMode.PropEdit;
+                manualRecord.FileInfo = MetadataModelCloner.CloneFileInfo(sourceRecord.OriginalFileInfo != null ? sourceRecord.OriginalFileInfo : sourceRecord.FileInfo);
+                manualRecord.OriginalFileInfo = MetadataModelCloner.CloneFileInfo(manualRecord.FileInfo);
+                manualRecord.Changes = new List<MkvMetadataChange>(changes);
+                manualRecord.ChangeCount = changes.Count;
+                manualRecord.MatchCount = 0;
+            }
+
+            // Le posizioni si applicano al modello come fa l'analisi: l'esecuzione ricava
+            // --track-order dall'ordine in cui le tracce restano in FileInfo
+            foreach (string trackKind in new string[] { "video", "audio", "subtitles" })
+            {
+                Dictionary<string, int> requested = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                for (int i = 0; i < changes.Count; i++)
+                {
+                    int position;
+                    if (changes[i].OperationType != MkvMetadataOperationType.SetField || changes[i].TrackKind != trackKind || !MetadataTrackPositionHelper.IsPositionField(changes[i].FieldKey))
+                        continue;
+
+                    if (!int.TryParse(changes[i].AfterValue, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out position))
+                        throw new InvalidOperationException(AppText.F("metadata.error.trackPositionInvalid", changes[i].TrackSelector, changes[i].AfterValue));
+
+                    requested[changes[i].TrackSelector] = position;
+                }
+
+                if (requested.Count == 0)
+                    continue;
+
+                MetadataTrackPositionHelper.Apply(manualRecord.FileInfo, trackKind, requested, null);
+                manualRecord.ExecutionMode = MkvMetadataExecutionMode.MkvMerge;
+            }
+
+            this.NotifyRecordsChanged();
+
+            runtimeOptions = new MkvMetadataOptions();
+            runtimeOptions.SourcePath = this._options.Metadata.SourcePath;
+            runtimeOptions.PresetPath = this._options.Metadata.PresetPath;
+            runtimeOptions.OutputPolicy = this._options.Metadata.OutputPolicy;
+            runtimeOptions.OutputDir = this._options.Metadata.OutputDir;
+            runtimeOptions.Recursive = this._options.Metadata.Recursive;
+            runtimeOptions.PreserveFolderStructure = this._options.Metadata.PreserveFolderStructure;
+            runtimeOptions.OverwriteOutput = this._options.Metadata.OverwriteOutput;
+            runtimeOptions.DryRun = false;
+
+            outputFile = MetadataExecutionService.BuildOutputFile(manualRecord, runtimeOptions);
+            if (runtimeOptions.OutputPolicy == MkvMetadataOutputPolicy.OutputPath && !runtimeOptions.OverwriteOutput && File.Exists(outputFile))
+                throw new InvalidOperationException(AppText.F("metadata.error.outputExists", outputFile));
+
+            executor = new MetadataExecutionService(
+                AppSettingsService.Instance.Settings.Tools.MkvMergePath,
+                AppSettingsService.Instance.Settings.Tools.MkvPropEditPath,
+                AppSettingsService.Instance.Settings.Tools.MkvExtractPath);
+
+            result = executor.Execute(manualRecord, runtimeOptions);
+            if (result.ExitCode != 0)
+                throw new InvalidOperationException(result.ErrorMessage);
+
+            if (runtimeOptions.OutputPolicy == MkvMetadataOutputPolicy.Overwrite)
+            {
+                mediaInfoPath = AppSettingsService.Instance.Settings.Tools.MediaInfoPath;
+                if (string.IsNullOrEmpty(mediaInfoPath))
+                    mediaInfoPath = "mediainfo";
+
+                scanner = new MetadataFileScanner(new MetadataMediaInfoReader(mediaInfoPath));
+                refreshedRecords = scanner.Scan(manualRecord.InputFile, false);
+                if (refreshedRecords.Count > 0)
+                {
+                    executor.PopulateExistingTags(refreshedRecords[0]);
+                    new MetadataContainerReader(AppSettingsService.Instance.Settings.Tools.MkvMergePath, AppSettingsService.Instance.Settings.Tools.MkvExtractPath).PopulateContainerInfo(refreshedRecords[0]);
+                    refreshedRecords[0].Status = MkvMetadataStatus.Completed;
+                    lock (this.StateLock)
+                    {
+                        this._records[index] = refreshedRecords[0];
+                    }
+
+                    this.NotifyRecordsChanged();
+                }
+                else
+                {
+                    this.UpdateRecordStatus(index, MkvMetadataStatus.Completed, "");
+                }
+            }
+            else
+            {
+                this.UpdateRecordStatus(index, MkvMetadataStatus.Completed, "");
+            }
+
+            return result.OutputFile;
         }
 
         /// <summary>

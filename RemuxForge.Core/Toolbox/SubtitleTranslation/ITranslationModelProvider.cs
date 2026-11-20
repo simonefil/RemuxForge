@@ -1,0 +1,38 @@
+using RemuxForge.Core.Models;
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+namespace RemuxForge.Core.Toolbox.SubtitleTranslation
+{
+    /// <summary>
+    /// Accesso al modello per un job di traduzione: un'istanza per job, che tiene le capacità spente e la pausa condivisa dai file
+    /// in parallelo
+    /// </summary>
+    public interface ITranslationModelProvider
+    {
+        /// <summary>
+        /// Cambio di stato dello stream di una chiamata, dal thread che legge la risposta
+        /// </summary>
+        event Action<TranslationModelRequest, AiStreamProgress> CallProgress;
+
+        /// <summary>
+        /// Chiamata conclusa, riuscita, fallita o fermata
+        /// </summary>
+        event Action<TranslationModelRequest> CallFinished;
+
+        /// <summary>
+        /// Manda una chiamata con la politica di retry del job; un parametro rifiutato dall'accesso si toglie e la chiamata si ripete
+        /// una volta
+        /// </summary>
+        /// <param name="request">Chiamata della traduzione</param>
+        /// <param name="cancellationToken">Token di annullamento</param>
+        /// <returns>Item di output, consumo ed esito</returns>
+        Task<AiResponseResult> SendAsync(TranslationModelRequest request, CancellationToken cancellationToken);
+
+        /// <summary>
+        /// Capacità dell'accesso corrente nel job
+        /// </summary>
+        TranslationProviderCapabilities Capabilities { get; }
+    }
+}

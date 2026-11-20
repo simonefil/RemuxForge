@@ -3,14 +3,38 @@
 @inject MetadataOrchestrator Orchestrator
 @inject AiCredentialService CredentialService
 @inject OpenAiResponsesClient ResponsesClient
+@inject NotificationService NotificationService
 
 <div class="rf-dialog" @ref="DialogContent">
         <div class="rf-dialog-body">
             @if (_step == WizardStep.Request)
             {
-                <div>@AppText.T("web.metadata.ai.requestHint")</div>
-                <RadzenTextArea Style="width: 100%; min-height: 10em; margin-top: 0.5em; resize: vertical;" aria-label="@AppText.T("web.metadata.ai.requestLabel")" Placeholder="@AppText.T("web.metadata.ai.requestPlaceholder")" @bind-Value="_requestText" Immediate="true" />
-                <div style="margin-top: 0.5em; color: var(--rz-text-secondary-color);">@AppText.F("web.metadata.ai.requestContext", GetSourceRecordCount(), GetModelLabel())</div>
+                <div class="form-stack">
+                    <div>@AppText.T("web.metadata.ai.requestHint")</div>
+                    <RadzenTextArea Style="width: 100%; min-height: 10em; resize: vertical;" aria-label="@AppText.T("web.metadata.ai.requestLabel")" Placeholder="@AppText.T("web.metadata.ai.requestPlaceholder")" @bind-Value="_requestText" Immediate="true" />
+                    <div style="color: var(--rz-text-secondary-color);">@AppText.F("web.metadata.ai.requestContext", GetSourceRecordCount())</div>
+                    <div class="form-row">
+                        <RadzenLabel class="form-label" Text="@AppText.T("web.metadata.ai.model")" Component="MetadataAiModel" />
+                        <RadzenDropDown TValue="string" Name="MetadataAiModel" Data="@GetModelValues()" Value="@(string.IsNullOrEmpty(_credentials.Model) ? null : _credentials.Model)" Change="@OnModelChanged"
+                                        AllowClear="true" Disabled="@(_modelsLoading || !AiCredentialService.IsConfigured(_credentials))" class="metadata-ai-model">
+                            <Template Context="model">@GetModelLabel((string)model)</Template>
+                            <ValueTemplate Context="model">@GetModelLabel((string)model)</ValueTemplate>
+                        </RadzenDropDown>
+                        <RadzenButton Text="@AppText.T("web.metadata.ai.refreshModels")" Icon="refresh" Size="ButtonSize.Small" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base"
+                                      Disabled="@(_modelsLoading || !AiCredentialService.IsConfigured(_credentials))" Click="@RefreshModelsAsync" />
+                    </div>
+                    <div class="form-row">
+                        <RadzenLabel class="form-label" Text="@AppText.T("web.metadata.ai.reasoning")" Component="MetadataAiReasoning" />
+                        <RadzenDropDown TValue="string" Name="MetadataAiReasoning" Data="@GetEffortValues()" Value="@(string.IsNullOrEmpty(_credentials.ReasoningEffort) ? null : _credentials.ReasoningEffort)"
+                                        Change="@OnEffortChanged" AllowClear="true" Disabled="@(_modelsLoading || string.IsNullOrEmpty(_credentials.Model))" class="metadata-ai-effort" />
+                    </div>
+                    <div class="form-row">
+                        <RadzenLabel class="form-label" Text="@AppText.T("web.metadata.ai.maxRoundsLabel")" Component="MetadataAiMaxRounds" />
+                        <RadzenNumeric @key="_maxRoundsInputKey" TValue="int" Name="MetadataAiMaxRounds" class="metadata-ai-rounds"
+                                       Min="@MetadataAiPresetGenerator.MIN_MAX_ROUNDS" Max="@MetadataAiPresetGenerator.MAX_MAX_ROUNDS"
+                                       Value="@_credentials.MaxRounds" Change="@OnMaxRoundsChanged" />
+                    </div>
+                </div>
             }
             else if (_step == WizardStep.Reading)
             {
@@ -20,7 +44,7 @@
             {
                 @if (_generationRunning)
                 {
-                    <AiThinkingComponent Phrase="@_phrase" Detail="@AppText.T("web.metadata.ai.cancelHint")" />
+                    <AiThinkingComponent Phrase="@_phrase" Detail="@(_streamDetail.Length > 0 ? _streamDetail : AppText.T("web.metadata.ai.cancelHint"))" StartedAt="@_callStartedAt" />
                 }
                 else
                 {
@@ -218,6 +242,16 @@
     private string _phrase = "";
 
     /// <summary>
+    /// Ultimo evento della chiamata in corso col modello, vuoto fra una chiamata e l'altra
+    /// </summary>
+    private string _streamDetail = "";
+
+    /// <summary>
+    /// Inizio della chiamata in corso, in UTC; null fra una chiamata e l'altra
+    /// </summary>
+    private DateTime? _callStartedAt;
+
+    /// <summary>
     /// Annulla la generazione in corso
     /// </summary>
     private CancellationTokenSource _generationCancellation;
@@ -253,12 +287,36 @@
     private string _shownTitle = "";
 
     /// <summary>
-    /// Si iscrive agli eventi dell'orchestrator
+    /// Configurazione AI con modello e livello di ragionamento scelti
     /// </summary>
-    protected override void OnInitialized()
+    private AiCredentials _credentials = new AiCredentials();
+
+    /// <summary>
+    /// Modelli dell'accesso, vuoto finché l'elenco non è letto
+    /// </summary>
+    private List<AiModelInfo> _models = new List<AiModelInfo>();
+
+    /// <summary>
+    /// True mentre si legge l'elenco dei modelli
+    /// </summary>
+    private bool _modelsLoading;
+
+    /// <summary>
+    /// Chiave del campo giri massimi: cambiandola il campo viene ricreato col valore salvato
+    /// </summary>
+    private int _maxRoundsInputKey;
+
+    /// <summary>
+    /// Legge la configurazione, si iscrive agli eventi dell'orchestrator e, con l'accesso configurato, legge l'elenco dei modelli
+    /// </summary>
+    /// <returns>Task di inizializzazione</returns>
+    protected override async Task OnInitializedAsync()
     {
+        this._credentials = this.LoadCredentials();
         this.Orchestrator.OnContainerDataLoaded += this.HandleContainerDataLoaded;
         this.Orchestrator.OnProgressChanged += this.HandleProgressChanged;
+        if (AiCredentialService.IsConfigured(this._credentials))
+            await this.RefreshModelsAsync();
     }
 
     /// <summary>
@@ -349,20 +407,132 @@
     }
 
     /// <summary>
-    /// Modello scelto nelle impostazioni AI
+    /// Valori della tendina dei modelli: col modello salvato finché l'elenco non è letto
     /// </summary>
-    private string GetModelLabel()
+    /// <returns>Identificativi dei modelli</returns>
+    private List<string> GetModelValues()
     {
-        string model = this.LoadModel();
-        return !string.IsNullOrEmpty(model) ? model : AppText.T("web.aiSettings.noModel");
+        List<string> values = new List<string>();
+        if (!string.IsNullOrEmpty(this._credentials.Model) && this._models.Find(m => m.Id == this._credentials.Model) == null)
+            values.Add(this._credentials.Model);
+        for (int i = 0; i < this._models.Count; i++)
+            values.Add(this._models[i].Id);
+        return values;
     }
 
     /// <summary>
-    /// Legge il modello dalla configurazione AI, vuoto se il file non è leggibile
+    /// Nome mostrato di un modello
     /// </summary>
-    private string LoadModel()
+    /// <param name="id">Identificativo modello</param>
+    /// <returns>Nome del modello, l'identificativo se l'elenco non lo conosce</returns>
+    private string GetModelLabel(string id)
     {
-        return this.LoadCredentials().Model;
+        AiModelInfo model = this._models.Find(m => m.Id == id);
+        return model != null ? model.DisplayName : id;
+    }
+
+    /// <summary>
+    /// Livelli della tendina del ragionamento: quelli del modello scelto, col livello salvato finché l'elenco non è letto
+    /// </summary>
+    /// <returns>Livelli di ragionamento</returns>
+    private List<string> GetEffortValues()
+    {
+        List<string> values = new List<string>();
+        AiModelInfo model = this._models.Find(m => m.Id == this._credentials.Model);
+        if (!string.IsNullOrEmpty(this._credentials.ReasoningEffort) && (model == null || !model.SupportedReasoningLevels.Contains(this._credentials.ReasoningEffort)))
+            values.Add(this._credentials.ReasoningEffort);
+        if (model != null)
+            values.AddRange(model.SupportedReasoningLevels);
+        return values;
+    }
+
+    /// <summary>
+    /// Aggiorna l'elenco dei modelli dell'accesso: un modello salvato che l'elenco non offre si segnala e si toglie, un livello che
+    /// il modello salvato non supporta torna al suo predefinito
+    /// </summary>
+    /// <returns>Task della lettura</returns>
+    private async Task RefreshModelsAsync()
+    {
+        this._error = "";
+        this._modelsLoading = true;
+        try
+        {
+            this._models = await this.ResponsesClient.ListModelsAsync(CancellationToken.None);
+        }
+        catch (AiServiceException ex)
+        {
+            this._error = ex.Message;
+        }
+        finally
+        {
+            this._modelsLoading = false;
+        }
+
+        if (this._step != WizardStep.Request)
+            return;
+
+        if (AiModelChoice.IsUnknown(this._models, this._credentials.Model))
+        {
+            this.NotificationService.Notify(NotificationSeverity.Error, AppText.T("web.metadata.ai.noModelTitle"), AppText.T("web.metadata.ai.noModel"), 8000);
+            this.CredentialService.SetModel("", "");
+            this._credentials = this.LoadCredentials();
+            return;
+        }
+
+        // Il livello vuoto resta vuoto: si manda solo se scelto
+        AiModelInfo model = this._models.Find(m => m.Id == this._credentials.Model);
+        string effort = string.IsNullOrEmpty(this._credentials.ReasoningEffort) ? "" : AiModelChoice.EffortFor(model, this._credentials.ReasoningEffort);
+        if (effort != this._credentials.ReasoningEffort)
+        {
+            this.CredentialService.SetModel(this._credentials.Model, effort);
+            this._credentials = this.LoadCredentials();
+        }
+    }
+
+    /// <summary>
+    /// Salva il modello scelto: un livello che il nuovo modello non supporta torna al suo predefinito, senza modello non resta livello
+    /// </summary>
+    /// <param name="value">Modello scelto, null quando la scelta viene rimossa</param>
+    private void OnModelChanged(object value)
+    {
+        string modelId = value as string ?? "";
+        AiModelInfo model = this._models.Find(m => m.Id == modelId);
+        string effort = this._credentials.ReasoningEffort;
+
+        // Il livello si manda solo se scelto: con la API key un modello senza ragionamento rifiuta il parametro
+        effort = string.IsNullOrEmpty(modelId) || string.IsNullOrEmpty(effort) ? "" : AiModelChoice.EffortFor(model, effort);
+
+        this.CredentialService.SetModel(modelId, effort);
+        this._credentials = this.LoadCredentials();
+    }
+
+    /// <summary>
+    /// Salva il livello di ragionamento scelto
+    /// </summary>
+    /// <param name="value">Livello scelto, null quando la scelta viene rimossa</param>
+    private void OnEffortChanged(object value)
+    {
+        this.CredentialService.SetModel(this._credentials.Model, value as string ?? "");
+        this._credentials = this.LoadCredentials();
+    }
+
+    /// <summary>
+    /// Salva i giri massimi; un valore fuori intervallo viene rifiutato senza salvare
+    /// </summary>
+    /// <param name="value">Valore digitato</param>
+    private void OnMaxRoundsChanged(int value)
+    {
+        if (value < MetadataAiPresetGenerator.MIN_MAX_ROUNDS || value > MetadataAiPresetGenerator.MAX_MAX_ROUNDS)
+        {
+            this.NotificationService.Notify(NotificationSeverity.Error, AppText.F("web.metadata.ai.maxRoundsInvalid", MetadataAiPresetGenerator.MIN_MAX_ROUNDS, MetadataAiPresetGenerator.MAX_MAX_ROUNDS), "", 8000);
+
+            // Il valore salvato non è cambiato, quindi il campo va ricreato per non mostrare quello rifiutato
+            this._maxRoundsInputKey++;
+            return;
+        }
+
+        this.CredentialService.SetMaxRounds(value);
+        this._credentials = this.LoadCredentials();
     }
 
     /// <summary>
@@ -399,9 +569,9 @@
     {
         this._error = "";
 
-        if (string.IsNullOrEmpty(this.LoadModel()))
+        if (string.IsNullOrEmpty(this._credentials.Model))
         {
-            this._error = AppText.T("web.metadata.ai.noModel");
+            this.NotificationService.Notify(NotificationSeverity.Error, AppText.T("web.metadata.ai.noModelTitle"), AppText.T("web.metadata.ai.noModel"), 8000);
             return;
         }
 
@@ -479,6 +649,8 @@
         AiCredentials credentials = this.LoadCredentials();
 
         this._phrase = AppText.T("web.metadata.ai.phraseThinking");
+        this._streamDetail = "";
+        this._callStartedAt = null;
         this._result = null;
         this._generationCancellation = cancellation;
         this._generationRunning = true;
@@ -487,7 +659,7 @@
 
         try
         {
-            result = await generator.GenerateAsync(credentials.Model, this._requestText.Trim(), this.BuildSourceRecords(), credentials.MaxRounds, progress, cancellation.Token);
+            result = await generator.GenerateAsync(credentials.Model, credentials.ReasoningEffort, this._requestText.Trim(), this.BuildSourceRecords(), credentials.MaxRounds, progress, cancellation.Token);
             if (result.Success)
             {
                 this._result = result;
@@ -589,12 +761,28 @@
     }
 
     /// <summary>
-    /// Traduce un passo del generatore in una riga di log
+    /// Traduce un passo del generatore in una riga di log; i cambi di stato dello stream aggiornano solo l'attesa
     /// </summary>
     /// <param name="step">Passo notificato</param>
     private void AppendStep(AiPresetGenerationStep step)
     {
+        // Lo stream aggiorna solo l'attesa, e la ridisegna solo se il testo cambia
+        if (step.Kind == AiPresetGenerationStepKind.Streaming)
+        {
+            string detail = step.Stream.Describe(this._credentials.Model);
+            if (step.Stream.Stage == AiStreamStage.Sent)
+                this._callStartedAt = DateTime.UtcNow;
+            if (detail == this._streamDetail)
+                return;
+
+            this._streamDetail = detail;
+            _ = this.InvokeAsync(this.StateHasChanged);
+            return;
+        }
+
         List<string> lines = new List<string>();
+        this._streamDetail = "";
+        this._callStartedAt = null;
 
         if (step.Kind == AiPresetGenerationStepKind.RequestSent)
         {

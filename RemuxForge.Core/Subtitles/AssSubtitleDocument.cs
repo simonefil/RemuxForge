@@ -83,8 +83,9 @@ namespace RemuxForge.Core.Subtitles
             return result.ToString();
         }
 
-        /// <summary>Legge i Dialogue con il Format corrente e la posizione originale, senza spostare altre sezioni.</summary>
-        public List<AssSubtitleDialogue> ReadDialogues()
+        /// <summary>Legge i Dialogue con il Format corrente e la posizione originale, senza spostare altre sezioni; con
+        /// includeComments anche le righe Comment, scartate in silenzio se non valide.</summary>
+        public List<AssSubtitleDialogue> ReadDialogues(bool includeComments)
         {
             List<AssSubtitleDialogue> result = new List<AssSubtitleDialogue>();
             bool inEvents = false;
@@ -99,18 +100,22 @@ namespace RemuxForge.Core.Subtitles
                 }
                 if (!inEvents) continue;
                 if (line.StartsWith("Format:", StringComparison.OrdinalIgnoreCase)) format = line.Substring(7);
-                if (!line.StartsWith("Dialogue:", StringComparison.OrdinalIgnoreCase)) continue;
+                bool comment = includeComments && line.StartsWith("Comment:", StringComparison.OrdinalIgnoreCase);
+                if (!comment && !line.StartsWith("Dialogue:", StringComparison.OrdinalIgnoreCase)) continue;
                 int count = AssSubtitleUtils.CountFields(format);
                 int start = AssSubtitleUtils.ResolveFieldIndex(format, "Start");
                 int end = AssSubtitleUtils.ResolveFieldIndex(format, "End");
                 int text = AssSubtitleUtils.ResolveFieldIndex(format, "Text");
-                string[] fields = AssSubtitleUtils.SplitFields(line.Substring(9).TrimStart(), count);
+                string[] fields = AssSubtitleUtils.SplitFields(line.Substring(comment ? 8 : 9).TrimStart(), count);
                 if (count == 0 || start < 0 || end < 0 || text != count - 1 || fields.Length != count
                     || !AssSubtitleTimelineRewriter.TryParseTimestamp(fields[start].Trim(), out long startMs)
                     || !AssSubtitleTimelineRewriter.TryParseTimestamp(fields[end].Trim(), out long endMs))
+                {
+                    if (comment) continue;
                     throw new InvalidDataException(AppText.F("remux.subtitles.assInvalidDialogue", index + 1));
+                }
                 result.Add(new AssSubtitleDialogue(index, fields, start, end,
-                    AssSubtitleUtils.ResolveFieldIndex(format, "Effect"), startMs, endMs));
+                    AssSubtitleUtils.ResolveFieldIndex(format, "Effect"), startMs, endMs, format, comment));
             }
             return result;
         }
@@ -313,5 +318,5 @@ namespace RemuxForge.Core.Subtitles
     }
 
     internal sealed record AssSubtitleDialogue(int LineIndex, string[] Fields, int StartColumn, int EndColumn,
-        int EffectColumn, long StartMs, long EndMs);
+        int EffectColumn, long StartMs, long EndMs, string Format, bool Comment);
 }

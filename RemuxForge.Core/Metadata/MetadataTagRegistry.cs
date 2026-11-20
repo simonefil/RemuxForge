@@ -209,6 +209,8 @@ namespace RemuxForge.Core.Metadata
             AddTag(result, "ARTIST", MetadataFieldValueType.String, MetadataFieldInputKind.Text, MetadataFieldVisibility.Advanced, true, MkvMetadataTargetScope.Container, MkvMetadataTargetScope.Audio);
             AddTag(result, "ALBUM", MetadataFieldValueType.String, MetadataFieldInputKind.Text, MetadataFieldVisibility.Advanced, true, MkvMetadataTargetScope.Container);
             AddTag(result, "TVDB", MetadataFieldValueType.String, MetadataFieldInputKind.Text, MetadataFieldVisibility.Primary, true, MkvMetadataTargetScope.Container);
+            AddTag(result, "TVDB2", MetadataFieldValueType.String, MetadataFieldInputKind.Text, MetadataFieldVisibility.Advanced, true, MkvMetadataTargetScope.Container);
+            AddTag(result, "TMDB", MetadataFieldValueType.String, MetadataFieldInputKind.Text, MetadataFieldVisibility.Advanced, true, MkvMetadataTargetScope.Container);
 
             // Il titolo della serie e la stagione non sono dell'episodio: senza il livello
             // giusto finirebbero a 50 e ogni episodio direbbe di chiamarsi come la serie

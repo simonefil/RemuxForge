@@ -82,9 +82,13 @@
 
                 @* Tabella 4 colonne come dialog browser *@
                 <div class="browse-list">
-                <table class="browse-table">
+                <table class="browse-table @(AllowMultipleFiles ? "browse-table-multiple" : "")">
                     <thead>
                         <tr>
+                            @if (AllowMultipleFiles)
+                            {
+                                <th class="browse-col-check"></th>
+                            }
                             <th class="browse-col-name"><button type="button" class="browse-sort-button" @onclick="() => ToggleSort(BrowserSortColumn.Name)">@AppText.T("web.folder.filename") @GetSortIndicator(BrowserSortColumn.Name)</button></th>
                             <th class="browse-col-size"><button type="button" class="browse-sort-button" @onclick="() => ToggleSort(BrowserSortColumn.Size)">@AppText.T("web.folder.size") @GetSortIndicator(BrowserSortColumn.Size)</button></th>
                             <th class="browse-col-date"><button type="button" class="browse-sort-button" @onclick="() => ToggleSort(BrowserSortColumn.Modified)">@AppText.T("web.folder.modified") @GetSortIndicator(BrowserSortColumn.Modified)</button></th>
@@ -96,6 +100,10 @@
                         @if (!string.IsNullOrEmpty(_parentPath) || _canNavigateToDriveRoots)
                         {
                             <tr class="browse-row" tabindex="0" @ondblclick="NavigateToParent" @onkeydown="HandleParentKeyDown">
+                                @if (AllowMultipleFiles)
+                                {
+                                    <td class="browse-col-check"></td>
+                                }
                                 <td class="browse-col-name">
                                     <span class="browse-name-content"><RadzenIcon Icon="folder_open" /><span>..</span></span>
                                 </td>
@@ -110,12 +118,23 @@
                         {
                             int idx = i;
                             DirEntry entry = _entries[idx];
-                            <tr class="browse-row @(idx == _selectedIndex ? "selected" : "")"
+                            bool selected = _selectedPaths.Contains(entry.FullPath);
+                            <tr class="browse-row @(selected ? "selected" : "")"
                                 tabindex="0"
-                                aria-selected="@(idx == _selectedIndex)"
-                                @onclick="() => SelectEntry(idx)"
+                                aria-selected="@selected"
+                                @onclick="args => SelectEntry(idx, args.CtrlKey || args.MetaKey, args.ShiftKey)"
                                 @ondblclick="() => ActivateEntry(idx)"
                                 @onkeydown="args => HandleEntryKeyDown(args, idx)">
+                                @if (AllowMultipleFiles)
+                                {
+                                    @* La casella vale come Ctrl-clic: aggiunge o toglie il file senza toccare il resto della selezione *@
+                                    <td class="browse-col-check" @onclick:stopPropagation="true" @ondblclick:stopPropagation="true">
+                                        @if (!entry.IsDirectory)
+                                        {
+                                            <RadzenCheckBox TValue="bool" Value="@selected" AriaLabel="@entry.Name" Change="@(_ => SelectEntry(idx, true, false))" />
+                                        }
+                                    </td>
+                                }
                                 <td class="browse-col-name">
                                     <span class="browse-name-content"><RadzenIcon Icon="@GetEntryIcon(entry)" /><span>@entry.Name</span></span>
                                 </td>
@@ -128,7 +147,7 @@
                         @if (_entries.Count == 0 && string.IsNullOrEmpty(_parentPath))
                         {
                             <tr>
-                                <td colspan="4" style="color: var(--rz-text-disabled-color); text-align: center;">@AppText.T("web.common.empty")</td>
+                                <td colspan="@(AllowMultipleFiles ? 5 : 4)" style="color: var(--rz-text-disabled-color); text-align: center;">@AppText.T("web.common.empty")</td>
                             </tr>
                         }
                     </tbody>
@@ -149,8 +168,16 @@
             }
         </div>
         <div class="rf-dialog-footer">
+            @if (this.AllowMultipleFiles)
+            {
+                <span class="browse-selection-count" role="status">@AppText.Count("web.folder.selectedFiles", _selectedPaths.Count)</span>
+            }
             <RadzenButton Text="@AppText.T("web.common.cancel")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@(() => CloseDialog())" />
-            @if (this.ShowFiles && this.AllowCurrentFolderSelection)
+            @if (this.AllowMultipleFiles)
+            {
+                <RadzenButton Text="@AppText.T("web.folder.addFilesButton")" Icon="add" Click="@ConfirmFiles" Disabled="@(_selectedPaths.Count == 0)" />
+            }
+            else if (this.ShowFiles && this.AllowCurrentFolderSelection)
             {
                 <RadzenButton Text="@AppText.T("web.folder.selectFolderButton")" Icon="folder" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@ConfirmFolder" Disabled="@_showingDriveRoots" />
                 <RadzenButton Text="@AppText.T("web.folder.selectFileButton")" Icon="description" Click="@ConfirmFile" Disabled="@(!CanSelectFile())" />
@@ -186,6 +213,11 @@
     /// Estensioni file ammesse senza punto; null per mostrare tutti i file
     /// </summary>
     [Parameter] public List<string> AllowedExtensions { get; set; }
+
+    /// <summary>
+    /// Se true seleziona più file della cartella corrente e restituisce la lista dei percorsi; le cartelle non si selezionano
+    /// </summary>
+    [Parameter] public bool AllowMultipleFiles { get; set; }
 
     #region Variabili di classe
 
@@ -230,9 +262,15 @@
     private int _historyIndex = -1;
 
     /// <summary>
-    /// Indice entry selezionata
+    /// Percorsi completi delle entry selezionate della cartella corrente; senza selezione multipla al più uno.
+    /// Tenuti per percorso, non per riga, così restano selezionati anche quando «Trova» li nasconde o l'ordinamento li sposta
     /// </summary>
-    private int _selectedIndex = -1;
+    private HashSet<string> _selectedPaths = new HashSet<string>(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Percorso della riga da cui parte un intervallo con Maiuscolo-clic
+    /// </summary>
+    private string _anchorPath = "";
 
     /// <summary>
     /// Messaggio errore
@@ -411,8 +449,9 @@
     /// <param name="path">Percorso cartella</param>
     private void LoadDirectory(string path, bool recordHistory = true)
     {
+        string previousPath = this._currentPath;
+
         this._errorMessage = "";
-        this._selectedIndex = -1;
         this._filterText = "";
         this._allEntries.Clear();
         this._entries.Clear();
@@ -492,6 +531,17 @@
 
                     this._allEntries.Add(fileEntry);
                 }
+            }
+
+            // La selezione vale nella cartella corrente: un'altra cartella la azzera, Aggiorna tiene i file ancora presenti
+            if (!string.Equals(previousPath, this._currentPath, StringComparison.Ordinal))
+            {
+                this._selectedPaths.Clear();
+                this._anchorPath = "";
+            }
+            else
+            {
+                this._selectedPaths.RemoveWhere(selectedPath => !this._allEntries.Exists(entry => string.Equals(entry.FullPath, selectedPath, StringComparison.Ordinal)));
             }
 
             // Ordina
@@ -604,17 +654,59 @@
         }
         else if (args.Key == " ")
         {
-            this.SelectEntry(index);
+            // Con la selezione multipla Spazio aggiunge o toglie la riga, come la casella
+            this.SelectEntry(index, this.AllowMultipleFiles, false);
+        }
+        else if (this.AllowMultipleFiles && (args.CtrlKey || args.MetaKey) && string.Equals(args.Key, "a", StringComparison.OrdinalIgnoreCase))
+        {
+            // Seleziona tutti i file visibili e lascia selezionati quelli che «Trova» nasconde
+            foreach (DirEntry entry in this._entries)
+            {
+                if (!entry.IsDirectory)
+                    this._selectedPaths.Add(entry.FullPath);
+            }
         }
     }
 
     /// <summary>
-    /// Seleziona una entry nella lista
+    /// Seleziona una entry nella lista con i modificatori di un file explorer
     /// </summary>
     /// <param name="index">Indice nella lista filtrata</param>
-    private void SelectEntry(int index)
+    /// <param name="ctrl">True per aggiungere o togliere la riga (Ctrl o Cmd)</param>
+    /// <param name="shift">True per selezionare l'intervallo dall'ancora (Maiuscolo)</param>
+    private void SelectEntry(int index, bool ctrl, bool shift)
     {
-        _selectedIndex = index;
+        DirEntry entry = this._entries[index];
+        int anchor = this._entries.FindIndex(candidate => string.Equals(candidate.FullPath, this._anchorPath, StringComparison.Ordinal));
+
+        // Le cartelle si aprono con il doppio clic ma con la selezione multipla non entrano nella selezione, neppure dentro un intervallo
+        if (this.AllowMultipleFiles && entry.IsDirectory)
+            return;
+
+        if (this.AllowMultipleFiles && shift && anchor >= 0)
+        {
+            // Intervallo fra l'ancora visibile e la riga; con Ctrl si aggiunge al resto della selezione
+            if (!ctrl)
+                this._selectedPaths.Clear();
+            for (int i = Math.Min(anchor, index); i <= Math.Max(anchor, index); i++)
+            {
+                if (!this._entries[i].IsDirectory)
+                    this._selectedPaths.Add(this._entries[i].FullPath);
+            }
+            return;
+        }
+
+        if (this.AllowMultipleFiles && ctrl)
+        {
+            if (!this._selectedPaths.Remove(entry.FullPath))
+                this._selectedPaths.Add(entry.FullPath);
+        }
+        else
+        {
+            this._selectedPaths.Clear();
+            this._selectedPaths.Add(entry.FullPath);
+        }
+        this._anchorPath = entry.FullPath;
     }
 
     /// <summary>
@@ -628,6 +720,13 @@
             if (_entries[index].IsDirectory)
             {
                 this.LoadDirectory(_entries[index].FullPath);
+            }
+            else if (this.AllowMultipleFiles)
+            {
+                // Invio su un file: il file entra nella selezione e si conferma tutta. Il doppio clic conferma solo il file
+                // cliccato, perché il suo primo clic ha già sostituito la selezione con quel file
+                this._selectedPaths.Add(_entries[index].FullPath);
+                this.ConfirmFiles();
             }
             else
             {
@@ -644,12 +743,27 @@
     {
         if (this.CanSelectFile())
         {
-            this.CloseDialog(_entries[_selectedIndex].FullPath);
+            this.CloseDialog(this._selectedPaths.First());
         }
         else
         {
             _errorMessage = AppText.T("web.folder.selectFileError");
         }
+    }
+
+    /// <summary>
+    /// Conferma i file selezionati nell'ordine della lista, compresi quelli che «Trova» nasconde
+    /// </summary>
+    private void ConfirmFiles()
+    {
+        List<string> paths = new List<string>();
+        foreach (DirEntry entry in this._allEntries)
+        {
+            if (this._selectedPaths.Contains(entry.FullPath))
+                paths.Add(entry.FullPath);
+        }
+
+        this.CloseDialog(paths);
     }
 
     /// <summary>
@@ -669,7 +783,7 @@
     /// <returns>True se la selezione corrente è un file</returns>
     private bool CanSelectFile()
     {
-        return this.ShowFiles && this._selectedIndex >= 0 && this._selectedIndex < this._entries.Count && !this._entries[this._selectedIndex].IsDirectory;
+        return this.ShowFiles && this._selectedPaths.Count == 1 && this._allEntries.Exists(entry => !entry.IsDirectory && this._selectedPaths.Contains(entry.FullPath));
     }
 
     /// <summary>
@@ -788,8 +902,6 @@
     /// </summary>
     private void ApplyFilterInternal()
     {
-        _selectedIndex = -1;
-
         if (string.IsNullOrEmpty(_filterText))
         {
             _entries = new List<DirEntry>(_allEntries);
@@ -1021,7 +1133,8 @@
     private void LoadDriveRoots(bool recordHistory = true)
     {
         this._errorMessage = "";
-        this._selectedIndex = -1;
+        this._selectedPaths.Clear();
+        this._anchorPath = "";
         this._filterText = "";
         this._parentPath = "";
         this._currentPath = "";

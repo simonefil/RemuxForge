@@ -332,12 +332,13 @@ namespace RemuxForge.Core.Metadata
                             args.Add(change.AttachmentMimeType);
                         }
 
-                        // Sostituisce per nome quando l'allegato c'è già, altrimenti lo aggiunge:
-                        // con --add-attachment si accumulerebbero due allegati con lo stesso nome
+                        // Sostituisce l'allegato presente, cercato col suo nome attuale, altrimenti lo aggiunge:
+                        // con --add-attachment si accumulerebbero due allegati con lo stesso nome.
+                        // Il nome nuovo arriva da --attachment-name, quindi può cambiare (cover.jpg → cover.png)
                         if (!string.IsNullOrEmpty(change.BeforeValue))
                         {
                             args.Add("--replace-attachment");
-                            args.Add("name:" + EscapeAttachmentNameSelector(change.AttachmentName) + ":" + change.AttachmentSourcePath);
+                            args.Add("name:" + EscapeAttachmentNameSelector(change.BeforeValue) + ":" + change.AttachmentSourcePath);
                         }
                         else
                         {

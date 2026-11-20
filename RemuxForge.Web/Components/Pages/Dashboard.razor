@@ -5,6 +5,7 @@
 @inject RemuxForge.Core.Ai.AiCredentialService AiCredentialService
 @inject AiAuthService AiAuthService
 @inject ThemeService ThemeService
+@inject ToolboxCatalog ToolboxCatalog
 @implements IAsyncDisposable
 
 @if (_showSplitEditor && _splitEditorRecord != null)
@@ -24,39 +25,67 @@ else if (_showEditMapEditor && _editMapRecord != null)
 }
 else
 {
-<div class="rf-layout @(_navigationCollapsed ? "rf-navigation-collapsed" : "")">
-    <ModeNavigationComponent CurrentMode="@_currentMode"
-                             Collapsed="@_navigationCollapsed"
-                             IsBusy="@IsAnyBusy()"
-                             CurrentLanguage="@_currentLanguage"
-                             OnModeChanged="SwitchMode"
-                             OnCollapsedChanged="SetNavigationCollapsed"
-                             OnShowInfo="ShowInfoAsync" />
-
-    <section class="rf-app-stage">
-        <header class="rf-app-header">
-            <div class="rf-app-title">
-                <span class="rf-app-title-mode">@GetCurrentModeTitle()</span>
-                <span class="rf-app-title-description" title="@GetCurrentModeDescription()">@GetCurrentModeDescription()</span>
+ToolboxCard currentCard = ToolboxCatalog.Find(_currentCardId);
+<div class="rf-shell">
+    <header class="rf-app-header">
+        @if (currentCard == null)
+        {
+            <div class="rf-brand">
+                <img class="rf-brand-logo" src="apple-touch-icon.png" alt="" aria-hidden="true" />
+                <span class="rf-brand-name">RemuxForge</span>
             </div>
+        }
+        else
+        {
+            <div class="rf-app-title">
+                <RadzenBreadCrumb class="rf-app-breadcrumb" AriaLabel="@AppText.T("web.toolbox.home.breadcrumb")">
+                    <RadzenBreadCrumbItem>
+                        <a href="" class="rz-link rf-home-link" title="@AppText.T("web.toolbox.home.back")" @onclick="GoHome" @onclick:preventDefault>
+                            <img class="rf-brand-logo" src="apple-touch-icon.png" alt="" aria-hidden="true" />
+                            <span class="rf-brand-name">RemuxForge</span>
+                        </a>
+                    </RadzenBreadCrumbItem>
+                    <RadzenBreadCrumbItem>
+                        <span class="rf-app-title-mode" aria-current="page">@AppText.T(currentCard.TitleKey)</span>
+                    </RadzenBreadCrumbItem>
+                </RadzenBreadCrumb>
+                <span class="rf-app-title-description" title="@AppText.T(currentCard.DescriptionKey)">@AppText.T(currentCard.DescriptionKey)</span>
+            </div>
+        }
 
-            <MenuBarComponent Commands="@BuildUiCommands()"
-                       OnCommand="ExecuteUiCommandAsync"
-                       OnThemeChanged="ChangeThemeAsync"
-                       OnLanguageChanged="ChangeLanguageAsync"
-                       CurrentTheme="@_currentTheme"
-                       CurrentLanguage="@_currentLanguage" />
-        </header>
+        <MenuBarComponent Commands="@BuildUiCommands()"
+                   OnCommand="ExecuteUiCommandAsync"
+                   OnThemeChanged="ChangeThemeAsync"
+                   OnLanguageChanged="ChangeLanguageAsync"
+                   CurrentTheme="@_currentTheme"
+                   CurrentLanguage="@_currentLanguage" />
+    </header>
 
+    @if (currentCard == null)
+    {
+        <ToolboxHomeComponent LastCardId="@AppSettingsService.Instance.Settings.Ui.LastMode"
+                              IsBusy="@ToolboxCatalog.IsAnyBusy()"
+                              CurrentLanguage="@_currentLanguage"
+                              OnOpen="OpenCard" />
+    }
+    else
+    {
+    <section class="rf-app-stage">
         <CommandToolbarComponent Commands="@BuildUiCommands()"
-                                 Note="@(_currentMode == RemuxForge.Core.Models.Options.MODE_SPLIT && _splitReviewStage != null ? AppText.T("web.splitMontage.reviewExportNote") : "")"
+                                 Note="@(_currentCardId == RemuxForge.Core.Models.Options.MODE_SPLIT && _splitReviewStage != null ? AppText.T("web.splitMontage.reviewExportNote") : "")"
                                  OnCommand="ExecuteUiCommandAsync" />
 
         <RadzenSplitter Orientation="Orientation.Vertical" class="rf-workspace-log-splitter">
             <RadzenSplitterPane Size="78%" Min="210px">
                 <div class="rf-workspace-host">
                 @* Area Pannelli *@
-                @if (_currentMode == RemuxForge.Core.Models.Options.MODE_METADATA)
+                @if (currentCard.PageType != null)
+                {
+                    <DynamicComponent @ref="_toolPageHost"
+                                      Type="@currentCard.PageType"
+                                      Parameters="@(new Dictionary<string, object> { { nameof(ToolboxPageBase.JsModule), _jsModule }, { nameof(ToolboxPageBase.OnStateChanged), EventCallback.Factory.Create(this, () => { }) } })" />
+                }
+                else if (_currentCardId == RemuxForge.Core.Models.Options.MODE_METADATA)
                 {
                     <MetadataWorkspaceComponent Options="@MetadataOrchestrator.CurrentOptions"
                                     PresetFiles="@_metadataPresetFiles"
@@ -78,7 +107,7 @@ else
                                     OnRowSelected="SelectMetadataRow"
                                                 OnShowMappedInfo="ShowMetadataMappedInfoAsync" />
                 }
-                else if (_currentMode == RemuxForge.Core.Models.Options.MODE_SPLIT)
+                else if (_currentCardId == RemuxForge.Core.Models.Options.MODE_SPLIT)
                 {
                     <div @ref="_splitWorkspaceRoot" class="split-guided-workspace" tabindex="-1" aria-label="@AppText.T("web.splitMontage.outputs")">
                     @if (!SplitOrchestrator.HasSource && _splitRecords.Count == 0 && _splitReviewStage == null)
@@ -136,18 +165,15 @@ else
             </RadzenSplitterPane>
             <RadzenSplitterPane Size="22%" Min="56px" Max="55%">
                 <div class="rf-log-host">
-                    <LogPanelComponent LogText="@GetCurrentLogText()" JsModule="@_jsModule" />
+                    <LogPanelComponent LogText="@ToolboxCatalog.GetOrchestrator(currentCard).LogText" JsModule="@_jsModule" />
                 </div>
             </RadzenSplitterPane>
         </RadzenSplitter>
 
     @* Avanzamento *@
-    <ProgressPanelComponent Progress="@GetCurrentProgress()" />
-
-    @* Barra di Stato *@
-    <StatusBarComponent Commands="@BuildUiCommands()"
-                        OnCommand="ExecuteUiCommandAsync" />
+    <ProgressPanelComponent Progress="@ToolboxCatalog.GetOrchestrator(currentCard).Progress" ItemLabelKey="@currentCard.ProgressItemKey" />
     </section>
+    }
 </div>
 
 

@@ -1,16 +1,13 @@
+using RemuxForge.Core.Infrastructure;
 using RemuxForge.Core.Localization;
 using RemuxForge.Core.Models;
 using System;
 using System.Collections.Generic;
-using System.IO;
-using System.Text;
-using System.Text.Json;
-using System.Text.Json.Serialization;
 
 namespace RemuxForge.Core.Ai
 {
     /// <summary>
-    /// Servizio del file di configurazione dell'integrazione AI: credenziali, modello e consenso
+    /// Servizio del file di configurazione dell'integrazione AI: credenziali e modello del Metadata AI
     /// </summary>
     public class AiCredentialService
     {
@@ -26,9 +23,9 @@ namespace RemuxForge.Core.Ai
         #region Variabili di classe
 
         /// <summary>
-        /// Percorso completo del file
+        /// File di configurazione AI
         /// </summary>
-        private readonly string _filePath;
+        private readonly PrivateJsonFile<AiCredentials> _file;
 
         /// <summary>
         /// Serializza lettura e scrittura del file
@@ -45,8 +42,7 @@ namespace RemuxForge.Core.Ai
         /// <param name="configFolder">Cartella configurazione RemuxForge</param>
         public AiCredentialService(string configFolder)
         {
-            string root = configFolder != null ? configFolder : "";
-            this._filePath = Path.Combine(root, FILE_NAME);
+            this._file = new PrivateJsonFile<AiCredentials>(configFolder, FILE_NAME);
             this._fileLock = new object();
         }
 
@@ -64,10 +60,7 @@ namespace RemuxForge.Core.Ai
 
             lock (this._fileLock)
             {
-                if (!File.Exists(this._filePath))
-                    return new AiCredentials();
-
-                result = JsonSerializer.Deserialize<AiCredentials>(File.ReadAllText(this._filePath), CreateSerializerOptions());
+                result = this._file.Read();
             }
 
             if (result == null)
@@ -87,52 +80,10 @@ namespace RemuxForge.Core.Ai
                 throw new ArgumentNullException(nameof(credentials));
 
             Normalize(credentials);
-            string json = JsonSerializer.Serialize(credentials, CreateSerializerOptions());
-            string tempFilePath = this._filePath + "." + Guid.NewGuid().ToString("N") + ".tmp";
 
             lock (this._fileLock)
             {
-                try
-                {
-                    string folder = Path.GetDirectoryName(this._filePath);
-                    if (!string.IsNullOrEmpty(folder))
-                        Directory.CreateDirectory(folder);
-
-                    FileStreamOptions streamOptions = new FileStreamOptions();
-                    streamOptions.Mode = FileMode.CreateNew;
-                    streamOptions.Access = FileAccess.Write;
-                    streamOptions.Share = FileShare.None;
-
-                    // Il file contiene token e API key: su macOS e Linux nasce leggibile solo dal proprietario
-                    if (!OperatingSystem.IsWindows())
-                        streamOptions.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
-
-                    using (FileStream stream = new FileStream(tempFilePath, streamOptions))
-                    using (StreamWriter writer = new StreamWriter(stream, new UTF8Encoding(false)))
-                    {
-                        writer.Write(json);
-                        writer.Flush();
-                        stream.Flush(true);
-                    }
-
-                    File.Move(tempFilePath, this._filePath, true);
-                }
-                finally
-                {
-                    try
-                    {
-                        if (File.Exists(tempFilePath))
-                            File.Delete(tempFilePath);
-                    }
-                    catch (IOException)
-                    {
-                        // La scrittura ha già propagato l'errore principale; la pulizia resta best-effort
-                    }
-                    catch (UnauthorizedAccessException)
-                    {
-                        // La scrittura ha già propagato l'errore principale; la pulizia resta best-effort
-                    }
-                }
+                this._file.Write(credentials);
             }
         }
 
@@ -186,7 +137,7 @@ namespace RemuxForge.Core.Ai
         }
 
         /// <summary>
-        /// Scollega l'account: cancella solo i token, conserva client ID, email, host ID, modello e consenso
+        /// Scollega l'account: cancella solo i token, conserva client ID, email, host ID, modello e livello di ragionamento
         /// </summary>
         /// <returns>Configurazione aggiornata</returns>
         public AiCredentials ClearAccountTokens()
@@ -242,13 +193,15 @@ namespace RemuxForge.Core.Ai
         }
 
         /// <summary>
-        /// Salva il modello scelto
+        /// Salva modello e livello di ragionamento del Metadata AI
         /// </summary>
         /// <param name="model">Identificativo modello</param>
-        public void SetModel(string model)
+        /// <param name="reasoningEffort">Livello di ragionamento, vuoto per non mandarlo</param>
+        public void SetModel(string model, string reasoningEffort)
         {
             AiCredentials credentials = this.Load();
             credentials.Model = model != null ? model.Trim() : "";
+            credentials.ReasoningEffort = reasoningEffort != null ? reasoningEffort.Trim() : "";
             this.Save(credentials);
         }
 
@@ -263,32 +216,9 @@ namespace RemuxForge.Core.Ai
             this.Save(credentials);
         }
 
-        /// <summary>
-        /// Registra il consenso all'invio dei dati
-        /// </summary>
-        public void AcceptConsent()
-        {
-            AiCredentials credentials = this.Load();
-            credentials.ConsentAccepted = true;
-            this.Save(credentials);
-        }
-
         #endregion
 
         #region Metodi privati
-
-        /// <summary>
-        /// Crea le opzioni JSON del file di configurazione AI
-        /// </summary>
-        /// <returns>Opzioni serializzatore</returns>
-        private static JsonSerializerOptions CreateSerializerOptions()
-        {
-            JsonSerializerOptions options = new JsonSerializerOptions();
-            options.WriteIndented = true;
-            options.PropertyNameCaseInsensitive = true;
-            options.Converters.Add(new JsonStringEnumConverter(null, false));
-            return options;
-        }
 
         /// <summary>
         /// Sostituisce i valori null letti dal file con i default
@@ -300,6 +230,8 @@ namespace RemuxForge.Core.Ai
                 credentials.ExtAgentHostId = "";
             if (credentials.Model == null)
                 credentials.Model = "";
+            if (credentials.ReasoningEffort == null)
+                credentials.ReasoningEffort = "";
             if (credentials.Email == null)
                 credentials.Email = "";
             if (credentials.Subject == null)

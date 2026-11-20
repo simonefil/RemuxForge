@@ -1,3 +1,4 @@
+using RemuxForge.Core.Localization;
 using RemuxForge.Core.Models;
 using System;
 using System.Collections.Generic;
@@ -60,13 +61,14 @@ namespace RemuxForge.Core.Ai
         /// Genera un preset dalla richiesta dell'utente sui file caricati
         /// </summary>
         /// <param name="model">Modello</param>
+        /// <param name="reasoningEffort">Livello di ragionamento, vuoto per non mandarlo</param>
         /// <param name="userRequest">Richiesta dell'utente</param>
         /// <param name="records">Record dei file caricati, letti e mai modificati</param>
         /// <param name="maxRounds">Giri massimi, ricondotti all'intervallo ammesso</param>
         /// <param name="progress">Passi notificati al wizard</param>
         /// <param name="cancellationToken">Token di annullamento</param>
         /// <returns>Esito della generazione</returns>
-        public async Task<AiPresetGenerationResult> GenerateAsync(string model, string userRequest, List<MkvMetadataRecord> records, int maxRounds, IProgress<AiPresetGenerationStep> progress, CancellationToken cancellationToken)
+        public async Task<AiPresetGenerationResult> GenerateAsync(string model, string reasoningEffort, string userRequest, List<MkvMetadataRecord> records, int maxRounds, IProgress<AiPresetGenerationStep> progress, CancellationToken cancellationToken)
         {
             int roundLimit = Math.Clamp(maxRounds, MIN_MAX_ROUNDS, MAX_MAX_ROUNDS);
             MetadataAiTools tools = new MetadataAiTools(records);
@@ -74,6 +76,7 @@ namespace RemuxForge.Core.Ai
             string instructions = MetadataAiContextBuilder.BuildInstructions();
             JsonArray input = new JsonArray();
             List<string> lastErrors = new List<string>();
+            string effort = reasoningEffort;
 
             input.Add(CreateUserMessage(MetadataAiContextBuilder.BuildUserMessage(userRequest, tools.BuildOverview())));
 
@@ -82,23 +85,41 @@ namespace RemuxForge.Core.Ai
                 cancellationToken.ThrowIfCancellationRequested();
                 Report(progress, AiPresetGenerationStepKind.RequestSent, round, "", null);
 
-                List<JsonObject> output = await this._client.CreateResponseAsync(model, instructions, input, toolDefinitions, cancellationToken);
-                List<JsonObject> calls = new List<JsonObject>();
-                StringBuilder messageText = new StringBuilder();
+                AiResponseRequest request = new AiResponseRequest();
+                request.Model = model;
+                request.ReasoningEffort = effort;
+                request.Instructions = instructions;
+                request.Input = input;
+                request.Tools = toolDefinitions;
+                if (progress != null)
+                    request.Progress = stream => progress.Report(new AiPresetGenerationStep { Kind = AiPresetGenerationStepKind.Streaming, Round = round, Stream = stream });
 
-                // Ogni item torna invariato al giro successivo: senza stato lato server è l'unica memoria del modello
-                for (int i = 0; i < output.Count; i++)
+                AiResponseResult response;
+                try
                 {
-                    string type = AiOAuthFlow.GetString(output[i], "type");
-                    input.Add(output[i].DeepClone());
-                    if (type == "function_call")
-                        calls.Add(output[i]);
-                    else if (type == "message")
-                        AppendMessageText(output[i], messageText);
+                    response = await this._client.CreateResponseAsync(request, cancellationToken);
                 }
+                catch (AiServiceException ex) when (ex.Kind == AiErrorKind.UnsupportedCapability && effort.Length > 0 && ex.RejectedParameter.StartsWith("reasoning", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Con la API key l'elenco offre i livelli a ogni modello e uno senza ragionamento li rifiuta: il livello si toglie per
+                    // il resto della generazione e il giro si ripete
+                    effort = "";
+                    request.ReasoningEffort = "";
+                    response = await this._client.CreateResponseAsync(request, cancellationToken);
+                }
+                if (response.Status == AiResponseStatus.Incomplete)
+                    throw new AiServiceException(AiErrorKind.InvalidResponse, AppText.T("ai.error.incomplete"));
 
+                List<JsonObject> calls = AiToolCallReader.Echo(response, input);
                 if (calls.Count == 0)
                 {
+                    StringBuilder messageText = new StringBuilder();
+                    foreach (JsonObject item in response.Items)
+                    {
+                        if (AiJson.GetString(item, "type") == "message")
+                            AppendMessageText(item, messageText);
+                    }
+
                     Report(progress, AiPresetGenerationStepKind.MissingSubmission, round, messageText.ToString().Trim(), null);
                     input.Add(CreateUserMessage(MetadataAiContextBuilder.BuildMissingSubmissionMessage()));
                     continue;
@@ -106,14 +127,14 @@ namespace RemuxForge.Core.Ai
 
                 for (int i = 0; i < calls.Count; i++)
                 {
-                    string name = AiOAuthFlow.GetString(calls[i], "name");
-                    string arguments = AiOAuthFlow.GetString(calls[i], "arguments");
+                    string name = AiJson.GetString(calls[i], "name");
+                    JsonObject arguments = AiToolCallReader.ParseArguments(calls[i]);
                     string result;
 
                     if (name == MetadataAiTools.QUERY_FILES_TOOL)
                     {
                         result = tools.QueryFiles(arguments);
-                        Report(progress, AiPresetGenerationStepKind.FilesQueried, round, arguments, null);
+                        Report(progress, AiPresetGenerationStepKind.FilesQueried, round, AiJson.GetString(calls[i], "arguments"), null);
                     }
                     else if (name == MetadataAiTools.SUBMIT_PRESET_TOOL)
                     {
@@ -134,12 +155,7 @@ namespace RemuxForge.Core.Ai
                         result = new JsonObject { ["valid"] = false, ["errors"] = new JsonArray("Unknown tool '" + name + "'.") }.ToJsonString();
                     }
 
-                    input.Add(new JsonObject
-                    {
-                        ["type"] = "function_call_output",
-                        ["call_id"] = AiOAuthFlow.GetString(calls[i], "call_id"),
-                        ["output"] = result
-                    });
+                    input.Add(AiToolCallReader.CreateOutput(calls[i], result));
                 }
             }
 
@@ -177,8 +193,8 @@ namespace RemuxForge.Core.Ai
             for (int i = 0; i < content.Count; i++)
             {
                 JsonObject part = content[i] as JsonObject;
-                if (part != null && AiOAuthFlow.GetString(part, "type") == "output_text")
-                    text.AppendLine(AiOAuthFlow.GetString(part, "text"));
+                if (part != null && AiJson.GetString(part, "type") == "output_text")
+                    text.AppendLine(AiJson.GetString(part, "text"));
             }
         }
 

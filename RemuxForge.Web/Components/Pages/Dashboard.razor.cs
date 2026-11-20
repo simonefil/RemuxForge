@@ -7,7 +7,9 @@ using RemuxForge.Web.Components.Metadata;
 using RemuxForge.Web.Components.Shared;
 using RemuxForge.Web.Components.Remux;
 using RemuxForge.Web.Components.Split;
+using RemuxForge.Web.Components.Toolbox;
 using RemuxForge.Web.Services;
+using RemuxForge.Web.Services.Toolbox;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.JSInterop;
@@ -133,14 +135,19 @@ namespace RemuxForge.Web.Components.Pages
         private string _currentLanguage;
 
         /// <summary>
-        /// Modalità corrente UI
+        /// Identificativo della card aperta; null quando è aperta la home
         /// </summary>
-        private string _currentMode;
+        private string _currentCardId;
 
         /// <summary>
-        /// Indica che la navigazione laterale è compressa
+        /// Card appena chiusa con «Home», che riprende il fuoco quando la home è disegnata
         /// </summary>
-        private bool _navigationCollapsed;
+        private string _homeFocusCardId;
+
+        /// <summary>
+        /// Contenitore della pagina della card tool aperta; la sua istanza fornisce i comandi del tool
+        /// </summary>
+        private DynamicComponent _toolPageHost;
 
         /// <summary>
         /// Flag: mostra dialog configurazione
@@ -186,6 +193,16 @@ namespace RemuxForge.Web.Components.Pages
         /// Flag: mostra dialog impostazioni AI
         /// </summary>
         private bool _showAiSettings;
+
+        /// <summary>
+        /// Flag: mostra dialog impostazioni dei cataloghi media
+        /// </summary>
+        private bool _showMediaCatalogSettings;
+
+        /// <summary>
+        /// Flag: mostra dialog di abbinamento al catalogo media
+        /// </summary>
+        private bool _showMediaCatalogMatch;
 
         /// <summary>
         /// Flag: mostra wizard preset Metadata con AI
@@ -286,9 +303,8 @@ namespace RemuxForge.Web.Components.Pages
             if (string.IsNullOrEmpty(this._currentLanguage))
                 this._currentLanguage = AppText.LANG_EN;
 
-            this._currentMode = AppSettingsService.Instance.Settings.Ui.LastMode;
-            if (this._currentMode != Options.MODE_REMUX && this._currentMode != Options.MODE_SPLIT && this._currentMode != Options.MODE_METADATA)
-                this._currentMode = Options.MODE_REMUX;
+            // All'avvio si apre sempre la home: l'ultima card usata è soltanto evidenziata
+            this._currentCardId = null;
 
             this._showConfig = false;
             this._showMetadataPreset = false;
@@ -298,6 +314,8 @@ namespace RemuxForge.Web.Components.Pages
             this._showMetadataRename = false;
             this._showToolPaths = false;
             this._showAiSettings = false;
+            this._showMediaCatalogSettings = false;
+            this._showMediaCatalogMatch = false;
             this._showMetadataAiWizard = false;
             this._showAudioSettings = false;
             this._showAdvancedSettings = false;
@@ -326,20 +344,20 @@ namespace RemuxForge.Web.Components.Pages
             this.SyncSelectedFromSplitOrchestrator();
             this.SyncSelectedFromMetadataOrchestrator();
 
-            // Sottoscrivi eventi orchestratore
-            this.Orchestrator.OnLog += this.HandleLog;
+            // Sottoscrivi eventi orchestratore: log e avanzamento sono comuni a tutte le card
+            foreach (ToolboxCard card in this.ToolboxCatalog.Cards)
+            {
+                MediaOrchestratorBase orchestrator = this.ToolboxCatalog.GetOrchestrator(card);
+                orchestrator.OnLog += this.HandleLog;
+                orchestrator.OnProgressChanged += this.HandleProgressChanged;
+            }
             this.Orchestrator.OnRecordsChanged += this.HandleRecordsChanged;
-            this.Orchestrator.OnProgressChanged += this.HandleProgressChanged;
-            this.SplitOrchestrator.OnLog += this.HandleLog;
             this.SplitOrchestrator.OnRecordsChanged += this.HandleSplitRecordsChanged;
-            this.SplitOrchestrator.OnProgressChanged += this.HandleProgressChanged;
             this.SplitOrchestrator.OnAnalysisCompleted += this.HandleSplitAnalysisCompleted;
             this.SplitOrchestrator.OnSplitCompleted += this.HandleSplitCompleted;
             this.SplitOrchestrator.OnOperationFailed += this.HandleSplitOperationFailed;
             this.SplitOrchestrator.OnJoinCompleted += this.HandleSplitJoinCompleted;
-            this.MetadataOrchestrator.OnLog += this.HandleLog;
             this.MetadataOrchestrator.OnRecordsChanged += this.HandleMetadataRecordsChanged;
-            this.MetadataOrchestrator.OnProgressChanged += this.HandleProgressChanged;
             this.MetadataOrchestrator.OnAnalysisCompleted += this.HandleMetadataAnalysisCompleted;
             this.MetadataOrchestrator.OnApplyCompleted += this.HandleMetadataApplyCompleted;
             this.MetadataOrchestrator.OnOperationFailed += this.HandleMetadataOperationFailed;
@@ -353,10 +371,16 @@ namespace RemuxForge.Web.Components.Pages
         /// <param name="firstRender">True se primo render</param>
         protected override async Task OnAfterRenderAsync(bool firstRender)
         {
-            if (this._splitReturnFocus && !this._showSplitEditor && this._currentMode == Options.MODE_SPLIT)
+            if (this._splitReturnFocus && !this._showSplitEditor && this._currentCardId == Options.MODE_SPLIT)
             {
                 this._splitReturnFocus = false;
                 await this._splitWorkspaceRoot.FocusAsync(true);
+            }
+            if (this._homeFocusCardId != null && this._currentCardId == null && this._jsModule != null)
+            {
+                string cardId = this._homeFocusCardId;
+                this._homeFocusCardId = null;
+                await this._jsModule.InvokeVoidAsync("focusToolboxCard", cardId);
             }
             if (firstRender)
             {
@@ -365,7 +389,7 @@ namespace RemuxForge.Web.Components.Pages
 
                 // Cattura tastiera via JS
                 this._dotNetRef = DotNetObjectReference.Create(this);
-                if (!(this._showConfig && (this._currentMode == Options.MODE_REMUX || this._currentMode == Options.MODE_SPLIT)))
+                if (!(this._showConfig && (this._currentCardId == Options.MODE_REMUX || this._currentCardId == Options.MODE_SPLIT)))
                     await this._jsModule.InvokeVoidAsync("captureKeyboard", this._dotNetRef);
                 await this._jsModule.InvokeVoidAsync("interceptExternalLinks");
 
@@ -385,19 +409,19 @@ namespace RemuxForge.Web.Components.Pages
             // Rimuovi sottoscrizioni eventi
             if (this.Orchestrator != null)
             {
-                this.Orchestrator.OnLog -= this.HandleLog;
+                foreach (ToolboxCard card in this.ToolboxCatalog.Cards)
+                {
+                    MediaOrchestratorBase orchestrator = this.ToolboxCatalog.GetOrchestrator(card);
+                    orchestrator.OnLog -= this.HandleLog;
+                    orchestrator.OnProgressChanged -= this.HandleProgressChanged;
+                }
                 this.Orchestrator.OnRecordsChanged -= this.HandleRecordsChanged;
-                this.Orchestrator.OnProgressChanged -= this.HandleProgressChanged;
-                this.SplitOrchestrator.OnLog -= this.HandleLog;
                 this.SplitOrchestrator.OnRecordsChanged -= this.HandleSplitRecordsChanged;
-                this.SplitOrchestrator.OnProgressChanged -= this.HandleProgressChanged;
                 this.SplitOrchestrator.OnAnalysisCompleted -= this.HandleSplitAnalysisCompleted;
                 this.SplitOrchestrator.OnSplitCompleted -= this.HandleSplitCompleted;
                 this.SplitOrchestrator.OnOperationFailed -= this.HandleSplitOperationFailed;
                 this.SplitOrchestrator.OnJoinCompleted -= this.HandleSplitJoinCompleted;
-                this.MetadataOrchestrator.OnLog -= this.HandleLog;
                 this.MetadataOrchestrator.OnRecordsChanged -= this.HandleMetadataRecordsChanged;
-                this.MetadataOrchestrator.OnProgressChanged -= this.HandleProgressChanged;
                 this.MetadataOrchestrator.OnAnalysisCompleted -= this.HandleMetadataAnalysisCompleted;
                 this.MetadataOrchestrator.OnApplyCompleted -= this.HandleMetadataApplyCompleted;
                 this.MetadataOrchestrator.OnOperationFailed -= this.HandleMetadataOperationFailed;
@@ -692,7 +716,7 @@ namespace RemuxForge.Web.Components.Pages
             {
                 if (key == "Escape")
                 {
-                    if (this._showConfig && (this._currentMode == Options.MODE_REMUX || this._currentMode == Options.MODE_SPLIT)) return; // Radzen possiede Escape/focus.
+                    if (this._showConfig && (this._currentCardId == Options.MODE_REMUX || this._currentCardId == Options.MODE_SPLIT)) return; // Radzen possiede Escape/focus.
                     this.CloseAllDialogs();
                     this.StateHasChanged();
                 }
@@ -707,10 +731,11 @@ namespace RemuxForge.Web.Components.Pages
             }
 
             // La scorciatoia di un comando disabilitato non fa nulla, come il click sul pulsante disabilitato
-            if (UiCommandDefinition.IsShortcutDisabled(this.BuildUiCommands(), key, ctrl))
+            IReadOnlyList<UiCommandDefinition> commands = this.BuildUiCommands();
+            if (UiCommandDefinition.IsShortcutDisabled(commands, key, ctrl))
                 return;
 
-            if (this.IsAnyBusy() && ((key.StartsWith("F", StringComparison.Ordinal) && key.Length <= 3) || ctrl))
+            if (this.ToolboxCatalog.IsAnyBusy() && ((key.StartsWith("F", StringComparison.Ordinal) && key.Length <= 3) || ctrl))
             {
                 if (key == "F12")
                     this.DoStop();
@@ -718,7 +743,27 @@ namespace RemuxForge.Web.Components.Pages
                 return;
             }
 
-            if (this._currentMode == Options.MODE_SPLIT)
+            // La home non ha scorciatoie proprie: le card si aprono con clic, Invio o Spazio sulla card
+            if (this._currentCardId == null)
+                return;
+
+            // Una card tool non ha rami propri: il tasto esegue il suo comando con la stessa scorciatoia, Stop compreso
+            if (this.ToolboxCatalog.Find(this._currentCardId).PageType != null)
+            {
+                UiCommandDefinition command = null;
+                foreach (UiCommandDefinition candidate in commands)
+                {
+                    if (!candidate.Disabled && candidate.Matches(key, ctrl))
+                    {
+                        command = candidate;
+                        break;
+                    }
+                }
+
+                if (command != null)
+                    await command.ExecuteAsync();
+            }
+            else if (this._currentCardId == Options.MODE_SPLIT)
             {
                 if (key == "F2")
                     this.ShowConfig();
@@ -753,7 +798,7 @@ namespace RemuxForge.Web.Components.Pages
                 else if (key == "End")
                     this.SelectSplitRowWithModifiers((this._splitRecords.Count - 1, ctrl, shift));
             }
-            else if (this._currentMode == Options.MODE_METADATA)
+            else if (this._currentCardId == Options.MODE_METADATA)
             {
                 if (key == "F3")
                     await this.ShowMetadataPresetAsync();
@@ -1207,7 +1252,7 @@ namespace RemuxForge.Web.Components.Pages
         /// </summary>
         private bool IsBlockingOverlayOpen()
         {
-            return this._showConfig || this._showSplitEditor || this._showMetadataPathBrowse || this._showMetadataPreset || this._showMetadataMappedInfo || this._showMetadataManualEdit || this._showMetadataRename || this._showToolPaths || this._showAiSettings || this._showMetadataAiWizard || this._showAudioSettings || this._showAdvancedSettings || this._showDelay || this._showEditMapEditor || this._showEncodingProfiles || this._showInfo || this._showLicenses || this._showMediaInfo || this._showSplitJoin;
+            return this._showConfig || this._showSplitEditor || this._showMetadataPathBrowse || this._showMetadataPreset || this._showMetadataMappedInfo || this._showMetadataManualEdit || this._showMetadataRename || this._showToolPaths || this._showAiSettings || this._showMediaCatalogSettings || this._showMediaCatalogMatch || this._showMetadataAiWizard || this._showAudioSettings || this._showAdvancedSettings || this._showDelay || this._showEditMapEditor || this._showEncodingProfiles || this._showInfo || this._showLicenses || this._showMediaInfo || this._showSplitJoin;
         }
 
         /// <summary>
@@ -1563,36 +1608,6 @@ namespace RemuxForge.Web.Components.Pages
         }
 
         /// <summary>
-        /// Restituisce log della modalità corrente
-        /// </summary>
-        /// <returns>Log corrente</returns>
-        private string GetCurrentLogText()
-        {
-            if (this._currentMode == Options.MODE_SPLIT)
-                return this.SplitOrchestrator.LogText;
-
-            if (this._currentMode == Options.MODE_METADATA)
-                return this.MetadataOrchestrator.LogText;
-
-            return this.Orchestrator.LogText;
-        }
-
-        /// <summary>
-        /// Restituisce progress della modalità corrente
-        /// </summary>
-        /// <returns>Progress corrente</returns>
-        private ProcessingProgressState GetCurrentProgress()
-        {
-            if (this._currentMode == Options.MODE_SPLIT)
-                return this.SplitOrchestrator.Progress;
-
-            if (this._currentMode == Options.MODE_METADATA)
-                return this.MetadataOrchestrator.Progress;
-
-            return this.Orchestrator.Progress;
-        }
-
-        /// <summary>
         /// Costruisce riepilogo tracce metadata
         /// </summary>
         /// <param name="record">Record metadata</param>
@@ -1737,57 +1752,32 @@ namespace RemuxForge.Web.Components.Pages
         #region Azioni
 
         /// <summary>
-        /// Restituisce il titolo della modalità corrente
+        /// Apre una card dalla home e la ricorda come ultima usata
         /// </summary>
-        /// <returns>Titolo modalità</returns>
-        private string GetCurrentModeTitle()
+        /// <param name="cardId">Identificativo della card</param>
+        private void OpenCard(string cardId)
         {
-            if (this._currentMode == Options.MODE_SPLIT)
-                return "Split";
-            if (this._currentMode == Options.MODE_METADATA)
-                return AppText.T("web.metadata.title");
-
-            return "Remux";
-        }
-
-        /// <summary>
-        /// Restituisce la descrizione della modalità corrente
-        /// </summary>
-        /// <returns>Descrizione modalità</returns>
-        private string GetCurrentModeDescription()
-        {
-            if (this._currentMode == Options.MODE_SPLIT)
-                return AppText.T("web.dashboard.splitDescription");
-            if (this._currentMode == Options.MODE_METADATA)
-                return AppText.T("web.dashboard.metadataDescription");
-
-            return AppText.T("web.dashboard.remuxDescription");
-        }
-
-        /// <summary>
-        /// Cambia modalità UI e salva preferenza
-        /// </summary>
-        /// <param name="mode">Modalità richiesta</param>
-        private void SwitchMode(string mode)
-        {
-            if (mode != Options.MODE_REMUX && mode != Options.MODE_SPLIT && mode != Options.MODE_METADATA)
+            ToolboxCard card = this.ToolboxCatalog.Find(cardId);
+            if (card == null)
                 return;
 
-            if (this.IsAnyBusy() && mode != this._currentMode)
+            // Un'operazione per volta: mentre una card lavora le altre restano chiuse
+            if (this.ToolboxCatalog.IsAnyBusy() && !this.ToolboxCatalog.GetOrchestrator(card).IsBusy)
                 return;
 
-            this._currentMode = mode;
-            AppSettingsService.Instance.Settings.Ui.LastMode = mode;
+            this._currentCardId = card.Id;
+            AppSettingsService.Instance.Settings.Ui.LastMode = card.Id;
             AppSettingsService.Instance.Save();
         }
 
         /// <summary>
-        /// Imposta lo stato compatto della navigazione laterale
+        /// Torna alla home e ridà il fuoco alla card appena chiusa
         /// </summary>
-        /// <param name="collapsed">True per mostrare soltanto le icone</param>
-        private void SetNavigationCollapsed(bool collapsed)
+        private void GoHome()
         {
-            this._navigationCollapsed = collapsed;
+            this._homeFocusCardId = this._currentCardId;
+            this._currentCardId = null;
+            this._toolPageHost = null;
         }
 
         /// <summary>
@@ -1899,7 +1889,7 @@ namespace RemuxForge.Web.Components.Pages
         /// </summary>
         private async Task DoScanAsync()
         {
-            if (this._currentMode == Options.MODE_METADATA)
+            if (this._currentCardId == Options.MODE_METADATA)
             {
                 if (string.IsNullOrEmpty(this.MetadataOrchestrator.CurrentOptions.Metadata.SourcePath))
                 {
@@ -1914,7 +1904,7 @@ namespace RemuxForge.Web.Components.Pages
                 return;
             }
 
-            if (this._currentMode == Options.MODE_SPLIT)
+            if (this._currentCardId == Options.MODE_SPLIT)
             {
                 if (!this.ApplySplitConfig())
                     return;
@@ -1949,13 +1939,13 @@ namespace RemuxForge.Web.Components.Pages
         private void DoAnalyzeSelected()
         {
             List<int> selectedIndices;
-            if (this._currentMode == Options.MODE_METADATA)
+            if (this._currentCardId == Options.MODE_METADATA)
             {
                 this.DoAnalyzeAll();
                 return;
             }
 
-            if (this._currentMode == Options.MODE_SPLIT)
+            if (this._currentCardId == Options.MODE_SPLIT)
                 return;
 
             selectedIndices = this.GetActionSelectionIndices();
@@ -1982,7 +1972,7 @@ namespace RemuxForge.Web.Components.Pages
         /// </summary>
         private void DoAnalyzeAll()
         {
-            if (this._currentMode == Options.MODE_METADATA)
+            if (this._currentCardId == Options.MODE_METADATA)
             {
                 if (!this.MetadataOrchestrator.IsBusy)
                 {
@@ -1991,7 +1981,7 @@ namespace RemuxForge.Web.Components.Pages
                 return;
             }
 
-            if (this._currentMode == Options.MODE_SPLIT)
+            if (this._currentCardId == Options.MODE_SPLIT)
                 return;
 
             if (!this.Orchestrator.IsBusy)
@@ -2010,10 +2000,10 @@ namespace RemuxForge.Web.Components.Pages
         private void DoToggleSkip()
         {
             List<int> selectedIndices;
-            if (this._currentMode == Options.MODE_METADATA)
+            if (this._currentCardId == Options.MODE_METADATA)
                 return;
 
-            if (this._currentMode == Options.MODE_SPLIT)
+            if (this._currentCardId == Options.MODE_SPLIT)
                 return;
 
             selectedIndices = this.GetActionSelectionIndices();
@@ -2037,7 +2027,7 @@ namespace RemuxForge.Web.Components.Pages
         private void DoMergeSelected()
         {
             List<int> selectedIndices;
-            if (this._currentMode == Options.MODE_METADATA)
+            if (this._currentCardId == Options.MODE_METADATA)
             {
                 if (!this.MetadataOrchestrator.IsBusy)
                 {
@@ -2046,7 +2036,7 @@ namespace RemuxForge.Web.Components.Pages
                 return;
             }
 
-            if (this._currentMode == Options.MODE_SPLIT)
+            if (this._currentCardId == Options.MODE_SPLIT)
             {
                 this.DoMergeAll();
                 return;
@@ -2076,7 +2066,7 @@ namespace RemuxForge.Web.Components.Pages
         /// </summary>
         private void DoMergeAll()
         {
-            if (this._currentMode == Options.MODE_METADATA)
+            if (this._currentCardId == Options.MODE_METADATA)
             {
                 if (!this.MetadataOrchestrator.IsBusy)
                 {
@@ -2085,7 +2075,7 @@ namespace RemuxForge.Web.Components.Pages
                 return;
             }
 
-            if (this._currentMode == Options.MODE_SPLIT)
+            if (this._currentCardId == Options.MODE_SPLIT)
             {
                 if (!this.CanLeaveSplitReview() || this.SplitOrchestrator.IsBusy)
                     return;
@@ -2109,67 +2099,61 @@ namespace RemuxForge.Web.Components.Pages
         /// </summary>
         private void DoStop()
         {
-            if (this.MetadataOrchestrator.IsBusy)
+            foreach (ToolboxCard card in this.ToolboxCatalog.Cards)
             {
-                this.MetadataOrchestrator.Stop();
-                return;
+                MediaOrchestratorBase orchestrator = this.ToolboxCatalog.GetOrchestrator(card);
+                if (orchestrator.IsBusy)
+                {
+                    orchestrator.Stop();
+                    return;
+                }
             }
 
-            if (this.SplitOrchestrator.IsBusy)
-            {
-                this.SplitOrchestrator.Stop();
-                return;
-            }
-
-            if (this.Orchestrator.IsBusy)
-            {
-                this.Orchestrator.RequestStop();
-            }
-            else
-            {
-                this.Orchestrator.Log(AppText.T("web.log.noOperationToStop"));
-            }
+            this.Orchestrator.Log(AppText.T("web.log.noOperationToStop"));
         }
 
         /// <summary>
-        /// Costruisce la definizione condivisa dei comandi della modalità corrente
+        /// Costruisce la definizione condivisa dei comandi della card corrente o della home
         /// </summary>
-        /// <returns>Comandi per menu, toolbar e status bar</returns>
+        /// <returns>Comandi per menu, toolbar e tastiera</returns>
         private IReadOnlyList<UiCommandDefinition> BuildUiCommands()
         {
-            bool busy = this.IsAnyBusy();
+            bool busy = this.ToolboxCatalog.IsAnyBusy();
             List<UiCommandDefinition> result = new List<UiCommandDefinition>();
 
-            if (this._currentMode == Options.MODE_METADATA)
+            // La home non aggiunge comandi propri: restano Stop, impostazioni e aiuto
+            if (this._currentCardId == Options.MODE_METADATA)
             {
                 this.AddMetadataUiCommands(result, busy);
             }
-            else if (this._currentMode == Options.MODE_SPLIT)
+            else if (this._currentCardId == Options.MODE_SPLIT)
             {
                 this.AddSplitUiCommands(result, busy);
             }
-            else
+            else if (this._currentCardId == Options.MODE_REMUX)
             {
                 this.AddRemuxUiCommands(result, busy);
+            }
+            else if (this._toolPageHost?.Instance is ToolboxPageBase toolPage)
+            {
+                result.AddRange(toolPage.BuildUiCommands(busy));
             }
 
             result.Add(new UiCommandDefinition(
                 AppText.T("web.menu.stop"),
                 "F12",
                 "stop_circle",
-                UiCommandPlacement.Menu | UiCommandPlacement.Toolbar | UiCommandPlacement.Status,
+                UiCommandPlacement.Menu | UiCommandPlacement.Toolbar,
                 UiCommandMenuSection.Actions,
                 !busy,
                 this.DoStop)
             {
                 ToolbarLabel = AppText.T("web.status.stop"),
-                StatusLabel = AppText.T("web.status.stop"),
                 SecondaryToolbar = true,
                 DangerToolbar = true,
-                ToolbarOrder = 20,
-                StatusOrder = 90
+                ToolbarOrder = 20
             });
-            if (this._currentMode != Options.MODE_REMUX)
+            if (this._currentCardId != Options.MODE_REMUX)
             {
                 result.Add(new UiCommandDefinition(
                     AppText.T("web.menu.toolPaths"),
@@ -2187,6 +2171,14 @@ namespace RemuxForge.Web.Components.Pages
                     UiCommandMenuSection.Settings,
                     busy,
                     null) { AsyncCallback = this.ShowAiSettingsAsync });
+                result.Add(new UiCommandDefinition(
+                    AppText.T("web.menu.mediaCatalog"),
+                    "",
+                    "",
+                    UiCommandPlacement.Menu,
+                    UiCommandMenuSection.Settings,
+                    busy,
+                    null) { AsyncCallback = this.ShowMediaCatalogSettingsAsync });
             }
 
             result.Add(new UiCommandDefinition(
@@ -2229,68 +2221,57 @@ namespace RemuxForge.Web.Components.Pages
         /// <param name="busy">Stato operativo globale</param>
         private void AddMetadataUiCommands(List<UiCommandDefinition> commands, bool busy)
         {
-            UiCommandPlacement allSurfaces = UiCommandPlacement.Menu | UiCommandPlacement.Toolbar | UiCommandPlacement.Status;
+            UiCommandPlacement allSurfaces = UiCommandPlacement.Menu | UiCommandPlacement.Toolbar;
 
-            commands.Add(new UiCommandDefinition(AppText.T("web.menu.metadata.clear"), "Ctrl+L", "", UiCommandPlacement.Menu | UiCommandPlacement.Status, UiCommandMenuSection.File, busy, null)
+            commands.Add(new UiCommandDefinition(AppText.T("web.menu.metadata.clear"), "Ctrl+L", "", UiCommandPlacement.Menu, UiCommandMenuSection.File, busy, null)
             {
-                AsyncCallback = this.DoClearAsync,
-                StatusLabel = AppText.T("web.status.metadata.clear"),
-                StatusOrder = 100
+                AsyncCallback = this.DoClearAsync
             });
             commands.Add(new UiCommandDefinition(AppText.T("web.menu.metadata.loadPreset"), "F3", "rule", allSurfaces, UiCommandMenuSection.File, busy, null)
             {
                 AsyncCallback = this.ShowMetadataPresetAsync,
                 ToolbarLabel = AppText.T("web.status.metadata.preset"),
-                StatusLabel = AppText.T("web.status.metadata.preset"),
-                ToolbarOrder = 20,
-                StatusOrder = 20
+                ToolbarOrder = 20
             });
             commands.Add(new UiCommandDefinition(AppText.T("web.metadata.ai.toolbar"), "", "auto_awesome", UiCommandPlacement.Toolbar, UiCommandMenuSection.Actions, busy || this._metadataRecords == null || this._metadataRecords.Count == 0 || !this._aiConfigured, null)
             {
                 AsyncCallback = this.ShowMetadataAiWizardAsync,
                 ToolbarOrder = 25
             });
+            commands.Add(new UiCommandDefinition(AppText.T("web.metadata.catalog.toolbar"), "", "travel_explore", UiCommandPlacement.Toolbar, UiCommandMenuSection.Actions, busy || this._metadataRecords == null || this._metadataRecords.Count == 0, null)
+            {
+                AsyncCallback = this.ShowMediaCatalogMatchAsync,
+                ToolbarOrder = 26
+            });
             commands.Add(new UiCommandDefinition(AppText.T("web.menu.metadata.manualEdit"), "F4", "edit_note", allSurfaces, UiCommandMenuSection.Actions, busy, null)
             {
                 AsyncCallback = this.ShowMetadataManualEditAsync,
                 ToolbarLabel = AppText.T("web.status.metadata.manualEdit"),
-                StatusLabel = AppText.T("web.status.metadata.manualEdit"),
-                ToolbarOrder = 40,
-                StatusOrder = 30
+                ToolbarOrder = 40
             });
             commands.Add(new UiCommandDefinition(AppText.T("web.menu.metadata.scanInput"), "F5", "folder_open", allSurfaces, UiCommandMenuSection.Actions, busy, null)
             {
                 AsyncCallback = this.DoScanAsync,
                 ToolbarLabel = AppText.T("web.status.scan"),
-                StatusLabel = AppText.T("web.status.scan"),
-                ToolbarOrder = 10,
-                StatusOrder = 40
+                ToolbarOrder = 10
             });
             commands.Add(new UiCommandDefinition(AppText.T("web.menu.metadata.analyze"), "F6", "manage_search", allSurfaces, UiCommandMenuSection.Actions, busy, this.DoAnalyzeAll)
             {
                 ToolbarLabel = AppText.T("web.status.metadata.analyze"),
-                StatusLabel = AppText.T("web.status.metadata.analyze"),
-                ToolbarOrder = 30,
-                StatusOrder = 50
+                ToolbarOrder = 30
             });
             commands.Add(new UiCommandDefinition(AppText.T("web.menu.metadata.applySelected"), "F9", "publish", allSurfaces, UiCommandMenuSection.Actions, busy, this.DoMergeSelected)
             {
-                StatusLabel = AppText.T("web.status.metadata.apply"),
-                ToolbarOrder = 60,
-                StatusOrder = 60
+                ToolbarOrder = 60
             });
             commands.Add(new UiCommandDefinition(AppText.T("web.menu.metadata.applyAll"), "F10", "done_all", allSurfaces, UiCommandMenuSection.Actions, busy, this.DoMergeAll)
             {
-                StatusLabel = AppText.T("web.status.all"),
-                ToolbarOrder = 70,
-                StatusOrder = 70
+                ToolbarOrder = 70
             });
             commands.Add(new UiCommandDefinition(AppText.T("web.menu.metadata.advancedRename"), "F11", "drive_file_rename_outline", allSurfaces, UiCommandMenuSection.Actions, busy, null)
             {
                 ToolbarLabel = AppText.T("web.status.metadata.rename"),
-                StatusLabel = AppText.T("web.status.metadata.rename"),
                 ToolbarOrder = 50,
-                StatusOrder = 80,
                 AsyncCallback = this.ShowMetadataRenameAsync
             });
         }
@@ -2302,72 +2283,54 @@ namespace RemuxForge.Web.Components.Pages
         /// <param name="busy">Stato operativo globale</param>
         private void AddSplitUiCommands(List<UiCommandDefinition> commands, bool busy)
         {
-            UiCommandPlacement allSurfaces = UiCommandPlacement.Menu | UiCommandPlacement.Toolbar | UiCommandPlacement.Status;
+            UiCommandPlacement allSurfaces = UiCommandPlacement.Menu | UiCommandPlacement.Toolbar;
             // Scansione, analisi e taglio partono da una sorgente configurata
             bool unconfigured = !this.SplitOrchestrator.HasSource;
 
             commands.Add(new UiCommandDefinition(AppText.T("web.remux.clear"), "", "clear_all", allSurfaces, UiCommandMenuSection.File, this.SplitOrchestrator.IsBusy || this._splitResetInProgress, null)
             {
                 AsyncCallback = this.DoClearAsync,
-                ToolbarLabel = AppText.T("web.remux.clear"), StatusLabel = AppText.T("web.remux.clear"),
-                SecondaryToolbar = true, ToolbarOrder = 15, StatusOrder = 100
+                ToolbarLabel = AppText.T("web.remux.clear"),
+                SecondaryToolbar = true, ToolbarOrder = 15
             });
             commands.Add(new UiCommandDefinition(AppText.T("web.menu.configSplit"), "F2", "settings", allSurfaces, UiCommandMenuSection.File, busy, this.ShowConfig)
             {
                 ToolbarLabel = AppText.T("web.status.config"),
-                StatusLabel = AppText.T("web.status.config"),
                 SecondaryToolbar = true,
-                ToolbarOrder = 10,
-                StatusOrder = 10
+                ToolbarOrder = 10
             });
             commands.Add(new UiCommandDefinition(AppText.T("web.menu.scanInput"), "F5", "folder_open", allSurfaces, UiCommandMenuSection.Actions, busy || unconfigured, null)
             {
                 AsyncCallback = this.DoScanAsync,
                 ToolbarLabel = AppText.T("web.status.scan"),
-                StatusLabel = AppText.T("web.status.scan"),
-                ToolbarOrder = 10,
-                StatusOrder = 20
+                ToolbarOrder = 10
             });
             commands.Add(new UiCommandDefinition(AppText.T("web.menu.split.analyzeSelected"), "F6", "manage_search", allSurfaces, UiCommandMenuSection.Actions, busy || unconfigured, this.DoAnalyzeSplitSelected)
             {
                 ToolbarLabel = AppText.T("web.status.split.analyzeSelected"),
-                StatusLabel = AppText.T("web.status.split.analyzeSelected"),
-                ToolbarOrder = 15,
-                StatusOrder = 22
+                ToolbarOrder = 15
             });
             commands.Add(new UiCommandDefinition(AppText.T("web.menu.split.analyzeAll"), "F7", "checklist", allSurfaces, UiCommandMenuSection.Actions, busy || unconfigured, this.DoAnalyzeSplitAll)
             {
                 ToolbarLabel = AppText.T("web.status.split.analyzeAll"),
-                StatusLabel = AppText.T("web.status.split.analyzeAll"),
-                ToolbarOrder = 17,
-                StatusOrder = 24
+                ToolbarOrder = 17
             });
-            commands.Add(new UiCommandDefinition(AppText.T("web.context.split.skip"), "F8", "block", UiCommandPlacement.Menu | UiCommandPlacement.Status, UiCommandMenuSection.Actions, busy || unconfigured, this.ToggleSplitSkip)
-            {
-                StatusLabel = AppText.T("web.status.skip"),
-                StatusOrder = 25
-            });
+            commands.Add(new UiCommandDefinition(AppText.T("web.context.split.skip"), "F8", "block", UiCommandPlacement.Menu, UiCommandMenuSection.Actions, busy || unconfigured, this.ToggleSplitSkip));
             // Editor di taglio sul file selezionato
             commands.Add(new UiCommandDefinition(AppText.T("web.split.openEditor"), "F4", "edit", allSurfaces, UiCommandMenuSection.Actions, busy || unconfigured || this._splitResetInProgress || this._selectedSplitRecord == null, () => this.OpenSplitEditor())
             {
                 ToolbarLabel = AppText.T("web.status.split.openEditor"),
-                StatusLabel = AppText.T("web.status.split.openEditor"),
-                ToolbarOrder = 18,
-                StatusOrder = 15
+                ToolbarOrder = 18
             });
             commands.Add(new UiCommandDefinition(AppText.T("web.menu.split.splitSelected"), "F9", "content_cut", allSurfaces, UiCommandMenuSection.Actions, busy || unconfigured || this._splitReviewStage != null, () => this.DoSplitSelected(false))
             {
                 ToolbarLabel = AppText.T("web.status.split.splitSelected"),
-                StatusLabel = AppText.T("web.status.split.splitSelected"),
-                ToolbarOrder = 19,
-                StatusOrder = 26
+                ToolbarOrder = 19
             });
             commands.Add(new UiCommandDefinition(AppText.T("web.menu.splitAll"), "F10", "call_split", allSurfaces, UiCommandMenuSection.Actions, busy || unconfigured || this._splitReviewStage != null, this.DoMergeAll)
             {
                 ToolbarLabel = AppText.T("web.status.splitAll"),
-                StatusLabel = AppText.T("web.status.splitAll"),
-                ToolbarOrder = 20,
-                StatusOrder = 30
+                ToolbarOrder = 20
             });
             // Comando distinto dalle modalità di taglio (C10, C11)
             commands.Add(new UiCommandDefinition(AppText.T("web.splitJoin.menu"), "", "merge", UiCommandPlacement.Menu | UiCommandPlacement.Toolbar, UiCommandMenuSection.Actions, busy || this._splitReviewStage != null, null)
@@ -2386,78 +2349,56 @@ namespace RemuxForge.Web.Components.Pages
         /// <param name="busy">Stato operativo globale</param>
         private void AddRemuxUiCommands(List<UiCommandDefinition> commands, bool busy)
         {
-            UiCommandPlacement allSurfaces = UiCommandPlacement.Menu | UiCommandPlacement.Toolbar | UiCommandPlacement.Status;
+            UiCommandPlacement allSurfaces = UiCommandPlacement.Menu | UiCommandPlacement.Toolbar;
 
             commands.Add(new UiCommandDefinition(AppText.T("web.remux.clear"), "", "clear_all", allSurfaces, UiCommandMenuSection.File, this.Orchestrator.IsBusy, null)
             {
                 AsyncCallback = this.DoClearAsync,
-                ToolbarLabel = AppText.T("web.remux.clear"), StatusLabel = AppText.T("web.remux.clear"),
-                SecondaryToolbar = true, ToolbarOrder = 15, StatusOrder = 100
+                ToolbarLabel = AppText.T("web.remux.clear"),
+                SecondaryToolbar = true, ToolbarOrder = 15
             });
 
             commands.Add(new UiCommandDefinition(AppText.T("web.remux.configure"), "F2", "settings", allSurfaces, UiCommandMenuSection.File, busy, this.ShowConfig)
             {
                 ToolbarLabel = AppText.T("web.remux.configure"),
-                StatusLabel = AppText.T("web.status.config"),
                 SecondaryToolbar = true,
-                ToolbarOrder = 10,
-                StatusOrder = 10
+                ToolbarOrder = 10
             });
             commands.Add(new UiCommandDefinition(AppText.T("web.menu.scanFile"), "F5", "folder_open", allSurfaces, UiCommandMenuSection.Actions, busy, null)
             {
                 AsyncCallback = this.DoScanAsync,
                 ToolbarLabel = AppText.T("web.status.scan"),
-                StatusLabel = AppText.T("web.status.scan"),
-                ToolbarOrder = 10,
-                StatusOrder = 20
+                ToolbarOrder = 10
             });
             commands.Add(new UiCommandDefinition(AppText.T("web.menu.analyzeSelected"), "F6", "manage_search", allSurfaces, UiCommandMenuSection.Actions, busy, this.DoAnalyzeSelected)
             {
                 ToolbarLabel = AppText.T("web.status.analyze"),
-                StatusLabel = AppText.T("web.status.analyze"),
-                ToolbarOrder = 20,
-                StatusOrder = 30
+                ToolbarOrder = 20
             });
             commands.Add(new UiCommandDefinition(AppText.T("web.menu.analyzeAll"), "F7", "travel_explore", allSurfaces, UiCommandMenuSection.Actions, busy, this.DoAnalyzeAll)
             {
-                StatusLabel = AppText.T("web.status.all"),
-                ToolbarOrder = 30,
-                StatusOrder = 40
+                ToolbarOrder = 30
             });
             commands.Add(new UiCommandDefinition(AppText.T("web.menu.skipUnskip"), "F8", "skip_next", allSurfaces, UiCommandMenuSection.Actions, busy, this.DoToggleSkip)
             {
                 ToolbarLabel = AppText.T("web.status.skip"),
-                StatusLabel = AppText.T("web.status.skip"),
-                ToolbarOrder = 40,
-                StatusOrder = 50
+                ToolbarOrder = 40
             });
             commands.Add(new UiCommandDefinition(AppText.T("web.menu.processSelected"), "F9", "merge_type", allSurfaces, UiCommandMenuSection.Actions, busy, this.DoMergeSelected)
             {
                 ToolbarLabel = AppText.T("web.status.process"),
-                StatusLabel = AppText.T("web.status.process"),
-                ToolbarOrder = 50,
-                StatusOrder = 60
+                ToolbarOrder = 50
             });
             commands.Add(new UiCommandDefinition(AppText.T("web.menu.processAll"), "F10", "done_all", allSurfaces, UiCommandMenuSection.Actions, busy, this.DoMergeAll)
             {
-                StatusLabel = AppText.T("web.status.all"),
-                ToolbarOrder = 60,
-                StatusOrder = 70
+                ToolbarOrder = 60
             });
             commands.Add(new UiCommandDefinition(AppText.T("web.menu.toolPaths"), "", "", UiCommandPlacement.Menu, UiCommandMenuSection.Settings, busy, null) { AsyncCallback = this.ShowToolPathsAsync });
             commands.Add(new UiCommandDefinition(AppText.T("web.menu.ai"), "", "", UiCommandPlacement.Menu, UiCommandMenuSection.Settings, busy, null) { AsyncCallback = this.ShowAiSettingsAsync });
+            commands.Add(new UiCommandDefinition(AppText.T("web.menu.mediaCatalog"), "", "", UiCommandPlacement.Menu, UiCommandMenuSection.Settings, busy, null) { AsyncCallback = this.ShowMediaCatalogSettingsAsync });
             commands.Add(new UiCommandDefinition(AppText.T("web.menu.audio"), "", "", UiCommandPlacement.Menu, UiCommandMenuSection.Settings, busy, null) { AsyncCallback = this.ShowAudioSettingsAsync });
             commands.Add(new UiCommandDefinition(AppText.T("web.menu.advancedSettings"), "", "", UiCommandPlacement.Menu, UiCommandMenuSection.Settings, busy, null) { AsyncCallback = this.ShowAdvancedSettingsAsync });
             commands.Add(new UiCommandDefinition(AppText.T("web.menu.encodingProfiles"), "", "", UiCommandPlacement.Menu, UiCommandMenuSection.Settings, busy, null) { AsyncCallback = this.ShowEncodingProfilesAsync });
-        }
-
-        /// <summary>
-        /// Verifica se uno degli orchestrator sta eseguendo un'operazione
-        /// </summary>
-        /// <returns>True se l'applicazione è occupata</returns>
-        private bool IsAnyBusy()
-        {
-            return this.Orchestrator.IsBusy || this.SplitOrchestrator.IsBusy || this.MetadataOrchestrator.IsBusy;
         }
 
         /// <summary>
@@ -2465,10 +2406,10 @@ namespace RemuxForge.Web.Components.Pages
         /// </summary>
         private void ShowConfig()
         {
-            if (this.IsAnyBusy() || this._showConfig) return;
+            if (this.ToolboxCatalog.IsAnyBusy() || this._showConfig) return;
             this._showConfig = true;
-            if (this._currentMode == Options.MODE_REMUX) _ = this.ShowRemuxConfigAsync();
-            else if (this._currentMode == Options.MODE_SPLIT) _ = this.ShowSplitConfigAsync();
+            if (this._currentCardId == Options.MODE_REMUX) _ = this.ShowRemuxConfigAsync();
+            else if (this._currentCardId == Options.MODE_SPLIT) _ = this.ShowSplitConfigAsync();
         }
 
         /// <summary>
@@ -2660,7 +2601,7 @@ namespace RemuxForge.Web.Components.Pages
             Dictionary<string, object> parameters;
             object result;
 
-            if (this._currentMode != Options.MODE_METADATA)
+            if (this._currentCardId != Options.MODE_METADATA)
                 return;
 
             if (this._selectedMetadataRecord == null)
@@ -2902,7 +2843,7 @@ namespace RemuxForge.Web.Components.Pages
         /// </summary>
         private async Task DoClearAsync()
         {
-            if (this._currentMode == Options.MODE_REMUX)
+            if (this._currentCardId == Options.MODE_REMUX)
             {
                 if (!this.Orchestrator.Clear()) return;
                 this._selection = new RowSelectionState();
@@ -2919,7 +2860,7 @@ namespace RemuxForge.Web.Components.Pages
                 this._remuxPreviewSnapshot = null;
                 return;
             }
-            if (this._currentMode == Options.MODE_SPLIT)
+            if (this._currentCardId == Options.MODE_SPLIT)
             {
                 if (this._splitResetInProgress || !this.SplitOrchestrator.Clear()) return;
                 this._splitSelection = new RowSelectionState();
@@ -2931,7 +2872,7 @@ namespace RemuxForge.Web.Components.Pages
                 this._contextMenuCommands.Clear();
                 return;
             }
-            if (this._currentMode == Options.MODE_METADATA)
+            if (this._currentCardId == Options.MODE_METADATA)
             {
                 this.MetadataOrchestrator.Clear();
                 await this.ShowMetadataInputPickerAsync();
@@ -2943,7 +2884,7 @@ namespace RemuxForge.Web.Components.Pages
         /// </summary>
         private async Task ShowMetadataRenameAsync()
         {
-            if (this._currentMode == Options.MODE_METADATA)
+            if (this._currentCardId == Options.MODE_METADATA)
             {
                 if (this._metadataRecords.Count == 0)
                 {
@@ -3008,13 +2949,38 @@ namespace RemuxForge.Web.Components.Pages
         }
 
         /// <summary>
+        /// Mostra dialog impostazioni dei cataloghi media
+        /// </summary>
+        private async Task ShowMediaCatalogSettingsAsync()
+        {
+            await this.OpenAppDialogAsync<MediaCatalogSettingsDialogComponent>(open => this._showMediaCatalogSettings = open, AppText.T("web.mediaCatalogSettings.title"), null,
+                AppDialogs.CreateOptions(AppDialogs.WIDTH_AI_SETTINGS, null, this._jsModule));
+        }
+
+        /// <summary>
+        /// Mostra l'abbinamento dei file Metadata a un titolo del catalogo
+        /// </summary>
+        private async Task ShowMediaCatalogMatchAsync()
+        {
+            Dictionary<string, object> parameters;
+
+            if (this._currentCardId != Options.MODE_METADATA || this.MetadataOrchestrator.IsBusy)
+                return;
+
+            parameters = new Dictionary<string, object>();
+            parameters.Add(nameof(MediaCatalogMatchDialogComponent.Files), this.MetadataOrchestrator.GetRecords().ConvertAll(record => record.InputFile));
+            await this.OpenAppDialogAsync<MediaCatalogMatchDialogComponent>(open => this._showMediaCatalogMatch = open, AppText.T("web.mediaCatalogMatch.title"), parameters,
+                AppDialogs.CreateOptions(AppDialogs.WIDTH_AI_WIZARD, null, this._jsModule));
+        }
+
+        /// <summary>
         /// Mostra wizard preset Metadata con AI
         /// </summary>
         private async Task ShowMetadataAiWizardAsync()
         {
             Dictionary<string, object> parameters;
 
-            if (this._currentMode != Options.MODE_METADATA || this.MetadataOrchestrator.IsBusy)
+            if (this._currentCardId != Options.MODE_METADATA || this.MetadataOrchestrator.IsBusy)
                 return;
 
             parameters = new Dictionary<string, object>();

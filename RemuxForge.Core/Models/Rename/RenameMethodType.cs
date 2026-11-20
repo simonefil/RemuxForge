@@ -21,6 +21,9 @@ namespace RemuxForge.Core.Models
         NewName,
 
         /// <summary>Rimuove caratteri dai bordi del nome file</summary>
-        Trim
+        Trim,
+
+        /// <summary>Compone il nome file dai dati del catalogo media abbinati</summary>
+        Catalog
     }
 }

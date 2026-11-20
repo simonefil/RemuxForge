@@ -137,6 +137,28 @@ namespace RemuxForge.Web.Components.Shared
         }
 
         /// <summary>
+        /// Apre il browser per scegliere più file della stessa cartella
+        /// </summary>
+        /// <param name="dialogService">Servizio dialog</param>
+        /// <param name="jsModule">Modulo JS interop</param>
+        /// <param name="initialPath">Percorso iniziale</param>
+        /// <param name="allowedExtensions">Estensioni ammesse senza punto, null per tutti i file</param>
+        /// <returns>Percorsi scelti nell'ordine della lista, vuota se annullato</returns>
+        public static async Task<List<string>> BrowseFilesAsync(DialogService dialogService, IJSObjectReference jsModule, string initialPath, List<string> allowedExtensions)
+        {
+            Dictionary<string, object> parameters = new Dictionary<string, object>();
+            parameters.Add(nameof(FolderBrowserDialog.InitialPath), initialPath);
+            parameters.Add(nameof(FolderBrowserDialog.ShowFiles), true);
+            parameters.Add(nameof(FolderBrowserDialog.AllowCurrentFolderSelection), false);
+            parameters.Add(nameof(FolderBrowserDialog.AllowedExtensions), allowedExtensions);
+            parameters.Add(nameof(FolderBrowserDialog.AllowMultipleFiles), true);
+
+            object result = await OpenAsync<FolderBrowserDialog>(dialogService, AppText.T("web.folder.selectFilesTitle"), parameters,
+                CreateOptions("80vw", "70vh", jsModule, "rf-browse-dialog"), jsModule);
+            return result as List<string> ?? new List<string>();
+        }
+
+        /// <summary>
         /// Apre il report MediaInfo
         /// </summary>
         /// <param name="dialogService">Servizio dialog</param>
@@ -176,10 +198,25 @@ namespace RemuxForge.Web.Components.Shared
         /// <returns>True se confermato</returns>
         public static async Task<bool> ConfirmAsync(DialogService dialogService, string title, string message, string okText, string cancelText)
         {
+            return await ConfirmAsync(dialogService, title, message, okText, cancelText, WIDTH_CONFIRM);
+        }
+
+        /// <summary>
+        /// Chiede una conferma con un dialog Radzen della larghezza indicata, per i testi lunghi
+        /// </summary>
+        /// <param name="dialogService">Servizio dialog</param>
+        /// <param name="title">Titolo</param>
+        /// <param name="message">Messaggio, gli a capo vengono mostrati</param>
+        /// <param name="okText">Testo del pulsante di conferma</param>
+        /// <param name="cancelText">Testo del pulsante di annullamento</param>
+        /// <param name="width">Larghezza del dialog, una delle costanti WIDTH_</param>
+        /// <returns>True se confermato</returns>
+        public static async Task<bool> ConfirmAsync(DialogService dialogService, string title, string message, string okText, string cancelText, string width)
+        {
             ConfirmOptions options = new ConfirmOptions();
             options.OkButtonText = okText;
             options.CancelButtonText = cancelText;
-            options.Width = WIDTH_CONFIRM;
+            options.Width = width;
             options.CloseDialogOnOverlayClick = false;
             options.CloseDialogOnEsc = true;
             options.CssClass = "rf-confirm";

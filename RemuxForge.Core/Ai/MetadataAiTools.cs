@@ -222,11 +222,10 @@ namespace RemuxForge.Core.Ai
         /// <summary>
         /// Esegue query_files con gli argomenti inviati dal modello
         /// </summary>
-        /// <param name="argumentsJson">Argomenti JSON della chiamata</param>
+        /// <param name="arguments">Argomenti della chiamata, null se non sono un oggetto JSON</param>
         /// <returns>Risultato JSON per il modello</returns>
-        public string QueryFiles(string argumentsJson)
+        public string QueryFiles(JsonObject arguments)
         {
-            JsonObject arguments = AiOAuthFlow.TryParseObject(argumentsJson);
             List<string> errors = new List<string>();
             MkvMetadataTargetScope scope;
             List<string> fields = new List<string>();
@@ -239,8 +238,8 @@ namespace RemuxForge.Core.Ai
             if (arguments == null)
                 return CreateErrorOutput(new List<string> { "Arguments are not a JSON object." });
 
-            if (!TryParseScope(AiOAuthFlow.GetString(arguments, "scope"), out scope))
-                errors.Add("Unknown scope '" + AiOAuthFlow.GetString(arguments, "scope") + "'. Use file, video, audio or subtitle.");
+            if (!TryParseScope(AiJson.GetString(arguments, "scope"), out scope))
+                errors.Add("Unknown scope '" + AiJson.GetString(arguments, "scope") + "'. Use file, video, audio or subtitle.");
 
             JsonArray fieldArray = arguments["fields"] as JsonArray;
             if (fieldArray == null || fieldArray.Count == 0)
@@ -290,7 +289,7 @@ namespace RemuxForge.Core.Ai
 
             JsonObject result = new JsonObject();
             result["matched"] = matched.Count;
-            if (AiOAuthFlow.GetString(arguments, "mode") == "distinct")
+            if (AiJson.GetString(arguments, "mode") == "distinct")
             {
                 JsonObject distinct = new JsonObject();
                 for (int f = 0; f < fields.Count; f++)
@@ -336,19 +335,18 @@ namespace RemuxForge.Core.Ai
         /// <summary>
         /// Valida il preset inviato dal modello
         /// </summary>
-        /// <param name="argumentsJson">Argomenti JSON della chiamata</param>
+        /// <param name="arguments">Argomenti della chiamata, null se non sono un oggetto JSON</param>
         /// <param name="outcome">Esito: preset valido o errori</param>
         /// <returns>Risultato JSON per il modello</returns>
-        public string SubmitPreset(string argumentsJson, out AiPresetGenerationResult outcome)
+        public string SubmitPreset(JsonObject arguments, out AiPresetGenerationResult outcome)
         {
-            JsonObject arguments = AiOAuthFlow.TryParseObject(argumentsJson);
-            string presetJson = arguments != null ? AiOAuthFlow.GetString(arguments, "preset_json") : "";
+            string presetJson = arguments != null ? AiJson.GetString(arguments, "preset_json") : "";
             MetadataPresetService presetService = new MetadataPresetService("");
             JsonObject presetNode;
             MkvMetadataPreset preset;
 
             outcome = new AiPresetGenerationResult();
-            presetNode = AiOAuthFlow.TryParseObject(presetJson);
+            presetNode = AiJson.TryParseObject(presetJson);
             if (presetNode == null)
             {
                 outcome.Errors.Add("preset_json is not a valid JSON object.");
@@ -552,19 +550,19 @@ namespace RemuxForge.Core.Ai
             if (source == null)
                 return "condition is not an object.";
 
-            condition.FieldKey = AiOAuthFlow.GetString(source, "FieldKey").Trim();
+            condition.FieldKey = AiJson.GetString(source, "FieldKey").Trim();
             string fieldError = ValidateQueryField(condition.FieldKey, scope, false);
             if (fieldError.Length > 0)
                 return fieldError;
 
-            if (!Enum.TryParse(AiOAuthFlow.GetString(source, "Operator"), false, out conditionOperator) || !Enum.IsDefined(typeof(MkvMetadataConditionOperator), conditionOperator))
-                return "Unknown operator '" + AiOAuthFlow.GetString(source, "Operator") + "'.";
+            if (!Enum.TryParse(AiJson.GetString(source, "Operator"), false, out conditionOperator) || !Enum.IsDefined(typeof(MkvMetadataConditionOperator), conditionOperator))
+                return "Unknown operator '" + AiJson.GetString(source, "Operator") + "'.";
 
             condition.Operator = conditionOperator;
-            condition.Value = AiOAuthFlow.GetString(source, "Value");
-            condition.FromValue = AiOAuthFlow.GetString(source, "FromValue");
-            condition.ToValue = AiOAuthFlow.GetString(source, "ToValue");
-            condition.Unit = AiOAuthFlow.GetString(source, "Unit");
+            condition.Value = AiJson.GetString(source, "Value");
+            condition.FromValue = AiJson.GetString(source, "FromValue");
+            condition.ToValue = AiJson.GetString(source, "ToValue");
+            condition.Unit = AiJson.GetString(source, "Unit");
 
             JsonArray values = source["Values"] as JsonArray;
             if (values != null)

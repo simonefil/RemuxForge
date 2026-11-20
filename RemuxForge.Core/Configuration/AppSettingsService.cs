@@ -686,7 +686,7 @@ namespace RemuxForge.Core.Configuration
                 this._model.Ui.Theme = "material-dark";
 
             if (this._model.Ui.LastMode == null)
-                this._model.Ui.LastMode = Options.MODE_REMUX;
+                this._model.Ui.LastMode = "";
 
             if (this._model.Ui.Language == null)
                 this._model.Ui.Language = AppText.LANG_EN;
@@ -855,11 +855,6 @@ namespace RemuxForge.Core.Configuration
             if (!themeValid)
             {
                 this._model.Ui.Theme = "material-dark";
-            }
-
-            if (this._model.Ui.LastMode != Options.MODE_REMUX && this._model.Ui.LastMode != Options.MODE_SPLIT && this._model.Ui.LastMode != Options.MODE_METADATA)
-            {
-                this._model.Ui.LastMode = Options.MODE_REMUX;
             }
 
             string normalizedLanguage = AppText.NormalizeLanguage(this._model.Ui.Language);

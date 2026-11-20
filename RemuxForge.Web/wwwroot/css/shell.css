@@ -11,10 +11,10 @@
     font-size: var(--rz-body-font-size);
 }
 
-.rf-layout {
+.rf-shell {
     display: grid;
-    grid-template-columns: 14.5rem minmax(0, 1fr);
-    grid-template-rows: minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: 4rem minmax(0, 1fr);
     width: 100%;
     height: 100%;
     overflow: hidden;
@@ -22,103 +22,11 @@
     color: var(--rz-text-color);
 }
 
-.rf-layout.rf-navigation-collapsed {
-    grid-template-columns: 5rem minmax(0, 1fr);
-}
-
-.rf-mode-navigation {
-    display: flex;
-    min-width: 0;
-    flex-direction: column;
-    gap: var(--rz-gap);
-    padding: var(--rz-gap) calc(var(--rz-gap) * 0.75);
-    border-inline-end: var(--rz-sidebar-border-inline-end);
-    background: var(--rz-sidebar-background-color);
-    color: var(--rz-sidebar-color);
-    font-size: var(--rz-panel-menu-font-size);
-}
-
-.rf-brand {
-    display: flex;
-    align-items: center;
-    gap: calc(var(--rz-gap) * 0.75);
-    min-height: 3rem;
-    padding: 0 calc(var(--rz-gap) * 0.5);
-}
-
-.rf-brand-logo {
-    display: block;
-    width: 2.25rem;
-    height: 2.25rem;
-    border-radius: var(--rz-border-radius);
-}
-
-.rf-brand-name {
-    font-size: var(--rz-text-subtitle1-font-size);
-    font-weight: 700;
-    letter-spacing: -0.02em;
-}
-
-.rf-mode-navigation-items,
-.rf-mode-navigation-footer {
-    display: flex;
-    flex-direction: column;
-    gap: calc(var(--rz-gap) * 0.25);
-}
-
-.rf-mode-navigation-footer {
-    margin-top: auto;
-}
-
-nav.rf-mode-navigation .rz-button.rz-base,
-nav.rf-mode-navigation .rz-button.rz-primary {
-    width: 100%;
-    justify-content: flex-start;
-    border-radius: var(--rz-panel-menu-item-border-radius);
-    box-shadow: none;
-    font-size: var(--rz-panel-menu-font-size);
-    font-weight: var(--rz-panel-menu-font-weight);
-}
-
-nav.rf-mode-navigation .rz-button .rz-button-box {
-    width: 100%;
-    justify-content: flex-start;
-}
-
-nav.rf-mode-navigation .rz-button.rz-base.rz-variant-text {
-    background: var(--rz-panel-menu-item-background-color);
-    color: var(--rz-panel-menu-item-color);
-}
-
-nav.rf-mode-navigation .rz-button.rz-base.rz-variant-text:hover {
-    background: var(--rz-panel-menu-item-hover-background-color);
-    color: var(--rz-panel-menu-item-hover-color);
-}
-
-nav.rf-mode-navigation .rz-button.rz-primary.rz-variant-text {
-    background: var(--rz-panel-menu-item-active-background-color);
-    color: var(--rz-panel-menu-item-active-color, var(--rz-panel-menu-item-color));
-}
-
-.rf-navigation-collapsed .rf-brand-name,
-.rf-navigation-collapsed .rf-mode-navigation .rz-button .rz-button-text {
-    display: none;
-}
-
-.rf-navigation-collapsed .rf-brand,
-.rf-navigation-collapsed .rf-mode-navigation .rz-button {
-    justify-content: center;
-}
-
-.rf-navigation-collapsed .rf-mode-navigation .rz-button .rz-button-box {
-    justify-content: center;
-}
-
 .rf-app-stage {
     display: grid;
     /* La colonna segue la larghezza dello stage, non quella del contenuto: header e griglie si adattano al riquadro */
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: 4rem auto minmax(0, 1fr) auto auto;
+    grid-template-rows: auto minmax(0, 1fr) auto;
     min-width: 0;
     min-height: 0;
     overflow: hidden;
@@ -136,21 +44,60 @@ nav.rf-mode-navigation .rz-button.rz-primary.rz-variant-text {
     box-shadow: var(--rz-header-shadow);
 }
 
+/* Percorso nell'header: il logo resta dove sta nella home e porta alla home, segue la card corrente */
 .rf-app-title {
     display: flex;
     min-width: 0;
-    align-items: baseline;
+    align-items: center;
+    gap: calc(var(--rz-gap) * 1.25);
+}
+
+/* Stessa altezza e centratura del marchio della home: il logo non si sposta cambiando pagina */
+.rf-app-breadcrumb {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    min-height: 3rem;
+}
+
+.rf-app-breadcrumb .rz-breadcrumb-item + .rz-breadcrumb-item::before {
+    opacity: 0.55;
+}
+
+.rf-home-link {
+    display: inline-flex;
+    align-items: center;
     gap: calc(var(--rz-gap) * 0.75);
+    border-radius: var(--rz-border-radius);
+    color: inherit;
+    text-decoration: none;
+}
+
+.rf-home-link .rf-brand-name {
+    opacity: 0.75;
+}
+
+.rf-home-link:hover .rf-brand-name,
+.rf-home-link:focus-visible .rf-brand-name {
+    opacity: 1;
+    text-decoration: underline;
+}
+
+.rf-home-link:focus-visible {
+    outline: var(--rz-outline-focus);
+    outline-offset: 2px;
 }
 
 .rf-app-title-mode {
-    font-size: var(--rz-text-h6-font-size);
+    font-size: var(--rz-text-subtitle1-font-size);
     font-weight: 700;
 }
 
 .rf-app-title-description {
     overflow: hidden;
     color: inherit;
+    font-size: var(--rz-text-body2-font-size);
+    opacity: 0.65;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
@@ -410,53 +357,6 @@ nav.rf-mode-navigation .rz-button.rz-primary.rz-variant-text {
     text-align: right;
 }
 
-.status-bar {
-    display: flex;
-    min-height: 2rem;
-    align-items: center;
-    gap: calc(var(--rz-gap) * 0.25);
-    padding: 0 var(--rz-gap);
-    /* Nessuno scorrimento: le etichette dei comandi si accorciano con l'ellissi e il testo intero resta nel tooltip */
-    overflow: hidden;
-    border-top: var(--rz-footer-border);
-    background: var(--rz-footer-background-color);
-    color: var(--rz-footer-color);
-}
-
-.cmd-key {
-    display: inline-flex;
-    min-width: 0;
-    flex: 0 1 auto;
-    min-height: 1.75rem;
-    align-items: center;
-    gap: calc(var(--rz-gap) * 0.25);
-    padding: 0 calc(var(--rz-gap) * 0.5);
-    border-radius: var(--rz-menu-item-border-radius);
-    color: var(--rz-text-color);
-    cursor: pointer;
-    white-space: nowrap;
-    border: 0;
-    background: transparent;
-    box-shadow: none;
-}
-
-.cmd-key:hover {
-    background: var(--rz-menu-item-hover-background-color);
-    color: var(--rz-menu-item-hover-color);
-}
-
-.cmd-key-text {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.key-label {
-    color: var(--rz-text-secondary-color);
-    font-size: var(--rz-text-caption-font-size);
-    font-weight: var(--rz-text-caption-font-weight);
-}
-
 .rf-menu-bar {
     display: flex;
     position: relative;
@@ -568,6 +468,59 @@ nav.rf-mode-navigation .rz-button.rz-primary.rz-variant-text {
     overflow-wrap: anywhere;
 }
 
+/* Layout automatico: la colonna delle etichette prende la larghezza della più lunga nella lingua scelta */
+.info-table table {
+    table-layout: auto;
+}
+
+/* Versione, indirizzi e avvisi vanno a capo nella finestra stretta invece di uscirne */
+.info-table table td:not(.info-label) .rz-cell-data {
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.info-table .info-label {
+    font-weight: bold;
+    width: 1%;
+    white-space: nowrap;
+}
+
+.info-table a {
+    color: var(--accent);
+}
+
+/* Loghi in colonna allineati a sinistra, testo centrato sul logo; il logo TheTVDB ha la scritta più bassa del riquadro, quindi è più alto per pareggiare quella di TMDB */
+.info-table .info-catalog {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 0.35em 1ch;
+}
+
+.info-table .info-tvdb-logo,
+.info-table .info-tmdb-logo {
+    justify-self: start;
+}
+
+.info-table .info-tvdb-logo {
+    height: 1.6em;
+}
+
+.info-table .info-tmdb-logo {
+    height: 1em;
+}
+
+/* Impostazioni AI: riquadro del login in corso */
+.ai-login-pending {
+    padding: 0.5em;
+    border: 1px solid var(--rz-base-300);
+}
+
+/* Il link segue il colore del testo, leggibile anche col tema scuro, come in Info */
+.ai-login-pending a {
+    color: inherit;
+}
+
 /* Conferme: il messaggio conserva gli a capo dei testi localizzati */
 .rz-dialog.rf-confirm .rz-dialog-confirm-message {
     white-space: pre-line;
@@ -575,27 +528,6 @@ nav.rf-mode-navigation .rz-button.rz-primary.rz-variant-text {
 }
 
 @media (max-width: 1000px) {
-    .rf-layout {
-        grid-template-columns: 4.5rem minmax(0, 1fr);
-    }
-
-    /* La colonna da 4.5rem contiene solo le icone: le etichette ne uscirebbero finendo sotto la toolbar */
-    .rf-brand-name,
-    .rf-mode-navigation .rz-button .rz-button-text {
-        display: none;
-    }
-
-    .rf-brand,
-    .rf-mode-navigation .rz-button,
-    .rf-mode-navigation .rz-button .rz-button-box {
-        justify-content: center;
-    }
-
-    /* Sotto i 1000px la colonna resta sempre compressa: Comprimi/Espandi non cambierebbe nulla */
-    nav.rf-mode-navigation .rz-button.rf-navigation-toggle {
-        display: none;
-    }
-
     .rf-app-title-description {
         display: none;
     }

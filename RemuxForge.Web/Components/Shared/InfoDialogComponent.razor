@@ -1,4 +1,5 @@
 @inherits AppDialogContentBase
+@inject ThemeService ThemeService
 
 <div class="rf-dialog" @ref="DialogContent">
     <div class="rf-dialog-body">
@@ -29,6 +30,17 @@
                     <RadzenTableCell><a href="https://discord.gg/JpHWKGyaqF" target="_blank">https://discord.gg/JpHWKGyaqF</a></RadzenTableCell>
                 </RadzenTableRow>
                 <RadzenTableRow>
+                    <RadzenTableCell class="info-label">@AppText.T("web.info.catalogData")</RadzenTableCell>
+                    <RadzenTableCell>
+                        <div class="info-catalog">
+                            <img src="@(AppSettingsModel.IsDarkTheme(ThemeService.Theme) ? "tvdb-logo-dark.png" : "tvdb-logo.png")" alt="TheTVDB" class="info-tvdb-logo" />
+                            <span>@AppText.T("web.info.tvdbAttribution") <a href="https://thetvdb.com" target="_blank">TheTVDB</a></span>
+                            <img src="tmdb-logo.svg" alt="TMDB" class="info-tmdb-logo" />
+                            <span>@AppText.T("web.info.tmdbNotice")</span>
+                        </div>
+                    </RadzenTableCell>
+                </RadzenTableRow>
+                <RadzenTableRow>
                     <RadzenTableCell class="info-label">@AppText.T("web.info.runtime")</RadzenTableCell>
                     <RadzenTableCell>@_runtime</RadzenTableCell>
                 </RadzenTableRow>
@@ -43,16 +55,6 @@
         <RadzenButton Text="@AppText.T("web.common.close")" Icon="close" Click="@(() => CloseDialog())" />
     </div>
 </div>
-
-<style>
-    .info-table .info-label {
-        font-weight: bold;
-        width: 14ch;
-    }
-    .info-table a {
-        color: var(--accent);
-    }
-</style>
 
 @code {
     /// <summary>

@@ -1,0 +1,374 @@
+@using RemuxForge.Core.Toolbox.AddTracks
+@inherits ToolboxBatchPageBase<AddTracksOrchestrator, AddTracksVideo>
+
+@{
+    List<AddTracksVideo> videos = Orchestrator.GetRecords();
+    List<AddTracksTrackFile> tracks = Orchestrator.GetTracks();
+    bool busy = Orchestrator.IsBusy;
+    string pairingError = Orchestrator.PairingError;
+    int delayMs = Orchestrator.DelayMs;
+    int pending = videos.FindAll(v => !v.Result.IsDone).Count;
+
+    _plan = Orchestrator.PlanOutputs();
+}
+<div class="rf-panel rf-tool-page">
+    <ToolboxOutputOptions Orchestrator="@Orchestrator" JsModule="@JsModule" Id="add-tracks" SourceOptionText="@AppText.T("web.toolbox.addTracks.overwrite")" />
+
+    @* Testata: proprietà della traccia aggiunta, uguali per tutte le coppie *@
+    <div class="rf-tool-options">
+        <div class="rf-tool-options-row">
+            <span class="rf-tool-label rf-addtracks-heading">@AppText.T("web.toolbox.addTracks.propertiesLabel")</span>
+            <div class="rf-tool-field">
+                <span class="rf-tool-label">@AppText.T("web.toolbox.addTracks.language")</span>
+                <div class="rf-addtracks-language">
+                    <LanguageChipsComponent Multiple="false" Value="@Orchestrator.Language" Label="@AppText.T("web.toolbox.addTracks.language")" Disabled="@busy"
+                                            Placeholder="@AppText.T("web.toolbox.addTracks.languageFromFile")"
+                                            ValueChanged="@((string value) => Orchestrator.SetProperties(value, Orchestrator.Name, Orchestrator.IsDefault, Orchestrator.IsForced, Orchestrator.DelayMs))" />
+                </div>
+            </div>
+            <div class="rf-tool-field">
+                <RadzenLabel class="rf-tool-label" Text="@AppText.T("web.toolbox.addTracks.name")" Component="AddTracksName" />
+                <RadzenTextBox Name="AddTracksName" class="rf-addtracks-name" Immediate="true" Disabled="@busy" Value="@Orchestrator.Name" Placeholder="@AppText.T("web.toolbox.addTracks.nameFromFile")"
+                               Change="@((string value) => Orchestrator.SetProperties(Orchestrator.Language, value, Orchestrator.IsDefault, Orchestrator.IsForced, Orchestrator.DelayMs))" />
+            </div>
+            <div class="rf-tool-field">
+                <RadzenLabel class="rf-tool-label" Text="@AppText.T("web.toolbox.addTracks.delay")" Component="AddTracksDelay" />
+                <RadzenNumeric TValue="int" Name="AddTracksDelay" class="rf-addtracks-delay" Immediate="true" Disabled="@busy" Value="@delayMs" Step="100"
+                               aria-describedby="@(delayMs < 0 ? "add-tracks-delay-warning" : null)"
+                               Change="@((int value) => Orchestrator.SetProperties(Orchestrator.Language, Orchestrator.Name, Orchestrator.IsDefault, Orchestrator.IsForced, value))" />
+                <span class="rf-tool-label">ms</span>
+            </div>
+            <div class="rf-tool-field">
+                <RadzenLabel class="rf-tool-label" Text="@AppText.T("web.toolbox.addTracks.charset")" Component="AddTracksCharset" />
+                <RadzenDropDown TValue="string" Name="AddTracksCharset" class="rf-addtracks-charset" Disabled="@busy" Value="@Orchestrator.Charset"
+                                Data="@SubtitleCharsets.Choices" TextProperty="Value" ValueProperty="Key"
+                                Change="@((object value) => Orchestrator.SetCharset((string)value))" />
+            </div>
+            <LabeledSwitchComponent Label="@AppText.T("web.toolbox.addTracks.default")" Value="@Orchestrator.IsDefault" Disabled="@busy"
+                                    ValueChanged="@((bool value) => Orchestrator.SetProperties(Orchestrator.Language, Orchestrator.Name, value, Orchestrator.IsForced, Orchestrator.DelayMs))" />
+            <LabeledSwitchComponent Label="@AppText.T("web.toolbox.addTracks.forced")" Value="@Orchestrator.IsForced" Disabled="@busy"
+                                    ValueChanged="@((bool value) => Orchestrator.SetProperties(Orchestrator.Language, Orchestrator.Name, Orchestrator.IsDefault, value, Orchestrator.DelayMs))" />
+        </div>
+        @* Un ritardo negativo taglia ciò che finirebbe prima dell'inizio: lo si dice, perché mkvmerge lo fa senza avvisi *@
+        @if (delayMs < 0)
+        {
+            <RadzenText id="add-tracks-delay-warning" TextStyle="TextStyle.Caption" TagName="TagName.P" aria-live="polite" class="rf-tool-hint">
+                <RadzenIcon Icon="warning" IconStyle="IconStyle.Warning" class="rf-addtracks-hint-icon" aria-hidden="true" />
+                @AppText.T("web.toolbox.addTracks.hintNegativeDelay")
+            </RadzenText>
+        }
+    </div>
+
+    @* Abbinamento: quante righe per parte e, se non si può avviare, perché *@
+    <div class="rf-addtracks-pairing" aria-live="polite">
+        <RadzenBadge IsPill="true" BadgeStyle="@(videos.Count == tracks.Count && videos.Count > 0 ? BadgeStyle.Success : BadgeStyle.Warning)"
+                     Text="@AppText.F("web.toolbox.addTracks.pairingCount", AppText.Count("web.toolbox.addTracks.videosCount", videos.Count), AppText.Count("web.toolbox.addTracks.tracksCount", tracks.Count))" />
+        <RadzenText TextStyle="TextStyle.Body2" TagName="TagName.Span" class="@(pairingError.Length > 0 ? "rf-addtracks-pairing-error" : "rf-tool-muted")">
+            @(pairingError.Length > 0 ? pairingError : pending > 0 ? AppText.Count("web.toolbox.addTracks.pairingReady", pending) : videos.Count > 0 ? AppText.T("web.toolbox.addTracks.pairingDone") : "")
+        </RadzenText>
+    </div>
+
+    @* Intestazioni fuori dall'area che scorre: le due liste scorrono insieme, così la riga i resta accanto alla riga i *@
+    <div class="rf-addtracks-heads">
+        <div class="rf-addtracks-list-head rf-addtracks-videos">
+            <RadzenText id="add-tracks-videos-title" TextStyle="TextStyle.Subtitle2" TagName="TagName.H2">@AppText.T("web.toolbox.addTracks.videosTitle")</RadzenText>
+            <RadzenButton Text="@AppText.T("web.toolbox.addTracks.addVideos")" Icon="add" Size="ButtonSize.Small" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Disabled="@busy" Click="@AddFilesAsync" />
+        </div>
+        <div class="rf-addtracks-list-head rf-addtracks-tracks">
+            <RadzenText id="add-tracks-tracks-title" TextStyle="TextStyle.Subtitle2" TagName="TagName.H2">@AppText.T("web.toolbox.addTracks.tracksTitle")</RadzenText>
+            <RadzenButton Text="@AppText.T("web.toolbox.addTracks.addTracks")" Icon="playlist_add" Size="ButtonSize.Small" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Disabled="@busy" Click="@AddTrackFilesAsync" />
+        </div>
+    </div>
+    <div class="rf-addtracks-lists">
+        <section class="rf-addtracks-list rf-addtracks-videos" aria-labelledby="add-tracks-videos-title">
+            @if (videos.Count == 0)
+            {
+                <ToolboxEmptyState Title="@AppText.T("web.toolbox.addTracks.videosEmptyTitle")" Compact="true" HeadingTag="TagName.H3" />
+            }
+            else
+            {
+                <RadzenDataGrid TItem="AddTracksVideo"
+                                Data="@videos"
+                                class="rf-data-grid rf-addtracks-grid"
+                                AllowAlternatingRows="false"
+                                AllowColumnResize="false"
+                                AllowPaging="false"
+                                AllowSorting="false"
+                                Density="Density.Compact"
+                                GridLines="DataGridGridLines.Horizontal"
+                                RowRender="@((RowRenderEventArgs<AddTracksVideo> args) => RenderRow(args.Attributes, LIST_VIDEOS, args.Data, videos.IndexOf(args.Data), tracks.Count, busy))">
+                    <Columns>
+                        <RadzenDataGridColumn TItem="AddTracksVideo" Title="#" Width="3rem">
+                            <Template Context="video"><CellText Text="@((videos.IndexOf(video) + 1).ToString())" /></Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="AddTracksVideo" Title="@AppText.T("web.dashboard.file")" Width="38%">
+                            <Template Context="video">
+                                <span class="rf-addtracks-file" title="@video.InputPath"><RadzenIcon Icon="drag_indicator" class="rf-addtracks-handle" aria-hidden="true" />@System.IO.Path.GetFileName(video.InputPath)</span>
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="AddTracksVideo" Title="@AppText.T("web.dashboard.status")" Width="22%">
+                            <Template Context="video">
+                                <ToolboxStatusBadge Result="@video.Result" TextPrefix="web.toolbox.addTracks" />
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="AddTracksVideo" Title="@AppText.T("web.toolbox.list.result")" Width="40%">
+                            <Template Context="video">
+                                @* Il file scritto, perché il video è bloccato o il motivo; prima dell'avvio la traccia mancante o l'uscita prevista *@
+                                @if (video.Result.OutputPath.Length == 0 && video.BlockedReason.Length > 0)
+                                {
+                                    <span class="rf-addtracks-wrap rf-addtracks-blocked-text" title="@video.BlockedReason">@video.BlockedReason</span>
+                                }
+                                else
+                                {
+                                    <ToolboxResultCell Result="@video.Result" WrittenText="@(video.Replaced ? AppText.T("web.toolbox.addTracks.resultReplaced") : null)" MessageClass="rf-addtracks-wrap">
+                                        @if (videos.IndexOf(video) >= tracks.Count)
+                                        {
+                                            <span class="rf-addtracks-unpaired-text">@AppText.T("web.toolbox.addTracks.missingTrack")</span>
+                                        }
+                                        else if (_plan.TryGetValue(video, out string planned))
+                                        {
+                                            string plannedText = System.IO.Path.GetFullPath(planned) == video.InputPath ? AppText.T("web.toolbox.addTracks.plannedReplace") : AppText.F("web.toolbox.addTracks.plannedFile", System.IO.Path.GetFileName(planned));
+                                            <span class="rf-tool-muted" title="@planned">@plannedText</span>
+                                        }
+                                    </ToolboxResultCell>
+                                }
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="AddTracksVideo" Width="7.5rem" TextAlign="TextAlign.Center">
+                            <Template Context="video">@MoveButtons(LIST_VIDEOS, video, videos.IndexOf(video), videos.Count, System.IO.Path.GetFileName(video.InputPath), busy)</Template>
+                        </RadzenDataGridColumn>
+                    </Columns>
+                </RadzenDataGrid>
+            }
+        </section>
+
+        <section class="rf-addtracks-list rf-addtracks-tracks" aria-labelledby="add-tracks-tracks-title">
+            @if (tracks.Count == 0)
+            {
+                <ToolboxEmptyState Title="@AppText.T("web.toolbox.addTracks.tracksEmptyTitle")" Compact="true" HeadingTag="TagName.H3" />
+            }
+            else
+            {
+                <RadzenDataGrid TItem="AddTracksTrackFile"
+                                Data="@tracks"
+                                class="rf-data-grid rf-addtracks-grid"
+                                AllowAlternatingRows="false"
+                                AllowColumnResize="false"
+                                AllowPaging="false"
+                                AllowSorting="false"
+                                Density="Density.Compact"
+                                GridLines="DataGridGridLines.Horizontal"
+                                RowRender="@((RowRenderEventArgs<AddTracksTrackFile> args) => RenderRow(args.Attributes, LIST_TRACKS, args.Data, tracks.IndexOf(args.Data), videos.Count, busy))">
+                    <Columns>
+                        <RadzenDataGridColumn TItem="AddTracksTrackFile" Title="#" Width="3rem">
+                            <Template Context="track"><CellText Text="@((tracks.IndexOf(track) + 1).ToString())" /></Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="AddTracksTrackFile" Title="@AppText.T("web.dashboard.file")" Width="50%">
+                            <Template Context="track">
+                                <span class="rf-addtracks-file" title="@track.InputPath"><RadzenIcon Icon="drag_indicator" class="rf-addtracks-handle" aria-hidden="true" />@System.IO.Path.GetFileName(track.InputPath)</span>
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="AddTracksTrackFile" Title="@AppText.T("web.toolbox.addTracks.content")" Width="50%">
+                            <Template Context="track">
+                                @* Cosa si aggiunge: tipo e formato letti; altrimenti lettura in corso o perché il file è bloccato *@
+                                @if (track.State == AddTracksTrackState.Ready)
+                                {
+                                    string content = AppText.T(track.Track.IsSubtitles ? "web.toolbox.addTracks.kindSubtitles" : "web.toolbox.addTracks.kindAudio") + " · " + track.Track.Codec;
+                                    <span class="rf-addtracks-wrap" title="@content">
+                                        @if (tracks.IndexOf(track) >= videos.Count)
+                                        {
+                                            <span class="rf-addtracks-unpaired-text">@AppText.T("web.toolbox.addTracks.missingVideo")</span>
+                                            <br />
+                                        }
+                                        @content
+                                    </span>
+                                }
+                                else if (track.State == AddTracksTrackState.Reading)
+                                {
+                                    <RadzenBadge IsPill="true" BadgeStyle="BadgeStyle.Info" Text="@AppText.T("web.toolbox.addTracks.trackReading")" />
+                                }
+                                else
+                                {
+                                    <span class="@("rf-addtracks-wrap " + (track.State == AddTracksTrackState.Blocked ? "rf-addtracks-blocked-text" : "rf-addtracks-unpaired-text"))" title="@track.Reason">@track.Reason</span>
+                                }
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="AddTracksTrackFile" Width="7.5rem" TextAlign="TextAlign.Center">
+                            <Template Context="track">@MoveButtons(LIST_TRACKS, track, tracks.IndexOf(track), tracks.Count, System.IO.Path.GetFileName(track.InputPath), busy)</Template>
+                        </RadzenDataGridColumn>
+                    </Columns>
+                </RadzenDataGrid>
+            }
+        </section>
+    </div>
+</div>
+
+@code {
+    /// <summary>
+    /// Elenco dei video, per trascinamento e spostamenti
+    /// </summary>
+    private const string LIST_VIDEOS = "video";
+
+    /// <summary>
+    /// Elenco dei file di tracce, per trascinamento e spostamenti
+    /// </summary>
+    private const string LIST_TRACKS = "track";
+
+    /// <summary>
+    /// Estensioni proposte per i video: tutti i contenitori accettati
+    /// </summary>
+    private static readonly List<string> s_videoExtensions = new List<string>(MediaContainerFormats.Extensions);
+
+    /// <summary>
+    /// Estensioni proposte per i file di tracce: sottotitoli e audio ammessi
+    /// </summary>
+    private static readonly List<string> s_trackExtensions = new List<string>(AddTracksService.SubtitleExtensions.Concat(AddTracksService.AudioExtensions));
+
+    /// <summary>
+    /// Uscita prevista di ogni video da elaborare, presa dall'orchestratore a ogni disegno
+    /// </summary>
+    private Dictionary<AddTracksVideo, string> _plan = new Dictionary<AddTracksVideo, string>();
+
+    /// <summary>
+    /// Elenco da cui parte il trascinamento in corso, vuoto se nessuno
+    /// </summary>
+    private string _dragList = "";
+
+    /// <summary>
+    /// Video o file di tracce trascinato
+    /// </summary>
+    private object _dragItem;
+
+    /// <summary>
+    /// Pulsante a cui ridare il fuoco dopo lo spostamento fatto da tastiera, vuoto se nessuno
+    /// </summary>
+    private string _focusAfterRender = "";
+
+    /// <inheritdoc />
+    public override IReadOnlyList<UiCommandDefinition> BuildUiCommands(bool busy)
+    {
+        List<UiCommandDefinition> commands = new List<UiCommandDefinition>(base.BuildUiCommands(busy));
+
+        // Accanto ad Aggiungi video, con la sua scorciatoia: le tracce sono il secondo elenco della card
+        commands.Insert(1, new UiCommandDefinition(AppText.T("web.toolbox.addTracks.addTracksMenu"), "F6", "playlist_add",
+            UiCommandPlacement.Menu | UiCommandPlacement.Toolbar, UiCommandMenuSection.File, busy, null)
+        {
+            AsyncCallback = this.AddTrackFilesAsync,
+            ToolbarLabel = AppText.T("web.toolbox.addTracks.addTracks"),
+            ToolbarOrder = 11
+        });
+
+        return commands;
+    }
+
+    /// <inheritdoc />
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        await base.OnAfterRenderAsync(firstRender);
+        if (_focusAfterRender.Length > 0 && JsModule != null)
+        {
+            string selector = _focusAfterRender;
+            _focusAfterRender = "";
+            await JsModule.InvokeVoidAsync("focusToolControl", selector);
+        }
+    }
+
+    /// <summary>
+    /// Accoda i file di tracce scelti nel browser, partendo dalla cartella dell'ultimo file di tracce o, se non ce ne sono, dell'ultimo video
+    /// </summary>
+    private Task AddTrackFilesAsync()
+    {
+        List<AddTracksTrackFile> tracks = Orchestrator.GetTracks();
+        List<AddTracksVideo> videos = Orchestrator.GetRecords();
+        return BrowseAndAddFilesAsync(s_trackExtensions, Orchestrator.AddTrackFiles, tracks.Count > 0 ? tracks[tracks.Count - 1].InputPath : videos.Count > 0 ? videos[videos.Count - 1].InputPath : "");
+    }
+
+    /// <summary>
+    /// Attributi di una riga: trascinabile dentro il suo elenco fuori dal lotto, e segnata quando non ha compagno nell'altro elenco
+    /// </summary>
+    /// <param name="attributes">Attributi della riga</param>
+    /// <param name="list">Elenco della riga</param>
+    /// <param name="item">Video o file di tracce della riga</param>
+    /// <param name="index">Posizione della riga</param>
+    /// <param name="otherCount">Righe dell'altro elenco</param>
+    /// <param name="busy">True durante un'operazione</param>
+    private void RenderRow(IDictionary<string, object> attributes, string list, object item, int index, int otherCount, bool busy)
+    {
+        if (index >= otherCount)
+            attributes["data-unpaired"] = "true";
+        if (busy)
+            return;
+
+        attributes["draggable"] = "true";
+        attributes["ondragover"] = "event.preventDefault()";
+        attributes["ondragstart"] = EventCallback.Factory.Create<DragEventArgs>(this, () =>
+        {
+            _dragList = list;
+            _dragItem = item;
+        });
+        attributes["ondragend"] = EventCallback.Factory.Create<DragEventArgs>(this, () => _dragList = "");
+        attributes["ondrop"] = EventCallback.Factory.Create<DragEventArgs>(this, () =>
+        {
+            // Una riga si sposta solo nel suo elenco, al posto della riga su cui cade: rilasciata sull'altro non cambia nulla
+            if (_dragList == LIST_VIDEOS && list == LIST_VIDEOS)
+                Orchestrator.MoveVideo((AddTracksVideo)_dragItem, (AddTracksVideo)item);
+            else if (_dragList == LIST_TRACKS && list == LIST_TRACKS)
+                Orchestrator.MoveTrack((AddTracksTrackFile)_dragItem, (AddTracksTrackFile)item);
+            _dragList = "";
+            _dragItem = null;
+        });
+    }
+
+    /// <summary>
+    /// Sposta una riga di una posizione con i pulsanti; il fuoco resta sul pulsante della riga spostata, o sull'altro quando la riga
+    /// arriva in cima o in fondo, così da tastiera lo stesso file si sposta di nuovo
+    /// </summary>
+    /// <param name="list">Elenco della riga</param>
+    /// <param name="item">Video o file di tracce della riga</param>
+    /// <param name="delta">-1 su, +1 giù</param>
+    private void Move(string list, object item, int delta)
+    {
+        int target = list == LIST_VIDEOS ? Orchestrator.MoveVideo((AddTracksVideo)item, delta) : Orchestrator.MoveTrack((AddTracksTrackFile)item, delta);
+        int count = list == LIST_VIDEOS ? Orchestrator.GetRecords().Count : Orchestrator.GetTracks().Count;
+        bool edge = target == 0 || target == count - 1;
+
+        if (target >= 0)
+            _focusAfterRender = "[data-move=\"" + list + "-" + ((delta < 0) != edge ? "up" : "down") + "-" + target + "\"]";
+    }
+
+    /// <summary>
+    /// Pulsanti su, giù e togli di una riga; agiscono sull'oggetto della riga, la posizione serve solo a disattivarli ai bordi
+    /// </summary>
+    private RenderFragment MoveButtons(string list, object item, int index, int count, string fileName, bool busy) =>
+        @<span class="rf-addtracks-actions">
+            <RadzenButton Icon="arrow_upward" Size="ButtonSize.ExtraSmall" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base"
+                          Disabled="@(busy || index == 0)" title="@AppText.T("web.toolbox.addTracks.moveUp")"
+                          aria-label="@AppText.F("web.toolbox.addTracks.moveUpFile", fileName)" data-move="@(list + "-up-" + index)"
+                          Click="@(() => Move(list, item, -1))" />
+            <RadzenButton Icon="arrow_downward" Size="ButtonSize.ExtraSmall" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base"
+                          Disabled="@(busy || index == count - 1)" title="@AppText.T("web.toolbox.addTracks.moveDown")"
+                          aria-label="@AppText.F("web.toolbox.addTracks.moveDownFile", fileName)" data-move="@(list + "-down-" + index)"
+                          Click="@(() => Move(list, item, 1))" />
+            <RadzenButton Icon="delete" Size="ButtonSize.ExtraSmall" Variant="Variant.Text" ButtonStyle="ButtonStyle.Danger" Disabled="@busy"
+                          title="@AppText.T("web.toolbox.list.remove")" aria-label="@(AppText.T("web.toolbox.list.remove") + " " + fileName)"
+                          Click="@(() => { if (item is AddTracksVideo video) Orchestrator.Remove(video); else Orchestrator.RemoveTrack((AddTracksTrackFile)item); })" />
+        </span>;
+
+    /// <inheritdoc />
+    protected override List<string> FileExtensions
+    {
+        get { return s_videoExtensions; }
+    }
+
+    /// <inheritdoc />
+    protected override string AddFilesKey
+    {
+        get { return "web.toolbox.addTracks.addVideos"; }
+    }
+
+    /// <inheritdoc />
+    protected override bool IsListEmpty
+    {
+        get { return Orchestrator.GetRecords().Count == 0 && Orchestrator.GetTracks().Count == 0; }
+    }
+}

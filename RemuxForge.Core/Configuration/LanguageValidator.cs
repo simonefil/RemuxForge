@@ -319,6 +319,26 @@ namespace RemuxForge.Core.Configuration
         }
 
         /// <summary>
+        /// Converte una lingua nel codice ISO 639-1 a due lettere, vuoto se la lingua non ne ha uno
+        /// </summary>
+        /// <param name="lang">Codice o nome lingua</param>
+        /// <returns>Codice ISO 639-1 o stringa vuota</returns>
+        public static string ToIso6391(string lang)
+        {
+            string normalized = NormalizeToIso6392(lang);
+            if (normalized.Length == 0)
+                return "";
+
+            foreach (KeyValuePair<string, string> pair in s_iso6391Languages)
+            {
+                if (string.Equals(NormalizeIso6392Alias(pair.Value), normalized, StringComparison.OrdinalIgnoreCase))
+                    return pair.Key;
+            }
+
+            return "";
+        }
+
+        /// <summary>
         /// Restituisce tutti i codici lingua ISO 639-2 validi
         /// </summary>
         /// <returns>Lista ordinata dei codici lingua</returns>

@@ -35,6 +35,12 @@
     border-radius: var(--rz-panel-border-radius);
 }
 
+/* I nomi vanno a capo invece di essere troncati: il nome nuovo si legge sempre intero */
+.renamer-preview-grid .rz-grid-table td .rz-cell-data {
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
 .renamer-preview-grid .rz-data-row.conflict td:nth-child(2) {
     color: var(--rz-danger);
 }
@@ -62,47 +68,10 @@
     flex-direction: column;
 }
 
-.renamer-method-selector {
-    display: flex;
-    gap: 1ch;
-    align-items: center;
-    line-height: 2em;
-    flex-shrink: 0;
-}
-
-.renamer-method-selector > .rz-dropdown {
-    flex: 1;
-    min-width: 20ch;
-}
-
 .renamer-params {
     flex-shrink: 0;
     padding-bottom: 1em;
     border-bottom: 1px solid var(--rz-text-disabled-color);
-}
-
-.renamer-param-row {
-    display: flex;
-    align-items: center;
-    gap: 1ch;
-    margin-bottom: 0.35em;
-}
-
-.renamer-param-row > .rz-label {
-    min-width: 10ch;
-    flex-shrink: 0;
-}
-
-.renamer-param-row > .rz-textbox,
-.renamer-param-row > .rz-numeric,
-.renamer-param-row > .rz-dropdown {
-    flex: 1;
-    min-width: 0;
-}
-
-.renamer-params .ui-switch.renamer-checkbox-row {
-    padding-left: 11ch;
-    margin-bottom: 0.35em;
 }
 
 .renamer-params .rz-switch {
@@ -111,7 +80,7 @@
 }
 
 .rz-alert.renamer-params-error {
-    margin: 0 0 0.5em;
+    margin: 0;
 }
 
 .renamer-tag-help {
@@ -152,10 +121,10 @@
 }
 
 .renamer-stack-item-name {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
     flex: 1;
+    min-width: 0;
+    line-height: 1.3;
+    overflow-wrap: anywhere;
 }
 
 .renamer-stack-item-actions {
@@ -197,4 +166,12 @@
     .renamer-config {
         flex: 1 1 50%;
     }
+}
+
+.renamer-catalog-title {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }

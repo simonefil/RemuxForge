@@ -1,0 +1,203 @@
+@using RemuxForge.Core.Toolbox.SubtitleTranslation
+@using System.Globalization
+@using System.Linq
+
+@* Registro delle chiamate del progetto: una riga per tentativo, con il dettaglio di rifiuti ed errori nella riga aperta in parole
+   dell'utente; del servizio restano, etichettati, il codice dell'errore e il motivo d'interruzione che l'app non conosce *@
+<RadzenPanel class="rf-translation-calls" AllowCollapse="true" Collapsed="@_collapsed" Expand="@(() => _collapsed = false)" Collapse="@(() => _collapsed = true)"
+             Text="@AppText.F("web.toolbox.subtitleTranslation.calls.title", _rows.Count)">
+    <ChildContent>
+        <RadzenDataGrid TItem="TranslationCallRecord"
+                        Data="@_rows"
+                        class="rf-data-grid rf-tool-grid rf-translation-calls-grid"
+                        AllowAlternatingRows="false"
+                        AllowColumnResize="false"
+                        AllowPaging="false"
+                        AllowSorting="false"
+                        Density="Density.Compact"
+                        GridLines="DataGridGridLines.Horizontal"
+                        ExpandMode="DataGridExpandMode.Multiple"
+                        EmptyText="@AppText.T("web.toolbox.subtitleTranslation.calls.empty")"
+                        RowRender="@((RowRenderEventArgs<TranslationCallRecord> args) => args.Expandable = args.Data.Rejections.Count > 0 || args.Data.ErrorKind.HasValue || !string.IsNullOrEmpty(args.Data.IncompleteReason))">
+            <Template Context="call">
+                <div class="rf-translation-calls-detail">
+                    @if (call.ErrorKind.HasValue)
+                    {
+                        <div>@AppText.T("web.toolbox.subtitleTranslation.calls.errorKind." + call.ErrorKind.Value)</div>
+                        @if (!string.IsNullOrEmpty(call.ServiceCode))
+                        {
+                            <div>@AppText.F("web.toolbox.subtitleTranslation.calls.serviceCode", call.ServiceCode)</div>
+                        }
+                    }
+                    @if (!string.IsNullOrEmpty(call.IncompleteReason))
+                    {
+                        string incomplete;
+                        <div>@(AppText.TryT("web.toolbox.subtitleTranslation.calls.incomplete." + call.IncompleteReason, out incomplete) ? incomplete : AppText.F("web.toolbox.subtitleTranslation.calls.incompleteOther", call.IncompleteReason))</div>
+                    }
+                    @foreach (TranslationCallRejection rejection in call.Rejections)
+                    {
+                        string reasons = string.Join(", ", TranslationValidationIssue.ReadCodes(rejection.Reasons).ConvertAll(c => AppText.T(TranslationValidationIssue.REASON_KEY_PREFIX + c)));
+                        <div>@(rejection.Id.HasValue ? AppText.F("web.toolbox.subtitleTranslation.calls.rejectedCue", rejection.Id.Value.ToString(CultureInfo.CurrentCulture), reasons) : reasons)</div>
+                    }
+                </div>
+            </Template>
+            <Columns>
+                <RadzenDataGridColumn TItem="TranslationCallRecord" Title="@AppText.T("web.toolbox.subtitleTranslation.calls.time")" Width="6rem">
+                    <Template Context="call"><CellText Text="@call.StartedAt.ToLocalTime().ToString("T", CultureInfo.CurrentCulture)" /></Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="TranslationCallRecord" Title="@AppText.T("web.toolbox.subtitleTranslation.calls.kind")" Width="10rem">
+                    <Template Context="call"><CellText Text="@(AppText.T("web.toolbox.subtitleTranslation.calls.kind." + call.Kind) + (call.Round.HasValue && call.Round.Value > 1 ? " · " + call.Round.Value.ToString(CultureInfo.CurrentCulture)
+                        : call.Attempt.HasValue && call.Attempt.Value > 0 ? " · " + call.Attempt.Value.ToString(CultureInfo.CurrentCulture) : ""))" /></Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="TranslationCallRecord" Title="@AppText.T("web.dashboard.file")" Width="20%">
+                    <Template Context="call">
+                        <CellText Text="@(call.FileId == null ? AppText.T("web.toolbox.subtitleTranslation.calls.allFiles") : FileNames.TryGetValue(call.FileId, out string name) ? name : call.FileId)" />
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="TranslationCallRecord" Title="@AppText.T("web.toolbox.subtitleTranslation.calls.cues")" Width="6rem" TextAlign="TextAlign.Right">
+                    <Template Context="call"><CellText Text="@(!call.RequestedIds.HasValue ? "—" : call.FirstId.HasValue && call.LastId.HasValue
+                        ? call.RequestedIds.Value.ToString("N0", CultureInfo.CurrentCulture) + " · " + call.FirstId.Value.ToString(CultureInfo.CurrentCulture) + "–" + call.LastId.Value.ToString(CultureInfo.CurrentCulture)
+                        : call.RequestedIds.Value.ToString("N0", CultureInfo.CurrentCulture))" /></Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="TranslationCallRecord" Title="@AppText.T("web.toolbox.subtitleTranslation.calls.model")" Width="20%">
+                    <Template Context="call"><CellText Text="@(string.IsNullOrEmpty(call.ReasoningEffort) ? call.Model : call.Model + " · " + call.ReasoningEffort)" /></Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="TranslationCallRecord" Title="@AppText.T("web.toolbox.subtitleTranslation.calls.outcome")" Width="11%">
+                    <Template Context="call">
+                        <RadzenBadge IsPill="true" BadgeStyle="@OutcomeStyle(call)" Text="@OutcomeText(call)" />
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="TranslationCallRecord" Title="@AppText.T("web.toolbox.subtitleTranslation.calls.tokens")" Width="15%" TextAlign="TextAlign.Right">
+                    <Template Context="call">
+                        <CellText Text="@(call.Usage == null ? "—" : FormatTokens(call.Usage.InputTokens) + " / " + FormatTokens(call.Usage.CachedTokens) + " / " + FormatTokens(call.Usage.OutputTokens))" />
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="TranslationCallRecord" Title="@AppText.T("web.toolbox.subtitleTranslation.calls.duration")" Width="6rem" TextAlign="TextAlign.Right">
+                    <Template Context="call"><CellText Text="@AppText.F("web.toolbox.subtitleTranslation.calls.seconds", Math.Round(call.DurationMs / 1000.0).ToString(CultureInfo.CurrentCulture))" /></Template>
+                </RadzenDataGridColumn>
+            </Columns>
+        </RadzenDataGrid>
+    </ChildContent>
+</RadzenPanel>
+
+@code {
+    #region Parametri
+
+    /// <summary>
+    /// Chiamate dell'analisi del progetto in ordine di registro
+    /// </summary>
+    [Parameter] public List<TranslationCallRecord> Calls { get; set; } = new List<TranslationCallRecord>();
+
+    /// <summary>
+    /// Chiamate del job attivo in ordine di registro
+    /// </summary>
+    [Parameter] public List<TranslationCallRecord> JobCalls { get; set; } = new List<TranslationCallRecord>();
+
+    /// <summary>
+    /// Nome del file per identificativo del progetto
+    /// </summary>
+    [Parameter] public Dictionary<string, string> FileNames { get; set; } = new Dictionary<string, string>();
+
+    /// <summary>
+    /// Numeri delle chiamate del job di blocchi scartati, mostrate come «scartata»
+    /// </summary>
+    [Parameter] public HashSet<int> Discarded { get; set; } = new HashSet<int>();
+
+    #endregion
+
+    #region Variabili di classe
+
+    /// <summary>
+    /// True col pannello chiuso, com'è all'apertura
+    /// </summary>
+    private bool _collapsed = true;
+
+    /// <summary>
+    /// Chiamate dell'analisi e del job in ordine di inizio
+    /// </summary>
+    private List<TranslationCallRecord> _rows = new List<TranslationCallRecord>();
+
+    /// <summary>
+    /// Chiamate del job scartate, per istanza: i numeri dei due registri si ripetono
+    /// </summary>
+    private HashSet<TranslationCallRecord> _discarded = new HashSet<TranslationCallRecord>();
+
+    #endregion
+
+    #region Metodi pubblici
+
+    /// <summary>
+    /// Token di una colonna, trattino se il servizio non li dichiara
+    /// </summary>
+    /// <param name="tokens">Token</param>
+    /// <returns>Testo</returns>
+    public static string FormatTokens(long? tokens)
+    {
+        return tokens.HasValue ? tokens.Value.ToString("N0", CultureInfo.CurrentCulture) : "—";
+    }
+
+    #endregion
+
+    #region Metodi protetti
+
+    /// <inheritdoc />
+    protected override void OnParametersSet()
+    {
+        this._rows = this.Calls.Concat(this.JobCalls).OrderBy(c => c.StartedAt).ToList();
+        this._discarded = new HashSet<TranslationCallRecord>(this.JobCalls.Where(c => this.Discarded.Contains(c.CallSeq)), ReferenceEqualityComparer.Instance);
+    }
+
+    #endregion
+
+    #region Metodi privati
+
+    /// <summary>
+    /// Colore dell'esito di una chiamata
+    /// </summary>
+    /// <param name="call">Chiamata del registro</param>
+    /// <returns>Stile del badge</returns>
+    private BadgeStyle OutcomeStyle(TranslationCallRecord call)
+    {
+        if (this._discarded.Contains(call))
+            return BadgeStyle.Base;
+        if (call.Issues.HasValue && call.Issues.Value > 0)
+            return BadgeStyle.Warning;
+        if (call.Outcome == TranslationCallOutcome.Accepted)
+            return BadgeStyle.Success;
+        if (call.Outcome == TranslationCallOutcome.Error && call.ErrorKind.HasValue)
+            return BadgeStyle.Danger;
+        if (call.Outcome == TranslationCallOutcome.Error)
+            return BadgeStyle.Base;
+
+        return BadgeStyle.Warning;
+    }
+
+    /// <summary>
+    /// Testo dell'esito di una chiamata: un errore senza tipo è il tentativo interrotto da Stop, la diagnosi conta i problemi
+    /// </summary>
+    /// <param name="call">Chiamata del registro</param>
+    /// <returns>Testo del badge</returns>
+    private string OutcomeText(TranslationCallRecord call)
+    {
+        if (this._discarded.Contains(call))
+            return AppText.T("web.toolbox.subtitleTranslation.calls.discarded");
+        if (call.Issues.HasValue)
+            return AppText.Count("web.toolbox.subtitleTranslation.calls.issues", call.Issues.Value);
+        if (call.Kind == TranslationCallKind.D1 && call.Outcome == TranslationCallOutcome.PartiallyRejected)
+            return AppText.T("web.toolbox.subtitleTranslation.calls.diagnosisInvalid");
+        if (call.Outcome == TranslationCallOutcome.Accepted)
+            return AppText.T("web.toolbox.subtitleTranslation.calls.accepted");
+        if (call.Outcome == TranslationCallOutcome.PartiallyRejected)
+            return AppText.T("web.toolbox.subtitleTranslation.calls.rejected");
+        if (call.Outcome == TranslationCallOutcome.Reduced)
+            return AppText.T("web.toolbox.subtitleTranslation.calls.reduced");
+        if (!call.ErrorKind.HasValue)
+            return AppText.T("web.toolbox.subtitleTranslation.calls.stopped");
+        if (call.HttpStatus > 0)
+            return AppText.F("web.toolbox.subtitleTranslation.calls.errorStatus", call.HttpStatus);
+
+        return AppText.T("web.toolbox.subtitleTranslation.calls.error");
+    }
+
+    #endregion
+}
