@@ -95,14 +95,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 this.CallFinished?.Invoke(request);
             }
         }
-
-        /// <summary>
-        /// Elenca i modelli selezionabili con i loro livelli di ragionamento
-        /// </summary>
-        /// <param name="cancellationToken">Token di annullamento</param>
-        /// <returns>Modelli ordinati per nome</returns>
-        public abstract Task<List<AiModelInfo>> ListModelsAsync(CancellationToken cancellationToken);
-
         #endregion
 
         #region Metodi protetti

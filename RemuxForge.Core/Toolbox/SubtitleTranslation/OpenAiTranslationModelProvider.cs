@@ -72,20 +72,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 
         #endregion
 
-        #region Metodi pubblici
-
-        /// <summary>
-        /// Elenca i modelli dell'accesso configurato con i loro livelli di ragionamento
-        /// </summary>
-        /// <param name="cancellationToken">Token di annullamento</param>
-        /// <returns>Modelli ordinati per nome</returns>
-        public override Task<List<AiModelInfo>> ListModelsAsync(CancellationToken cancellationToken)
-        {
-            return this._client.ListModelsAsync(cancellationToken);
-        }
-
-        #endregion
-
         #region Metodi protetti
 
         /// <summary>

@@ -1,6 +1,5 @@
 using RemuxForge.Core.Models;
 using System;
-using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -30,13 +29,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <param name="cancellationToken">Token di annullamento</param>
         /// <returns>Item di output, consumo ed esito</returns>
         Task<AiResponseResult> SendAsync(TranslationModelRequest request, CancellationToken cancellationToken);
-
-        /// <summary>
-        /// Elenca i modelli selezionabili con i loro livelli di ragionamento
-        /// </summary>
-        /// <param name="cancellationToken">Token di annullamento</param>
-        /// <returns>Modelli ordinati per nome</returns>
-        Task<List<AiModelInfo>> ListModelsAsync(CancellationToken cancellationToken);
 
         /// <summary>
         /// Capacità dell'accesso corrente nel job
