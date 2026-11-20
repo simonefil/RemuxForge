@@ -1,45 +1,21 @@
-using Microsoft.AspNetCore.Components;
 using Radzen;
 using RemuxForge.Core.Localization;
-using RemuxForge.Web.Components.Shared;
 using RemuxForge.Web.Services;
 using RemuxForge.Web.Services.Toolbox;
-using System;
 using System.Collections.Generic;
-using System.IO;
-using System.Threading.Tasks;
 
 namespace RemuxForge.Web.Components.Toolbox
 {
     /// <summary>
-    /// Base delle pagine delle card a lotto: comandi Aggiungi file, avvio e Svuota elenco, scelta dei file nel browser, ridisegno
-    /// quando l'orchestratore cambia e toast di fine lotto. La pagina disegna solo l'elenco
+    /// Base delle pagine delle card a lotto: comandi Aggiungi file, avvio e Svuota elenco e toast di fine lotto. La pagina disegna
+    /// solo l'elenco
     /// </summary>
     /// <typeparam name="TOrchestrator">Orchestratore della card</typeparam>
     /// <typeparam name="TRecord">Riga dell'elenco</typeparam>
-    public abstract class ToolboxBatchPageBase<TOrchestrator, TRecord> : ToolboxPageBase, IDisposable
-        where TOrchestrator : ToolboxOrchestratorBase<TRecord>
+    public abstract class ToolboxBatchPageBase<TOrchestrator, TRecord> : ToolboxListPageBase<TOrchestrator, TRecord>
+        where TOrchestrator : ToolboxBatchOrchestratorBase<TRecord>
         where TRecord : ToolboxRecord
     {
-        #region Servizi iniettati
-
-        /// <summary>
-        /// Orchestratore della card, singleton che sopravvive alla pagina
-        /// </summary>
-        [Inject] protected TOrchestrator Orchestrator { get; set; }
-
-        /// <summary>
-        /// Servizio dei dialog, per il browser dei file
-        /// </summary>
-        [Inject] protected DialogService DialogService { get; set; }
-
-        /// <summary>
-        /// Servizio dei toast
-        /// </summary>
-        [Inject] protected NotificationService NotificationService { get; set; }
-
-        #endregion
-
         #region Metodi pubblici
 
         /// <inheritdoc />
@@ -67,12 +43,10 @@ namespace RemuxForge.Web.Components.Toolbox
             };
         }
 
-        /// <summary>
-        /// Toglie le sottoscrizioni: la pagina rinasce a ogni apertura della card, l'orchestratore resta
-        /// </summary>
-        public void Dispose()
+        /// <inheritdoc />
+        public override void Dispose()
         {
-            this.Orchestrator.OnRecordsChanged -= this.HandleRecordsChanged;
+            base.Dispose();
             this.Orchestrator.OnBatchCompleted -= this.HandleBatchCompleted;
         }
 
@@ -83,32 +57,8 @@ namespace RemuxForge.Web.Components.Toolbox
         /// <inheritdoc />
         protected override void OnInitialized()
         {
-            this.Orchestrator.OnRecordsChanged += this.HandleRecordsChanged;
+            base.OnInitialized();
             this.Orchestrator.OnBatchCompleted += this.HandleBatchCompleted;
-        }
-
-        /// <summary>
-        /// Accoda i file scelti nel browser, partendo dalla cartella dell'ultimo file dell'elenco
-        /// </summary>
-        protected Task AddFilesAsync()
-        {
-            List<TRecord> records = this.Orchestrator.GetRecords();
-            return this.BrowseAndAddFilesAsync(this.FileExtensions, this.Orchestrator.AddFiles, records.Count > 0 ? records[records.Count - 1].InputPath : "");
-        }
-
-        /// <summary>
-        /// Accoda a un elenco della card i file scelti nel browser, partendo dalla cartella di un file già scelto
-        /// </summary>
-        /// <param name="extensions">Estensioni proposte dal browser</param>
-        /// <param name="add">Accoda i percorsi scelti</param>
-        /// <param name="lastPath">File dalla cui cartella parte il browser, vuoto per la cartella predefinita</param>
-        protected async Task BrowseAndAddFilesAsync(List<string> extensions, Action<List<string>> add, string lastPath)
-        {
-            string initialPath = lastPath.Length > 0 ? Path.GetDirectoryName(lastPath) : "";
-            List<string> paths = await AppDialogs.BrowseFilesAsync(this.DialogService, this.JsModule, initialPath, extensions);
-
-            if (paths.Count > 0)
-                add(paths);
         }
 
         #endregion
@@ -116,16 +66,8 @@ namespace RemuxForge.Web.Components.Toolbox
         #region Metodi privati
 
         /// <summary>
-        /// Ridisegna pagina e comandi della dashboard quando cambiano elenco, scelte o uscita
-        /// </summary>
-        private void HandleRecordsChanged()
-        {
-            this.InvokeAsync(() => this.OnStateChanged.InvokeAsync());
-        }
-
-        /// <summary>
         /// Riassume in un toast l'esito del lotto: riuscito se tutto è riuscito senza avvisi, errore se nulla è riuscito, avviso negli
-        /// altri casi. Il toast sta in basso a destra, sopra il log, per non coprire uscita e risultati
+        /// altri casi
         /// </summary>
         /// <param name="summary">Riepilogo del lotto</param>
         private void HandleBatchCompleted(ToolboxBatchSummary summary)
@@ -133,14 +75,7 @@ namespace RemuxForge.Web.Components.Toolbox
             this.InvokeAsync(async () =>
             {
                 NotificationSeverity severity = summary.AllSucceeded ? NotificationSeverity.Success : summary.NothingSucceeded ? NotificationSeverity.Error : NotificationSeverity.Warning;
-                this.NotificationService.Notify(new NotificationMessage
-                {
-                    Severity = severity,
-                    Summary = AppText.T(this.Orchestrator.TextPrefix + (summary.Stopped ? ".notifyStoppedTitle" : ".notifyTitle")),
-                    Detail = summary.Describe(),
-                    Duration = severity == NotificationSeverity.Success ? 6000 : 8000,
-                    Style = TOAST_STYLE
-                });
+                this.Notify(severity, AppText.T(this.Orchestrator.TextPrefix + (summary.Stopped ? ".notifyStoppedTitle" : ".notifyTitle")), summary.Describe());
                 await this.OnStateChanged.InvokeAsync();
             });
         }
@@ -148,11 +83,6 @@ namespace RemuxForge.Web.Components.Toolbox
         #endregion
 
         #region Proprietà
-
-        /// <summary>
-        /// Estensioni proposte dal browser dei file
-        /// </summary>
-        protected abstract List<string> FileExtensions { get; }
 
         /// <summary>
         /// True se non c'è nulla da svuotare

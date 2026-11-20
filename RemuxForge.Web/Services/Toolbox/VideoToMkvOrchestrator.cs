@@ -12,7 +12,7 @@ namespace RemuxForge.Web.Services.Toolbox
     /// <summary>
     /// Orchestratore WebUI della conversione di file video in Matroska: elenco dei file, uscita scelta e lotto in background
     /// </summary>
-    public sealed class VideoToMkvOrchestrator : ToolboxOrchestratorBase<VideoToMkvRecord>
+    public sealed class VideoToMkvOrchestrator : ToolboxBatchOrchestratorBase<VideoToMkvRecord>
     {
         #region Costruttore
 

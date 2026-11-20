@@ -4,8 +4,7 @@
 @using System.Globalization
 @using System.IO
 @using System.Text.RegularExpressions
-@inherits ToolboxPageBase
-@implements IDisposable
+@inherits ToolboxListPageBase<SubtitleTranslationOrchestrator, TranslationFileRecord>
 
 @{
     TranslationProject project = Orchestrator.Project;
@@ -787,25 +786,6 @@
 
     #endregion
 
-    #region Servizi
-
-    /// <summary>
-    /// Orchestratore della card, singleton che sopravvive alla pagina
-    /// </summary>
-    [Inject] private SubtitleTranslationOrchestrator Orchestrator { get; set; }
-
-    /// <summary>
-    /// Servizio dei dialog
-    /// </summary>
-    [Inject] private DialogService DialogService { get; set; }
-
-    /// <summary>
-    /// Servizio dei toast
-    /// </summary>
-    [Inject] private NotificationService NotificationService { get; set; }
-
-    #endregion
-
     #region Variabili di classe
 
     /// <summary>
@@ -1072,7 +1052,7 @@
                 (project.Analysis.Stop.Reason == TranslationStopReason.AccessError || project.Analysis.Stop.Reason == TranslationStopReason.ServiceError);
             string label = failed ? "web.toolbox.subtitleTranslation.retry" : stopped ? "web.toolbox.subtitleTranslation.resume" : "web.toolbox.subtitleTranslation.analyze";
             commands.Add(new UiCommandDefinition(AppText.T(label), "F10", failed ? "refresh" : stopped ? "play_arrow" : "auto_awesome",
-                allSurfaces, UiCommandMenuSection.Actions, busy || !this.Orchestrator.CanStart, null)
+                allSurfaces, UiCommandMenuSection.Actions, busy || !this.Orchestrator.CanStartAnalysis, null)
             {
                 Callback = this.Analyze,
                 ToolbarOrder = 12
@@ -1082,12 +1062,10 @@
         return commands;
     }
 
-    /// <summary>
-    /// Toglie le sottoscrizioni: la pagina rinasce a ogni apertura della card, l'orchestratore resta
-    /// </summary>
-    public void Dispose()
+    /// <inheritdoc />
+    public override void Dispose()
     {
-        this.Orchestrator.OnRecordsChanged -= this.HandleRecordsChanged;
+        base.Dispose();
         this.Orchestrator.OnAnalysisFinished -= this.HandleAnalysisFinished;
         this.Orchestrator.OnWebSearchRejected -= this.HandleWebSearchRejected;
         this.Orchestrator.OnPhaseFinished -= this.HandlePhaseFinished;
@@ -1100,7 +1078,7 @@
     /// <inheritdoc />
     protected override void OnInitialized()
     {
-        this.Orchestrator.OnRecordsChanged += this.HandleRecordsChanged;
+        base.OnInitialized();
         this.Orchestrator.OnAnalysisFinished += this.HandleAnalysisFinished;
         this.Orchestrator.OnWebSearchRejected += this.HandleWebSearchRejected;
         this.Orchestrator.OnPhaseFinished += this.HandlePhaseFinished;
@@ -1108,22 +1086,18 @@
         this._step = this.ProjectStep();
     }
 
+    /// <summary>
+    /// Le battute della revisione si rileggono al cambio di stato della card
+    /// </summary>
+    protected override void OnOrchestratorChanged()
+    {
+        this._reviewRows = null;
+        this._reviewView = null;
+    }
+
     #endregion
 
     #region Metodi privati
-
-    /// <summary>
-    /// Ridisegna pagina e comandi quando cambia lo stato della card
-    /// </summary>
-    private void HandleRecordsChanged()
-    {
-        this.InvokeAsync(() =>
-        {
-            this._reviewRows = null;
-            this._reviewView = null;
-            return this.OnStateChanged.InvokeAsync();
-        });
-    }
 
     /// <summary>
     /// Toast dell'esito dell'analisi: glossario proposto, fermata, pausa per il limite d'uso o errore
@@ -1162,24 +1136,6 @@
     private void HandleWebSearchRejected()
     {
         this.InvokeAsync(() => this.Notify(NotificationSeverity.Info, AppText.T("web.toolbox.subtitleTranslation.notifyWebSearchTitle"), AppText.T("web.toolbox.subtitleTranslation.notifyWebSearch")));
-    }
-
-    /// <summary>
-    /// Toast in basso a destra, sopra il log
-    /// </summary>
-    /// <param name="severity">Gravità</param>
-    /// <param name="summary">Titolo</param>
-    /// <param name="detail">Testo</param>
-    private void Notify(NotificationSeverity severity, string summary, string detail)
-    {
-        this.NotificationService.Notify(new NotificationMessage
-        {
-            Severity = severity,
-            Summary = summary,
-            Detail = detail,
-            Duration = severity == NotificationSeverity.Success ? 6000 : 8000,
-            Style = TOAST_STYLE
-        });
     }
 
     /// <summary>
@@ -1321,19 +1277,6 @@
     }
 
     /// <summary>
-    /// Aggiunge i sottotitoli scelti nel browser, partendo dalla cartella dell'ultimo file
-    /// </summary>
-    private async Task AddFilesAsync()
-    {
-        List<TranslationFileRecord> records = this.Orchestrator.GetRecords();
-        string initialPath = records.Count > 0 ? System.IO.Path.GetDirectoryName(records[records.Count - 1].InputPath) : "";
-        List<string> paths = await AppDialogs.BrowseFilesAsync(this.DialogService, this.JsModule, initialPath, s_extensions);
-
-        if (paths.Count > 0)
-            this.Orchestrator.AddFiles(paths);
-    }
-
-    /// <summary>
     /// Carica un glossario .xlsx e dice l'esito: le voci lette o il primo errore con la sua cella
     /// </summary>
     private async Task ImportGlossaryAsync()
@@ -1385,7 +1328,7 @@
 
         this._pending = null;
         this._step = STEP_GLOSSARY;
-        this.Orchestrator.Start();
+        this.Orchestrator.StartAnalysis();
     }
 
     /// <summary>
@@ -2020,6 +1963,12 @@
     #endregion
 
     #region Proprietà
+
+    /// <inheritdoc />
+    protected override List<string> FileExtensions
+    {
+        get { return s_extensions; }
+    }
 
     /// <summary>
     /// Battute del file in revisione, il primo del job se non scelto; si rileggono al cambio di stato della card

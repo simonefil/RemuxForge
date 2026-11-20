@@ -25,7 +25,7 @@ namespace RemuxForge.Web.Services.Toolbox
     /// Orchestratore WebUI dell'estrazione di tracce: elenco dei video con le loro tracce, scelta per file o per tipo, uscita e
     /// lotto in background. Le due viste conservano ciascuna la sua scelta; si estrae quella della vista aperta
     /// </summary>
-    public sealed class TrackExtractionOrchestrator : ToolboxOrchestratorBase<TrackExtractionFile>
+    public sealed class TrackExtractionOrchestrator : ToolboxBatchOrchestratorBase<TrackExtractionFile>
     {
         #region Variabili di classe
 

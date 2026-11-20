@@ -16,7 +16,7 @@ namespace RemuxForge.Web.Services.Toolbox
     /// i), proprietà della traccia aggiunta uguali per tutte le coppie, uscita in una cartella o sovrascrittura e lotto in background.
     /// L'esito di un video vale per la traccia con cui è stato ottenuto: se l'abbinamento cambia, la coppia torna da elaborare
     /// </summary>
-    public sealed class AddTracksOrchestrator : ToolboxOrchestratorBase<AddTracksVideo>
+    public sealed class AddTracksOrchestrator : ToolboxBatchOrchestratorBase<AddTracksVideo>
     {
         #region Variabili statiche
 

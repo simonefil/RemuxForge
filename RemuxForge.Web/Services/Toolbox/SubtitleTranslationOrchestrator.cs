@@ -20,7 +20,7 @@ namespace RemuxForge.Web.Services.Toolbox
     /// A1/A2 in background col glossario proposto, approvazione ed export del glossario, job di traduzione a blocchi con ripresa,
     /// archivio del progetto, registri delle chiamate
     /// </summary>
-    public sealed class SubtitleTranslationOrchestrator : ToolboxOrchestratorBase<TranslationFileRecord>
+    public sealed class SubtitleTranslationOrchestrator : ToolboxListOrchestratorBase<TranslationFileRecord>
     {
         #region Costanti
 
@@ -458,11 +458,11 @@ namespace RemuxForge.Web.Services.Toolbox
         /// <summary>
         /// Avvia l'analisi, o la riprende dalle chiamate mancanti dopo una fermata o un errore
         /// </summary>
-        public override void Start()
+        public void StartAnalysis()
         {
             lock (this.StateLock)
             {
-                if (!this.CanStart)
+                if (!this.CanStartAnalysis)
                     return;
 
                 this.TryRunExclusive(() => this.AnalyzeAsync().GetAwaiter().GetResult());
@@ -2378,7 +2378,7 @@ namespace RemuxForge.Web.Services.Toolbox
         /// <summary>
         /// True se l'analisi può partire, riprendere o riprovare: con tutti i file del progetto letti, anche alla ripresa
         /// </summary>
-        public override bool CanStart
+        public bool CanStartAnalysis
         {
             get
             {
