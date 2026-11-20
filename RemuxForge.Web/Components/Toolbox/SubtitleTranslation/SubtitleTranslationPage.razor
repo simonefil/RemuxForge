@@ -193,7 +193,7 @@
                             </RadzenDataGridColumn>
                             <RadzenDataGridColumn TItem="TranslationFileRecord" Title="@AppText.T("web.toolbox.subtitleTranslation.encoding")" Width="22%">
                                 <Template Context="file">
-                                    <RadzenDropDown TValue="string" class="rf-translation-encoding" Data="@AddTracksOrchestrator.CharsetChoices" TextProperty="Value" ValueProperty="Key"
+                                    <RadzenDropDown TValue="string" class="rf-translation-encoding" Data="@SubtitleCharsets.Choices" TextProperty="Value" ValueProperty="Key"
                                                     Value="@file.File.Encoding" Disabled="@filesLocked"
                                                     aria-label="@(AppText.T("web.toolbox.subtitleTranslation.encoding") + " " + System.IO.Path.GetFileName(file.InputPath))"
                                                     Change="@((object value) => Orchestrator.SetEncoding(file, (string)value))" />

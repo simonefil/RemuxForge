@@ -41,7 +41,7 @@
             <div class="rf-tool-field">
                 <RadzenLabel class="rf-tool-label" Text="@AppText.T("web.toolbox.addTracks.charset")" Component="AddTracksCharset" />
                 <RadzenDropDown TValue="string" Name="AddTracksCharset" class="rf-addtracks-charset" Disabled="@busy" Value="@Orchestrator.Charset"
-                                Data="@AddTracksOrchestrator.CharsetChoices" TextProperty="Value" ValueProperty="Key"
+                                Data="@SubtitleCharsets.Choices" TextProperty="Value" ValueProperty="Key"
                                 Change="@((object value) => Orchestrator.SetCharset((string)value))" />
             </div>
             <LabeledSwitchComponent Label="@AppText.T("web.toolbox.addTracks.default")" Value="@Orchestrator.IsDefault" Disabled="@busy"
