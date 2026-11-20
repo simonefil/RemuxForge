@@ -1,4 +1,5 @@
 using HtmlAgilityPack;
+using RemuxForge.Core.Localization;
 using RemuxForge.Core.Models;
 using System;
 using System.Collections.Generic;
@@ -20,6 +21,40 @@ namespace RemuxForge.Core.MediaCatalog
     /// </summary>
     public class TvdbScraperSource : IMediaCatalogSource
     {
+        #region Costanti
+
+        /// <summary>
+        /// Nome del catalogo nei messaggi all'utente
+        /// </summary>
+        private const string DISPLAY_NAME = "TheTVDB";
+
+        /// <summary>
+        /// Indirizzo della ricerca web del sito
+        /// </summary>
+        private const string SEARCH_URL = "https://api4.thetvdb.com/web/search/queries";
+
+        /// <summary>
+        /// Risultati massimi di una ricerca
+        /// </summary>
+        private const int SEARCH_LIMIT = 20;
+
+        /// <summary>
+        /// Lingua di ripiego dei testi e delle lingue non valide
+        /// </summary>
+        private const string FALLBACK_LANGUAGE = "eng";
+
+        /// <summary>
+        /// Invii di una richiesta, il primo compreso, su errori transitori
+        /// </summary>
+        private const int MAX_ATTEMPTS = 3;
+
+        /// <summary>
+        /// Tempo massimo di un invio, e attesa massima chiesta dal sito con Retry-After
+        /// </summary>
+        private static readonly TimeSpan REQUEST_TIMEOUT = TimeSpan.FromSeconds(45);
+
+        #endregion
+
         #region Variabili di classe
 
         /// <summary>
@@ -37,7 +72,7 @@ namespace RemuxForge.Core.MediaCatalog
         /// <param name="httpClient">Client HTTP condiviso dall'applicazione</param>
         public TvdbScraperSource(HttpClient httpClient)
         {
-            this._httpClient = httpClient ?? throw new MediaCatalogException("HttpClient non specificato", null);
+            this._httpClient = httpClient;
         }
 
         #endregion
@@ -45,7 +80,7 @@ namespace RemuxForge.Core.MediaCatalog
         #region Metodi pubblici
 
         /// <summary>
-        /// Cerca fino a venti titoli nell'ordine di rilevanza del sito
+        /// Cerca fino a venti titoli nell'ordine di rilevanza del sito; un risultato senza un indirizzo valido si salta
         /// </summary>
         /// <param name="kind">Serie oppure film</param>
         /// <param name="query">Titolo da cercare</param>
@@ -64,16 +99,11 @@ namespace RemuxForge.Core.MediaCatalog
                 string json;
 
                 cancellationToken.ThrowIfCancellationRequested();
-                language = ValidateLanguage(language);
+                language = ResolveLanguage(language);
                 if (string.IsNullOrWhiteSpace(query))
-                    throw new FormatException("Titolo di ricerca vuoto");
+                    throw CreateFormatError("query");
 
-                type = kind switch
-                {
-                    MediaCatalogKind.Series => "series",
-                    MediaCatalogKind.Movie => "movie",
-                    _ => throw new FormatException("Tipo di ricerca non supportato")
-                };
+                type = kind == MediaCatalogKind.Movie ? "movie" : "series";
                 filters = "type:" + type + " AND NOT is_official=0";
                 if (year.HasValue)
                     filters += " AND year:" + year.Value.ToString(CultureInfo.InvariantCulture);
@@ -82,43 +112,56 @@ namespace RemuxForge.Core.MediaCatalog
                 {
                     requests = new[]
                     {
-                        new { indexName = "TVDB", @params = new { query, page = 0, hitsPerPage = 20, filters } }
+                        new { indexName = "TVDB", @params = new { query, page = 0, hitsPerPage = SEARCH_LIMIT, filters } }
                     }
                 });
-                json = await this.RequestAsync(new Uri("https://api4.thetvdb.com/web/search/queries"), body, cancellationToken).ConfigureAwait(false);
-                using JsonDocument document = JsonDocument.Parse(json);
+                json = await this.RequestAsync(new Uri(SEARCH_URL), body, cancellationToken);
                 results = new List<MediaCatalogSearchHit>();
 
-                foreach (JsonElement hit in document.RootElement.GetProperty("results")[0].GetProperty("hits").EnumerateArray())
+                using (JsonDocument document = JsonDocument.Parse(json))
                 {
-                    MediaCatalogSearchHit item;
-                    string originalLanguage;
-                    string originalTitle;
-
-                    cancellationToken.ThrowIfCancellationRequested();
-                    if (JsonString(hit, "type") != type)
-                        continue;
-
-                    originalLanguage = JsonString(hit, "primary_language");
-                    originalTitle = JsonTranslation(hit, "translations", originalLanguage);
-                    if (string.IsNullOrEmpty(originalTitle))
-                        originalTitle = JsonString(hit, "name");
-
-                    item = new MediaCatalogSearchHit
+                    foreach (JsonElement hit in document.RootElement.GetProperty("results")[0].GetProperty("hits").EnumerateArray())
                     {
-                        Key = PageUrl(JsonString(hit, "url"), kind == MediaCatalogKind.Series ? "series" : "movies").AbsoluteUri,
-                        Kind = kind,
-                        Title = SearchText(hit, "translations", language, originalLanguage, originalTitle),
-                        Overview = SearchText(hit, "overviews", language, originalLanguage, JsonString(hit, "overview")),
-                        Year = ParseInteger(JsonString(hit, "year"))
-                    };
-                    item.OriginalTitle = originalTitle == item.Title ? string.Empty : originalTitle;
-                    if (year.HasValue && item.Year != year)
-                        continue;
+                        MediaCatalogSearchHit item;
+                        string key;
+                        string originalLanguage;
+                        string originalTitle;
 
-                    results.Add(item);
-                    if (results.Count == 20)
-                        break;
+                        cancellationToken.ThrowIfCancellationRequested();
+                        if (JsonString(hit, "type") != type)
+                            continue;
+
+                        try
+                        {
+                            key = PageUrl(JsonString(hit, "url"), kind == MediaCatalogKind.Series ? "series" : "movies").AbsoluteUri;
+                        }
+                        catch (MediaCatalogException)
+                        {
+                            continue;
+                        }
+
+                        originalLanguage = JsonString(hit, "primary_language");
+                        originalTitle = JsonTranslation(hit, "translations", originalLanguage);
+                        if (string.IsNullOrEmpty(originalTitle))
+                            originalTitle = JsonString(hit, "name");
+
+                        item = new MediaCatalogSearchHit
+                        {
+                            Key = key,
+                            Kind = kind,
+                            Title = SearchText(hit, "translations", language, originalLanguage, originalTitle),
+                            Overview = SearchText(hit, "overviews", language, originalLanguage, JsonString(hit, "overview")),
+                            Year = ParseInteger(JsonString(hit, "year"))
+                        };
+                        item.OriginalTitle = originalTitle == item.Title ? string.Empty : originalTitle;
+
+                        if (year.HasValue && item.Year != year)
+                            continue;
+
+                        results.Add(item);
+                        if (results.Count == SEARCH_LIMIT)
+                            break;
+                    }
                 }
 
                 return results;
@@ -149,11 +192,11 @@ namespace RemuxForge.Core.MediaCatalog
                 MediaCatalogSeries series;
 
                 cancellationToken.ThrowIfCancellationRequested();
-                language = ValidateLanguage(language);
+                language = ResolveLanguage(language);
                 url = PageUrl(key, "series");
-                root = await this.LoadPageAsync(url, cancellationToken).ConfigureAwait(false);
+                root = await this.LoadPageAsync(url, cancellationToken);
                 if (root.SelectSingleNode("//div[@id='seasons']") == null)
-                    throw new FormatException("Sezione stagioni TVDB non riconosciuta");
+                    throw CreateFormatError("seasons");
 
                 series = new MediaCatalogSeries
                 {
@@ -206,7 +249,6 @@ namespace RemuxForge.Core.MediaCatalog
                 List<MediaCatalogEpisode> result;
 
                 cancellationToken.ThrowIfCancellationRequested();
-                ValidateLanguage(language);
                 url = PageUrl(series.Key, "series");
                 result = new List<MediaCatalogEpisode>();
 
@@ -214,9 +256,9 @@ namespace RemuxForge.Core.MediaCatalog
                 {
                     HtmlNode season;
 
-                    season = await this.LoadPageAsync(PageUrl(url.AbsoluteUri + "/seasons/official/" + seasonNumber.ToString(CultureInfo.InvariantCulture), "series", @"/seasons/official/\d+"), cancellationToken).ConfigureAwait(false);
+                    season = await this.LoadPageAsync(PageUrl(url.AbsoluteUri + "/seasons/official/" + seasonNumber.ToString(CultureInfo.InvariantCulture), "series", @"/seasons/official/\d+"), cancellationToken);
                     if (season.SelectSingleNode("//div[@id='episodes']") == null)
-                        throw new FormatException("Tabella episodi TVDB non riconosciuta");
+                        throw CreateFormatError("episodes");
 
                     foreach (MediaCatalogSeason item in series.Seasons.Where(s => s.Number == seasonNumber))
                         item.PosterUrl = Poster(season);
@@ -228,7 +270,7 @@ namespace RemuxForge.Core.MediaCatalog
 
                         label = Regex.Match(Text(row.SelectSingleNode("./td[1]")), @"^S(\d+)E(\d+)$");
                         if (!label.Success)
-                            throw new FormatException("Numerazione ufficiale TVDB non riconosciuta");
+                            throw CreateFormatError("episode.number");
 
                         result.Add(new MediaCatalogEpisode
                         {
@@ -270,18 +312,18 @@ namespace RemuxForge.Core.MediaCatalog
                 int completed;
 
                 cancellationToken.ThrowIfCancellationRequested();
-                language = ValidateLanguage(language);
+                language = ResolveLanguage(language);
                 url = PageUrl(series.Key, "series");
 
                 // Le pagine degli episodi non dichiarano la lingua originale: la dichiara solo la scheda della serie
-                originalLanguage = OriginalLanguage(await this.LoadPageAsync(url, cancellationToken).ConfigureAwait(false));
+                originalLanguage = OriginalLanguage(await this.LoadPageAsync(url, cancellationToken));
                 completed = 0;
                 progress?.Report(new MediaCatalogProgress(0, episodes.Count));
                 foreach (MediaCatalogEpisode episode in episodes)
                 {
                     HtmlNode root;
 
-                    root = await this.LoadPageAsync(new Uri(url.AbsoluteUri + "/episodes/" + episode.Id.Value.ToString(CultureInfo.InvariantCulture)), cancellationToken).ConfigureAwait(false);
+                    root = await this.LoadPageAsync(new Uri(url.AbsoluteUri + "/episodes/" + episode.Id.Value.ToString(CultureInfo.InvariantCulture)), cancellationToken);
                     episode.AiredDate = ParseDate(FieldText(root, "Originally Aired"));
                     episode.Directors = People(root, "director");
                     episode.Writers = People(root, "writer");
@@ -329,11 +371,11 @@ namespace RemuxForge.Core.MediaCatalog
                 MediaCatalogMovie movie;
 
                 cancellationToken.ThrowIfCancellationRequested();
-                language = ValidateLanguage(language);
+                language = ResolveLanguage(language);
                 url = PageUrl(key, "movies");
-                root = await this.LoadPageAsync(url, cancellationToken).ConfigureAwait(false);
+                root = await this.LoadPageAsync(url, cancellationToken);
                 if (root.SelectSingleNode("//div[@id='series_basic_info']") == null)
-                    throw new FormatException("Scheda film TVDB non riconosciuta");
+                    throw CreateFormatError("movie");
 
                 movie = new MediaCatalogMovie
                 {
@@ -391,9 +433,9 @@ namespace RemuxForge.Core.MediaCatalog
             HtmlDocument document;
 
             document = new HtmlDocument();
-            document.LoadHtml(await this.RequestAsync(url, null, cancellationToken).ConfigureAwait(false));
+            document.LoadHtml(await this.RequestAsync(url, null, cancellationToken));
             if (document.DocumentNode.SelectSingleNode("//h1") == null || document.DocumentNode.SelectSingleNode("//div[@id='general']") == null)
-                throw new FormatException("HTML TVDB non riconosciuto");
+                throw CreateFormatError("page");
 
             return document.DocumentNode;
         }
@@ -407,52 +449,59 @@ namespace RemuxForge.Core.MediaCatalog
         /// <returns>Contenuto testuale della risposta</returns>
         private async Task<string> RequestAsync(Uri url, string body, CancellationToken cancellationToken)
         {
-            for (int attempt = 0; attempt < 3; attempt++)
+            for (int attempt = 0; ; attempt++)
             {
-                using CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                timeout.CancelAfter(TimeSpan.FromSeconds(45));
-                try
+                using (CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
                 {
-                    using HttpRequestMessage request = new HttpRequestMessage(body == null ? HttpMethod.Get : HttpMethod.Post, url);
-                    if (body != null)
-                        request.Content = new StringContent(body, Encoding.UTF8, "application/json");
-
-                    using HttpResponseMessage response = await this._httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token).ConfigureAwait(false);
-                    if (response.IsSuccessStatusCode)
-                        return await response.Content.ReadAsStringAsync(timeout.Token).ConfigureAwait(false);
-
-                    if (attempt < 2 && ((int)response.StatusCode == 429 || (int)response.StatusCode >= 500 || response.StatusCode == HttpStatusCode.RequestTimeout))
+                    timeout.CancelAfter(REQUEST_TIMEOUT);
+                    try
                     {
-                        TimeSpan delay;
-
-                        delay = response.Headers.RetryAfter?.Delta ?? (response.Headers.RetryAfter?.Date - DateTimeOffset.UtcNow) ?? TimeSpan.FromSeconds(attempt + 1);
-                        if (delay >= TimeSpan.Zero && delay <= TimeSpan.FromSeconds(45))
+                        using (HttpRequestMessage request = new HttpRequestMessage(body == null ? HttpMethod.Get : HttpMethod.Post, url))
                         {
-                            await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
-                            continue;
+                            if (body != null)
+                                request.Content = new StringContent(body, Encoding.UTF8, "application/json");
+
+                            using (HttpResponseMessage response = await this._httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token))
+                            {
+                                if (response.IsSuccessStatusCode)
+                                    return await response.Content.ReadAsStringAsync(timeout.Token);
+
+                                if (attempt < MAX_ATTEMPTS - 1 && ((int)response.StatusCode == 429 || (int)response.StatusCode >= 500 || response.StatusCode == HttpStatusCode.RequestTimeout))
+                                {
+                                    TimeSpan delay;
+
+                                    delay = response.Headers.RetryAfter?.Delta ?? (response.Headers.RetryAfter?.Date - DateTimeOffset.UtcNow) ?? TimeSpan.FromSeconds(attempt + 1);
+                                    if (delay >= TimeSpan.Zero && delay <= REQUEST_TIMEOUT)
+                                    {
+                                        await Task.Delay(delay, cancellationToken);
+                                        continue;
+                                    }
+                                }
+
+                                if (response.StatusCode == HttpStatusCode.NotFound)
+                                    throw new MediaCatalogException(AppText.F("mediaCatalog.error.notFound", DISPLAY_NAME));
+
+                                throw new MediaCatalogException(AppText.F("mediaCatalog.error.service", DISPLAY_NAME, (int)response.StatusCode));
+                            }
                         }
                     }
+                    catch (OperationCanceledException ex)
+                    {
+                        if (cancellationToken.IsCancellationRequested)
+                            throw;
 
-                    throw new MediaCatalogException("TVDB: HTTP " + (int)response.StatusCode, null);
-                }
-                catch (OperationCanceledException ex)
-                {
-                    if (cancellationToken.IsCancellationRequested)
-                        throw;
-
-                    if (attempt == 2)
-                        throw new MediaCatalogException("Timeout TVDB", ex);
-                }
-                catch (HttpRequestException)
-                {
-                    if (attempt == 2)
-                        throw;
+                        if (attempt == MAX_ATTEMPTS - 1)
+                            throw new MediaCatalogException(AppText.F("mediaCatalog.error.network", DISPLAY_NAME, ex.Message), ex);
+                    }
+                    catch (HttpRequestException)
+                    {
+                        if (attempt == MAX_ATTEMPTS - 1)
+                            throw;
+                    }
                 }
 
-                await Task.Delay(TimeSpan.FromSeconds(attempt + 1), cancellationToken).ConfigureAwait(false);
+                await Task.Delay(TimeSpan.FromSeconds(attempt + 1), cancellationToken);
             }
-
-            throw new MediaCatalogException("TVDB non raggiungibile", null);
         }
 
         /// <summary>
@@ -479,7 +528,7 @@ namespace RemuxForge.Core.MediaCatalog
                     originalTitle = WebUtility.HtmlDecode(translation.GetAttributeValue("data-title", originalTitle));
             }
 
-            foreach (string code in new string[] { language, "eng", originalLanguage }.Distinct())
+            foreach (string code in new string[] { language, FALLBACK_LANGUAGE, originalLanguage }.Distinct())
             {
                 HtmlNode translation;
 
@@ -531,7 +580,7 @@ namespace RemuxForge.Core.MediaCatalog
         /// <returns>Testo selezionato oppure stringa vuota</returns>
         private static string SearchText(JsonElement hit, string field, string language, string originalLanguage, string fallback)
         {
-            foreach (string code in new string[] { language, "eng", originalLanguage }.Distinct())
+            foreach (string code in new string[] { language, FALLBACK_LANGUAGE, originalLanguage }.Distinct())
             {
                 string value;
 
@@ -629,22 +678,20 @@ namespace RemuxForge.Core.MediaCatalog
         {
             if (!Uri.TryCreate(key, UriKind.Absolute, out Uri url) || url.Scheme != "https" || !url.IsDefaultPort || !string.IsNullOrEmpty(url.UserInfo) ||
                 (url.Host != "thetvdb.com" && url.Host != "www.thetvdb.com") || !Regex.IsMatch(url.AbsolutePath, "^/" + section + "/[^/]+" + suffix + "/?$"))
-                throw new FormatException("Chiave TVDB non valida");
+                throw CreateFormatError("key");
 
             return new Uri("https://thetvdb.com" + url.AbsolutePath.TrimEnd('/'));
         }
 
         /// <summary>
-        /// Valida il codice ISO 639-2/T usato dall'app e dal sito TVDB
+        /// Codice ISO 639-2/T dell'app, che il sito TVDB usa così com'è; inglese se non è un codice di tre lettere
         /// </summary>
         /// <param name="language">Lingua dell'applicazione</param>
         /// <returns>Codice lingua normalizzato</returns>
-        private static string ValidateLanguage(string language)
+        private static string ResolveLanguage(string language)
         {
-            if (language == null || !Regex.IsMatch(language, "^[a-zA-Z]{3}$"))
-                throw new FormatException("Codice lingua ISO 639-2/T non valido");
-
-            return language.ToLowerInvariant();
+            string code = (language ?? "").Trim().ToLowerInvariant();
+            return Regex.IsMatch(code, "^[a-z]{3}$") ? code : FALLBACK_LANGUAGE;
         }
 
         /// <summary>
@@ -739,7 +786,23 @@ namespace RemuxForge.Core.MediaCatalog
         /// <returns>Errore classificato della fonte</returns>
         private static MediaCatalogException CatalogError(Exception exception)
         {
-            return exception as MediaCatalogException ?? new MediaCatalogException("TVDB: " + exception.Message, exception);
+            if (exception is MediaCatalogException catalogException)
+                return catalogException;
+
+            if (exception is HttpRequestException || exception is System.IO.IOException)
+                return new MediaCatalogException(AppText.F("mediaCatalog.error.network", DISPLAY_NAME, exception.Message), exception);
+
+            return new MediaCatalogException(AppText.F("mediaCatalog.error.format", DISPLAY_NAME, exception.Message), exception);
+        }
+
+        /// <summary>
+        /// Errore di pagina o risposta non interpretabile
+        /// </summary>
+        /// <param name="detail">Cosa manca o non torna</param>
+        /// <returns>Eccezione da lanciare</returns>
+        private static MediaCatalogException CreateFormatError(string detail)
+        {
+            return new MediaCatalogException(AppText.F("mediaCatalog.error.format", DISPLAY_NAME, detail));
         }
 
         #endregion
