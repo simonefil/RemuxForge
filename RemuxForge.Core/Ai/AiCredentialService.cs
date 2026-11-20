@@ -10,7 +10,7 @@ using System.Text.Json.Serialization;
 namespace RemuxForge.Core.Ai
 {
     /// <summary>
-    /// Servizio del file di configurazione dell'integrazione AI: credenziali, modello del Metadata AI e consenso
+    /// Servizio del file di configurazione dell'integrazione AI: credenziali e modello del Metadata AI
     /// </summary>
     public class AiCredentialService
     {
@@ -145,7 +145,7 @@ namespace RemuxForge.Core.Ai
         }
 
         /// <summary>
-        /// Scollega l'account: cancella solo i token, conserva client ID, email, host ID, modello, livello di ragionamento e consenso
+        /// Scollega l'account: cancella solo i token, conserva client ID, email, host ID, modello e livello di ragionamento
         /// </summary>
         /// <returns>Configurazione aggiornata</returns>
         public AiCredentials ClearAccountTokens()

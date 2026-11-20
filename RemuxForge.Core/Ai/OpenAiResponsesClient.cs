@@ -57,9 +57,8 @@ namespace RemuxForge.Core.Ai
         private const int WRITING_STEP_CHARS = 1000;
 
         /// <summary>
-        /// Attesa massima fra due righe dello stream. Durante il ragionamento il servizio tace: il limite copre il ragionamento più
-        /// lungo con margine ampio (nei registri al più 968 token di ragionamento e 260 s per la chiamata intera più lunga) ed è la
-        /// stessa attesa concessa agli header
+        /// Attesa massima degli header e fra due righe dello stream. Durante il ragionamento il servizio tace: il limite lo copre con
+        /// margine ampio
         /// </summary>
         private static readonly TimeSpan STREAM_IDLE_TIMEOUT = TimeSpan.FromMinutes(10);
 
@@ -101,7 +100,7 @@ namespace RemuxForge.Core.Ai
             this._credentialService = credentialService;
             this._oauthFlow = oauthFlow;
             this._httpClient = new HttpClient();
-            this._httpClient.Timeout = TimeSpan.FromMinutes(10);
+            this._httpClient.Timeout = STREAM_IDLE_TIMEOUT;
             this._refreshLock = new SemaphoreSlim(1, 1);
         }
 
@@ -331,8 +330,7 @@ namespace RemuxForge.Core.Ai
 
         /// <summary>
         /// Legge lo stream SSE della Responses API fino all'evento finale e avvisa dei cambi di stato: coda, ragionamento, ricerche
-        /// web, fonti citate, scrittura della risposta o di una chiamata di funzione, rifiuto. I delta di testo non avvisano: conta
-        /// solo l'inizio di ogni item
+        /// web, fonti citate, scrittura della risposta o di una chiamata di funzione con la quantità già scritta, rifiuto
         /// </summary>
         /// <param name="reader">Lettore dello stream</param>
         /// <param name="mode">Modalità di accesso, per la mappatura degli errori</param>

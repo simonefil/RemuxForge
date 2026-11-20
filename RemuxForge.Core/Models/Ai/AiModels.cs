@@ -598,7 +598,7 @@ namespace RemuxForge.Core.Models
         public JsonNode ToolChoice { get; set; }
 
         /// <summary>
-        /// Chiave di cache nel body, mandata solo con la API key
+        /// Chiave di cache nel body (prompt_cache_key), vuota per non mandarla
         /// </summary>
         public string PromptCacheKey { get; set; }
 
