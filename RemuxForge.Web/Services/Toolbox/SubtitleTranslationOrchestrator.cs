@@ -2009,7 +2009,7 @@ namespace RemuxForge.Web.Services.Toolbox
         /// <param name="stream">Stato dello stream</param>
         private void HandleCallProgress(TranslationModelRequest request, AiStreamProgress stream)
         {
-            string text = stream.Describe();
+            string text = stream.Describe(request.Request.Model);
             bool changed;
             lock (this.StateLock)
             {
@@ -2017,7 +2017,7 @@ namespace RemuxForge.Web.Services.Toolbox
                 if (!this._liveCalls.TryGetValue(request, out call))
                 {
                     TranslationProjectFile file = this._project != null ? this._project.Files.Find(f => f.Id == request.FileId) : null;
-                    call = new LiveCall(file != null ? Path.GetFileName(file.Path) : "", request.Request.Model);
+                    call = new LiveCall(file != null ? Path.GetFileName(file.Path) : "");
                     this._liveCalls[request] = call;
                 }
 
@@ -2069,7 +2069,7 @@ namespace RemuxForge.Web.Services.Toolbox
         private string DescribeLiveCall()
         {
             string file = this._liveCalls.Count > 1 && this._liveLatest.FileName.Length > 0 ? this._liveLatest.FileName + ": " : "";
-            return file + this._liveLatest.Text + " · " + this._liveLatest.Model;
+            return file + this._liveLatest.Text;
         }
 
         /// <summary>
@@ -2565,11 +2565,9 @@ namespace RemuxForge.Web.Services.Toolbox
             /// Costruttore
             /// </summary>
             /// <param name="fileName">Nome del file, vuoto per le chiamate su più file</param>
-            /// <param name="model">Modello</param>
-            public LiveCall(string fileName, string model)
+            public LiveCall(string fileName)
             {
                 this.FileName = fileName;
-                this.Model = model;
                 this.StartedAt = DateTime.UtcNow;
                 this.UpdatedAt = this.StartedAt;
                 this.Text = "";
@@ -2579,11 +2577,6 @@ namespace RemuxForge.Web.Services.Toolbox
             /// Nome del file, vuoto per le chiamate su più file
             /// </summary>
             public string FileName { get; }
-
-            /// <summary>
-            /// Modello
-            /// </summary>
-            public string Model { get; }
 
             /// <summary>
             /// Inizio della chiamata, in UTC
@@ -2596,7 +2589,7 @@ namespace RemuxForge.Web.Services.Toolbox
             public DateTime UpdatedAt { get; set; }
 
             /// <summary>
-            /// Ultimo evento nella lingua dell'interfaccia
+            /// Ultimo evento col modello, nella lingua dell'interfaccia
             /// </summary>
             public string Text { get; set; }
         }

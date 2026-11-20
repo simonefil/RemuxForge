@@ -714,6 +714,16 @@ namespace RemuxForge.Core.Models
             return AppText.F(key, this.Text);
         }
 
+        /// <summary>
+        /// Descrive lo stato nella lingua dell'interfaccia col modello che risponde, per la riga secondaria dell'attesa
+        /// </summary>
+        /// <param name="model">Modello della chiamata</param>
+        /// <returns>Testo per l'utente</returns>
+        public string Describe(string model)
+        {
+            return this.Describe() + " · " + model;
+        }
+
         #endregion
 
         #region Proprietà

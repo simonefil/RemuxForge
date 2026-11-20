@@ -768,7 +768,7 @@
         // Lo stream aggiorna solo l'attesa, e la ridisegna solo se il testo cambia
         if (step.Kind == AiPresetGenerationStepKind.Streaming)
         {
-            string detail = step.Stream.Describe() + " · " + this._credentials.Model;
+            string detail = step.Stream.Describe(this._credentials.Model);
             if (step.Stream.Stage == AiStreamStage.Sent)
                 this._callStartedAt = DateTime.UtcNow;
             if (detail == this._streamDetail)
