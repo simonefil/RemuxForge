@@ -42,13 +42,11 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <param name="recipe">Ricetta di ricomposizione, null per una battuta esclusa</param>
         /// <param name="style">Stile ASS/SSA, vuoto in SRT</param>
         /// <param name="kind">Tipo della battuta</param>
-        /// <param name="layer">Layer ASS, null in SRT e SSA</param>
-        /// <param name="exclusionReason">Motivo per cui la battuta resta al codice, vuoto se si traduce</param>
         /// <param name="duplicateOf">Id della battuta di cui questa è la copia: su un altro layer, o un'altra riga intera della stessa frase rivelata a pezzi</param>
         /// <param name="textStart">Inizio del campo Text nel testo decodificato</param>
         /// <param name="textLength">Lunghezza del campo Text nel testo decodificato</param>
         public SubtitleCue(int? id, int position, long startMs, long endMs, string cleanText, CueRecipe recipe, string style, SubtitleCueKind kind,
-            int? layer, string exclusionReason, int? duplicateOf, int textStart, int textLength)
+            int? duplicateOf, int textStart, int textLength)
         {
             this.Id = id;
             this.Position = position;
@@ -58,8 +56,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             this.Recipe = recipe;
             this.Style = style ?? "";
             this.Kind = kind;
-            this.Layer = layer;
-            this.ExclusionReason = exclusionReason ?? "";
             this.DuplicateOf = duplicateOf;
             this.TextStart = textStart;
             this.TextLength = textLength;
@@ -125,16 +121,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// testo ha ♪ o ♫
         /// </summary>
         public SubtitleCueKind Kind { get; }
-
-        /// <summary>
-        /// Layer ASS, null in SRT e SSA
-        /// </summary>
-        public int? Layer { get; }
-
-        /// <summary>
-        /// Motivo per cui la battuta resta al codice, vuoto se si traduce
-        /// </summary>
-        public string ExclusionReason { get; }
 
         /// <summary>
         /// Id della battuta di cui questa è la copia, su un altro layer o come altra riga della stessa frase rivelata a pezzi: ne

@@ -1023,8 +1023,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 SubtitleCueKind kind = format == SubtitleTranslationFormat.Srt ? srtKinds[i] : raw.Kind;
                 if (format == SubtitleTranslationFormat.Srt && cleaned.CleanText.IndexOfAny(s_songMarks) >= 0)
                     kind = SubtitleCueKind.Song;
-                SubtitleCue cue = new SubtitleCue(id, i + 1, raw.StartMs, raw.EndMs, cleaned.CleanText, cleaned.Recipe, raw.Style, kind, raw.Layer,
-                    cleaned.ExclusionReason, duplicateOf, raw.TextStart, raw.TextLength);
+                SubtitleCue cue = new SubtitleCue(id, i + 1, raw.StartMs, raw.EndMs, cleaned.CleanText, cleaned.Recipe, raw.Style, kind, duplicateOf,
+                    raw.TextStart, raw.TextLength);
                 cues.Add(cue);
             }
 
