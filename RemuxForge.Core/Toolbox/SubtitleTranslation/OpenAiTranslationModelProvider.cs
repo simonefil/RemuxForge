@@ -13,13 +13,14 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
     /// richiesta dopo, che ha una coda diversa, non lo trova. Prima della prima richiesta di una sessione che il runner dichiara
     /// riletta parte quindi una volta la stessa richiesta senza la coda, che lascia il punto dentro la parte fissa: anche il
     /// primo blocco la trova in cache. Una sessione che il runner non dichiara riletta, come un blocco solo coi suoi
-    /// ritentativi, prepara la parte fissa alla sua seconda richiesta; una sessione di una richiesta sola non la prepara mai. Il runner sa quante richieste avrà la sessione, il provider sa come
-    /// funziona la cache del servizio: la decisione sta divisa così, e un altro provider ignora il segnale del runner.
+    /// ritentativi, prepara la parte fissa alla sua seconda richiesta; una sessione di una richiesta sola non la prepara mai. Il
+    /// runner sa quante richieste avrà la sessione, il provider sa come funziona la cache del servizio: la decisione sta divisa
+    /// così, e un altro provider ignora il segnale del runner.
     /// La richiesta senza coda ha model, reasoning, tool, tool_choice e instructions della vera, che fanno parte del prefisso in
     /// cache; con tool_choice forzato il modello consegna subito una chiamata vuota. Il suo consumo si somma alla prima risposta
     /// riuscita della sessione, anche dopo un tentativo fallito della richiesta vera.
-    /// Con la API key il comportamento della cache non è stato misurato: se l'API pubblica mette già in cache il prefisso comune,
-    /// la richiesta in più costerebbe la parte fissa intera per niente, quindi lì non parte
+    /// Con la API key la richiesta in più non parte: se l'API pubblica mette già in cache il prefisso comune, costerebbe la parte
+    /// fissa intera senza risparmio
     /// </summary>
     public class OpenAiTranslationModelProvider : TranslationModelProviderBase
     {

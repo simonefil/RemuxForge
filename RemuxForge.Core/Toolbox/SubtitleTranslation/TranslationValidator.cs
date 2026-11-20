@@ -414,11 +414,11 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <summary>
         /// Precompila «Maiuscole esatte» dei termini del glossario che non l'hanno ancora; una voce che l'ha già resta com'è, così
         /// la scelta dell'utente non si perde. Che un termine sia un nome proprio lo dicono le battute sorgenti, non le maiuscole
-        /// del glossario: l'analisi scrive spesso con l'iniziale maiuscola anche i nomi comuni («Teacher», «Karma»).
+        /// del glossario: l'analisi scrive spesso con l'iniziale maiuscola anche i nomi comuni.
         /// - Voce di tipo Titolo: maiuscole esatte, perché vale solo l'uso come titolo o vocativo, maiuscolo a metà frase («Yes,
-        ///   Teacher», «Teacher Onizuka»); «a teacher» non è il titolo.
-        /// - Termine scritto con le sue maiuscole in mezzo alla frase: è un nome proprio e ha le maiuscole esatte. «Light» in
-        ///   Death Note si trova come nome, e «turn on the light» o «I will» non lo sono; se la serie usa la stessa parola anche
+        ///   Doctor», «Doctor Smith»); «a doctor» non è il titolo.
+        /// - Termine scritto con le sue maiuscole in mezzo alla frase: è un nome proprio e ha le maiuscole esatte. Un nome che è
+        ///   anche una parola comune («Rose») si trova come nome, e «a red rose» non lo è; se la serie usa la stessa parola anche
         ///   minuscola, quella è la parola comune e resta fuori.
         /// - Altrimenti maiuscole libere: scritto minuscolo in mezzo alla frase è un nome comune, e senza nessuna occorrenza in
         ///   mezzo alla frase non c'è prova; un termine mancato lo trova la revisione.

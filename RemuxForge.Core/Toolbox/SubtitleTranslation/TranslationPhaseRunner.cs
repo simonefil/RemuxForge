@@ -82,7 +82,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         private readonly string _context;
 
         /// <summary>
-        /// Instructions di B, B′ e B″, uguali per tutto il job
+        /// Instructions di traduzione, ritentativo e blocco ridotto, uguali per tutto il job
         /// </summary>
         private readonly string _translationInstructions;
 

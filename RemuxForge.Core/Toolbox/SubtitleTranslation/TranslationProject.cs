@@ -401,7 +401,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
     }
 
     /// <summary>
-    /// Un valore per fase dell'harness: modelli o livelli di ragionamento
+    /// Un valore per fase della traduzione: modelli o livelli di ragionamento
     /// </summary>
     public class TranslationPhaseModels
     {
@@ -436,7 +436,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         #region Proprietà
 
         /// <summary>
-        /// Analisi (A0, A1, A2)
+        /// Analisi: riconoscimento dei tipi, analisi dei file e fusione dei glossari
         /// </summary>
         public string Analysis { get; set; }
 

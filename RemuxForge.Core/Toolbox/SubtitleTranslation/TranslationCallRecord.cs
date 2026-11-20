@@ -98,7 +98,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public string FileId { get; set; }
 
         /// <summary>
-        /// Blocco del piano, per B, B′ e B″
+        /// Blocco del piano, per traduzione, ritentativo e blocco ridotto
         /// </summary>
         public int? BlockIndex { get; set; }
 
@@ -118,12 +118,12 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public int? RequestedIds { get; set; }
 
         /// <summary>
-        /// Ritentativo di B′, 1 o 2
+        /// Ritentativo della consegna o della diagnosi, da 1
         /// </summary>
         public int? Attempt { get; set; }
 
         /// <summary>
-        /// Giro di correzione di A0, A1 e A2, da 1
+        /// Giro di correzione delle chiamate dell'analisi, da 1
         /// </summary>
         public int? Round { get; set; }
 

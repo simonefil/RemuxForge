@@ -11,8 +11,9 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
     /// <summary>
     /// Fase di traduzione di un job in due giri coi file in parallelo fino al tetto: prima le tratte condivise, ognuna nel file della
     /// sua prima occorrenza e copiata in tutte le altre, poi i blocchi di ogni file in sequenza, senza le battute delle tratte. Per
-    /// ogni blocco o tratta B, poi B′ sulle sole battute respinte e B″ sulle metà dopo una risposta troncata; l'unità si salva solo
-    /// intera. Stop scarta l'unità in corso, limite d'uso ed errori fermano i file fra un'unità e l'altra
+    /// ogni blocco o tratta la traduzione, poi il ritentativo sulle sole battute respinte e il blocco ridotto sulle metà dopo una
+    /// risposta troncata; l'unità si salva solo intera. Stop scarta l'unità in corso, limite d'uso ed errori fermano i file fra
+    /// un'unità e l'altra
     /// </summary>
     public sealed class TranslationRunner : TranslationPhaseRunner
     {

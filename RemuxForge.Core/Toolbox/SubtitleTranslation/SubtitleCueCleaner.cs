@@ -15,7 +15,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
     /// I blocchi a metà frase sono di due specie. Un blocco su un confine di parola che cambia la formattazione, o che anima il
     /// testo seguente con \t, è semantico: diventa un segno e il modello lo mette attorno alle parole tradotte. Un blocco dentro
     /// una parola (sfumature e animazioni lettera per lettera), un karaoke o un tratto formattato di soli spazi sono posizionali:
-    /// la battuta va al modello senza segni e l'harness ridistribuisce il testo tradotto sui pezzi del sorgente in proporzione ai
+    /// la battuta va al modello senza segni e il codice ridistribuisce il testo tradotto sui pezzi del sorgente in proporzione ai
     /// caratteri, con tutti i blocchi originali al loro posto nella sequenza (durate del karaoke e loro somma comprese)
     /// </summary>
     public class SubtitleCueCleaner

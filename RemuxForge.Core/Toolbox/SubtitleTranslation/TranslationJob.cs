@@ -499,7 +499,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public int? SplitFrom { get; set; }
 
         /// <summary>
-        /// Chiamate B, B′ e B″ che l'hanno tradotto
+        /// Chiamate di traduzione, ritentativo e blocco ridotto che l'hanno tradotto
         /// </summary>
         public List<int> CallSeqs { get; set; }
 

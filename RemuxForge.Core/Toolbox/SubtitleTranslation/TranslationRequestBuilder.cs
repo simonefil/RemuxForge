@@ -65,7 +65,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         private const string GENERIC_ADDRESS_RULE = "Keep the register of each speaker as described in register_rules.";
 
         /// <summary>
-        /// Instructions di B, B′ e B″: un solo testo, perché il ritentativo trovi la cache del prefisso
+        /// Instructions di traduzione, ritentativo e blocco ridotto: un solo testo, perché il ritentativo trovi la cache del prefisso
         /// </summary>
         private const string TRANSLATION_INSTRUCTIONS = "You are a professional subtitle translator from {source_language} to {target_language}.\n" +
             "The first message gives the user's context for the series when there is one, the approved glossary and the full source episode. The last message shows the latest accepted translations and names the cue ids to translate now.\n" +
@@ -374,7 +374,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         }
 
         /// <summary>
-        /// Instructions di B, B′ e B″ coi segnaposto risolti: uguali per tutto il job
+        /// Instructions di traduzione, ritentativo e blocco ridotto coi segnaposto risolti: uguali per tutto il job
         /// </summary>
         /// <param name="sourceLanguage">Lingua d'origine ISO 639-2</param>
         /// <param name="targetLanguage">Lingua d'arrivo ISO 639-2</param>
@@ -416,7 +416,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         }
 
         /// <summary>
-        /// Tool offerti da B, B′ e B″, sempre nello stesso ordine
+        /// Tool offerti da traduzione, ritentativo e blocco ridotto, sempre nello stesso ordine
         /// </summary>
         /// <returns>Array nuovo con submit_translation</returns>
         public static JsonArray CreateTranslationTools()
@@ -451,12 +451,12 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         }
 
         /// <summary>
-        /// Coda di B, B′ e B″: coppie accettate prima dell'intervallo, id richiesti e, per il ritentativo, gli scarti. Coppie e id
+        /// Coda di traduzione, ritentativo e blocco ridotto: coppie accettate prima dell'intervallo, id richiesti e, per il ritentativo, gli scarti. Coppie e id
         /// richiesti stanno in due elenchi, come nella consegna: dialoghi e canzoni contigui nell'ordine di lettura, poi i cartelli
         /// </summary>
         /// <param name="accepted">Ultime battute accettate prima del primo id richiesto, con la traduzione</param>
         /// <param name="requested">Battute richieste, in ordine di id</param>
-        /// <param name="rejected">Righe del validatore della consegna precedente, vuote per B e B″</param>
+        /// <param name="rejected">Righe del validatore della consegna precedente, vuote per traduzione e blocco ridotto</param>
         /// <returns>Testo dell'ultimo messaggio</returns>
         public static string CreateTranslationTail(IReadOnlyList<KeyValuePair<FrozenCue, string>> accepted, IReadOnlyList<FrozenCue> requested, IReadOnlyList<string> rejected)
         {
