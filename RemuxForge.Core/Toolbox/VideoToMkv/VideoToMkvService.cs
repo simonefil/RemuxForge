@@ -56,9 +56,10 @@ namespace RemuxForge.Core.Toolbox.VideoToMkv
         /// <param name="inputPath">File da convertire</param>
         /// <param name="outputFolder">Cartella di uscita, vuota per scrivere accanto all'originale</param>
         /// <param name="allocator">Allocatore dei percorsi del lotto</param>
+        /// <param name="cancellationToken">Annullamento che interrompe la lettura delle tracce</param>
         /// <param name="onProgress">Avanzamento di mkvmerge in percentuale</param>
         /// <returns>Esito della conversione</returns>
-        public VideoToMkvResult Convert(string inputPath, string outputFolder, OutputPathAllocator allocator, Action<int> onProgress)
+        public VideoToMkvResult Convert(string inputPath, string outputFolder, OutputPathAllocator allocator, CancellationToken cancellationToken, Action<int> onProgress)
         {
             VideoToMkvResult result = new VideoToMkvResult();
             List<string> errors = new List<string>();
@@ -79,7 +80,7 @@ namespace RemuxForge.Core.Toolbox.VideoToMkv
             }
 
             // Un file che mkvmerge non riconosce non ha tracce: l'errore chiaro lo dà la conversione, che fallisce
-            List<TrackInfo> sourceTracks = this._mkvTools.GetFileInfoIsolated(inputPath, 0, CancellationToken.None, null)?.Tracks ?? new List<TrackInfo>();
+            List<TrackInfo> sourceTracks = this._mkvTools.GetFileInfoIsolated(inputPath, 0, cancellationToken, null)?.Tracks ?? new List<TrackInfo>();
             string folder = string.IsNullOrEmpty(outputFolder) ? Path.GetDirectoryName(Path.GetFullPath(inputPath)) : outputFolder;
             string finalPath = allocator.Reserve(Path.Combine(folder, Path.GetFileNameWithoutExtension(inputPath) + MediaContainerFormats.OUTPUT_EXTENSION));
 
@@ -107,7 +108,7 @@ namespace RemuxForge.Core.Toolbox.VideoToMkv
                         result.Details = string.Join(Environment.NewLine, errors);
                         result.Message = string.Join(" ", errors).Replace(Path.GetFullPath(inputPath), Path.GetFileName(inputPath)).Replace(output.TempPath, Path.GetFileName(finalPath));
                     }
-                    else if (!MediaContainerNormalizer.KeepsTracks(sourceTracks, this._mkvTools.GetFileInfoIsolated(output.TempPath, 0, CancellationToken.None, null)?.Tracks ?? new List<TrackInfo>()))
+                    else if (!MediaContainerNormalizer.KeepsTracks(sourceTracks, this._mkvTools.GetFileInfoIsolated(output.TempPath, 0, cancellationToken, null)?.Tracks ?? new List<TrackInfo>()))
                     {
                         result.Status = VideoToMkvStatus.Failed;
                         result.Message = AppText.T("toolbox.videoToMkv.tracksChanged");

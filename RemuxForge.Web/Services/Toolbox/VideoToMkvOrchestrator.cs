@@ -5,6 +5,7 @@ using RemuxForge.Core.Toolbox.VideoToMkv;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading;
 
 namespace RemuxForge.Web.Services.Toolbox
 {
@@ -66,6 +67,7 @@ namespace RemuxForge.Web.Services.Toolbox
             List<VideoToMkvRecord> targets = new List<VideoToMkvRecord>();
             List<string> inputs = new List<string>();
             VideoToMkvBatchSummary summary = new VideoToMkvBatchSummary();
+            CancellationToken cancellation = this.OperationCancellationToken;
             string outputFolder;
             string folderError;
 
@@ -115,7 +117,7 @@ namespace RemuxForge.Web.Services.Toolbox
                     // Il try sta dentro il ciclo: un file illeggibile o una cartella non scrivibile fermano quel file soltanto
                     try
                     {
-                        result = service.Convert(record.InputPath, outputFolder, allocator, percent =>
+                        result = service.Convert(record.InputPath, outputFolder, allocator, cancellation, percent =>
                         {
                             lock (this.StateLock)
                             {
