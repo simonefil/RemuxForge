@@ -987,8 +987,8 @@
             commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.subtitleTranslation.approve"), "", "check", allSurfaces, UiCommandMenuSection.Actions, busy || !this.Orchestrator.CanApprove,
                 () =>
                 {
-                    // Senza il modello della traduzione o le credenziali dell'accesso il glossario non si approva: l'approvazione avvia il giro
-                    if (!this.CheckModel(TranslationJobPhase.Translation))
+                    // Senza i modelli della traduzione e della revisione o le credenziali dell'accesso il glossario non si approva: l'approvazione avvia il giro
+                    if (!this.CheckModel(TranslationJobPhase.Translation) || !this.CheckModel(TranslationJobPhase.Review))
                         return;
                     if (!this.Orchestrator.IsAccessConfigured)
                     {
