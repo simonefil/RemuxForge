@@ -155,7 +155,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 using (ZipArchive zip = new ZipArchive(stream, ZipArchiveMode.Create))
                 {
                     // Copia del progetto coi soli file del job e i percorsi dei sorgenti dentro l'archivio
-                    TranslationProject copy = TranslationJsonFile.Parse<TranslationProject>(TranslationJsonFile.Serialize(project), project.Id);
+                    TranslationProject copy = TranslationJsonFile.Clone(project);
                     copy.Files.RemoveAll(f => !job.FileIds.Contains(f.Id));
                     Dictionary<string, TranslationJobFileState> activeStates = new Dictionary<string, TranslationJobFileState>(StringComparer.Ordinal);
                     foreach (TranslationProjectFile file in copy.Files)

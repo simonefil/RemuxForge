@@ -129,6 +129,17 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         }
 
         /// <summary>
+        /// Copia profonda di un contenuto, passando dalla forma in cui lo scrive Write
+        /// </summary>
+        /// <typeparam name="T">Tipo del contenuto</typeparam>
+        /// <param name="value">Contenuto</param>
+        /// <returns>Copia</returns>
+        public static T Clone<T>(T value)
+        {
+            return JsonSerializer.Deserialize<T>(JsonSerializer.Serialize(value, s_options), s_options);
+        }
+
+        /// <summary>
         /// Accoda una riga a un registro; dopo un'ultima riga troncata da una chiusura brusca la riga nuova parte a capo
         /// </summary>
         /// <typeparam name="T">Tipo della riga</typeparam>
