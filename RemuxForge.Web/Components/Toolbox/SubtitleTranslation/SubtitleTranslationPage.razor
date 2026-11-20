@@ -1,3 +1,4 @@
+@using Microsoft.AspNetCore.Components.Rendering
 @using RemuxForge.Core.Toolbox.SubtitleTranslation
 @using RemuxForge.Web.Services.Toolbox
 @using System.Globalization
@@ -34,7 +35,7 @@
                             GridLines="DataGridGridLines.Horizontal"
                             SelectionMode="DataGridSelectionMode.Single"
                             Value="@(SelectedProject != null ? new List<TranslationProject> { SelectedProject } : new List<TranslationProject>())"
-                            RowSelect="@((TranslationProject selected) => { _selectedId = selected.Id; OnStateChanged.InvokeAsync(); })"
+                            RowSelect="@((TranslationProject selected) => SelectProject(selected))"
                             RowDoubleClick="@((DataGridRowMouseEventArgs<TranslationProject> args) => OpenProject(args.Data))">
                 <Columns>
                     <RadzenDataGridColumn TItem="TranslationProject" Title="@AppText.T("web.toolbox.subtitleTranslation.project")" Width="30%">
@@ -86,7 +87,7 @@
         foreach (TranslationProjectFile projectFile in project.Files)
             fileNames[projectFile.Id] = System.IO.Path.GetFileName(projectFile.Path);
 
-        <RadzenSteps class="rf-translation-steps" ShowStepsButtons="false" AllowStepSelect="@(!busy)" SelectedIndex="@_step" SelectedIndexChanged="@((int index) => { _step = index; _exported = null; CancelCueEditing(); OnStateChanged.InvokeAsync(); })">
+        <RadzenSteps class="rf-translation-steps" ShowStepsButtons="false" AllowStepSelect="@(!busy)" SelectedIndex="@_step" SelectedIndexChanged="@((int index) => SelectStep(index))">
             <Steps>
                 <RadzenStepsItem Text="@AppText.T("web.toolbox.subtitleTranslation.steps.project")" />
                 <RadzenStepsItem Text="@AppText.T("web.toolbox.subtitleTranslation.steps.glossary")" Disabled="@(project.ReachedStep < TranslationProjectStep.Glossary)" />
@@ -291,7 +292,7 @@
                                             }
                                             <RadzenButton Icon="remove_circle_outline" Size="ButtonSize.ExtraSmall" Variant="Variant.Text" ButtonStyle="ButtonStyle.Danger" Disabled="@(busy || job.FileIds.Count < 2 || project.Glossary.Status != GlossaryStatus.Approved)"
                                                           title="@AppText.T("web.toolbox.subtitleTranslation.excludeFile")" aria-label="@(AppText.T("web.toolbox.subtitleTranslation.excludeFile") + " " + row.FileName)"
-                                                          Click="@(() => { Orchestrator.ExcludeFile(row.FileId); _step = ProjectStep(); })" />
+                                                          Click="@(() => ExcludeFile(row))" />
                                         </span>
                                     }
                                 </Template>
@@ -313,7 +314,7 @@
                             <div class="rf-tool-field">
                                 <RadzenLabel class="rf-tool-label" Text="@AppText.T("web.dashboard.file")" Component="TranslationReviewFile" />
                                 <RadzenDropDown TValue="string" Name="TranslationReviewFile" class="rf-translation-review-file" Data="@job.FileIds" Value="@_reviewFileId"
-                                                Change="@((object value) => { _reviewFileId = (string)value; _reviewRows = null; CancelCueEditing(); })">
+                                                Change="@((object value) => SelectReviewFile((string)value))">
                                     <Template Context="fileId">@fileNames[(string)fileId]</Template>
                                     <ValueTemplate Context="fileId">@fileNames[(string)fileId]</ValueTemplate>
                                 </RadzenDropDown>
@@ -380,7 +381,7 @@
                                             <span class="rf-translation-cell">@if (row.ToReviewReason != null) {<span class="rf-translation-rejected">@row.ToReviewReason</span>}@MarkedText(row.Text ?? "")</span>
                                             <RadzenButton Icon="edit" Size="ButtonSize.ExtraSmall" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" Disabled="@(busy || !Orchestrator.CanEditCues)"
                                                           title="@AppText.T("web.toolbox.subtitleTranslation.editEntry")" aria-label="@AppText.F("web.toolbox.subtitleTranslation.cueEdit", row.Id)"
-                                                          Click="@(() => { _editingCue = row.Id; _cueDraft = row.Text ?? ""; })" />
+                                                          Click="@(() => StartCueEditing(row))" />
                                         </div>
                                     }
                                 </Template>
@@ -976,30 +977,20 @@
             });
             commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.subtitleTranslation.next"), "", "arrow_forward", allSurfaces, UiCommandMenuSection.Actions,
                 busy || project.ReachedStep < TranslationProjectStep.Glossary,
-                () => { this._step = STEP_GLOSSARY; this.OnStateChanged.InvokeAsync(); })
+                null)
             {
+                AsyncCallback = () =>
+                {
+                    this._step = STEP_GLOSSARY;
+                    return this.OnStateChanged.InvokeAsync();
+                },
                 ToolbarOrder = 13
             });
         }
         else if (this._step == STEP_GLOSSARY)
         {
             commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.subtitleTranslation.approve"), "", "check", allSurfaces, UiCommandMenuSection.Actions, busy || !this.Orchestrator.CanApprove,
-                () =>
-                {
-                    // Senza i modelli della traduzione e della revisione o le credenziali dell'accesso il glossario non si approva: l'approvazione avvia il giro
-                    if (!this.CheckModel(TranslationJobPhase.Translation) || !this.CheckModel(TranslationJobPhase.Review))
-                        return;
-                    if (!this.Orchestrator.IsAccessConfigured)
-                    {
-                        this.Notify(NotificationSeverity.Error, AppText.T("web.toolbox.subtitleTranslation.notifyTranslationFailed"), AppText.T("ai.error.notConfigured"));
-                        return;
-                    }
-
-                    this._pending = null;
-                    this._step = STEP_TRANSLATION;
-                    this.Orchestrator.ApproveGlossary();
-                    this.Notify(NotificationSeverity.Success, AppText.T("web.toolbox.subtitleTranslation.notifyApproved"), AppText.F("web.toolbox.subtitleTranslation.revision", this.Orchestrator.Project.Glossary.Revision));
-                })
+                this.ApproveGlossary)
             {
                 ToolbarOrder = 10
             });
@@ -1011,8 +1002,14 @@
             });
             commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.subtitleTranslation.next"), "", "arrow_forward", allSurfaces, UiCommandMenuSection.Actions,
                 busy || project.ReachedStep < TranslationProjectStep.Translation,
-                () => { this._pending = null; this._step = STEP_TRANSLATION; this.OnStateChanged.InvokeAsync(); })
+                null)
             {
+                AsyncCallback = () =>
+                {
+                    this._pending = null;
+                    this._step = STEP_TRANSLATION;
+                    return this.OnStateChanged.InvokeAsync();
+                },
                 ToolbarOrder = 13
             });
         }
@@ -1183,6 +1180,79 @@
             Duration = severity == NotificationSeverity.Success ? 6000 : 8000,
             Style = TOAST_STYLE
         });
+    }
+
+    /// <summary>
+    /// Sceglie un progetto dell'elenco
+    /// </summary>
+    /// <param name="project">Progetto della riga</param>
+    private async Task SelectProject(TranslationProject project)
+    {
+        this._selectedId = project.Id;
+        await this.OnStateChanged.InvokeAsync();
+    }
+
+    /// <summary>
+    /// Mostra un passo del progetto aperto, senza l'esito dell'ultimo export e la battuta in modifica
+    /// </summary>
+    /// <param name="index">Indice del passo</param>
+    private async Task SelectStep(int index)
+    {
+        this._step = index;
+        this._exported = null;
+        this.CancelCueEditing();
+        await this.OnStateChanged.InvokeAsync();
+    }
+
+    /// <summary>
+    /// Approva il glossario e avvia il giro; senza i modelli della traduzione e della revisione o le credenziali dell'accesso il
+    /// glossario non si approva
+    /// </summary>
+    private void ApproveGlossary()
+    {
+        if (!this.CheckModel(TranslationJobPhase.Translation) || !this.CheckModel(TranslationJobPhase.Review))
+            return;
+        if (!this.Orchestrator.IsAccessConfigured)
+        {
+            this.Notify(NotificationSeverity.Error, AppText.T("web.toolbox.subtitleTranslation.notifyTranslationFailed"), AppText.T("ai.error.notConfigured"));
+            return;
+        }
+
+        this._pending = null;
+        this._step = STEP_TRANSLATION;
+        this.Orchestrator.ApproveGlossary();
+        this.Notify(NotificationSeverity.Success, AppText.T("web.toolbox.subtitleTranslation.notifyApproved"), AppText.F("web.toolbox.subtitleTranslation.revision", this.Orchestrator.Project.Glossary.Revision));
+    }
+
+    /// <summary>
+    /// Toglie un file bloccato dal job e mostra il passo in cui il giro aspetta
+    /// </summary>
+    /// <param name="row">Riga del file</param>
+    private void ExcludeFile(TranslationJobFileRow row)
+    {
+        this.Orchestrator.ExcludeFile(row.FileId);
+        this._step = this.ProjectStep();
+    }
+
+    /// <summary>
+    /// Mostra nella revisione un altro file del job, senza la battuta in modifica
+    /// </summary>
+    /// <param name="fileId">File del job</param>
+    private void SelectReviewFile(string fileId)
+    {
+        this._reviewFileId = fileId;
+        this._reviewRows = null;
+        this.CancelCueEditing();
+    }
+
+    /// <summary>
+    /// Mette in modifica una battuta col suo testo
+    /// </summary>
+    /// <param name="row">Riga della battuta</param>
+    private void StartCueEditing(TranslationReviewRow row)
+    {
+        this._editingCue = row.Id;
+        this._cueDraft = row.Text ?? "";
     }
 
     /// <summary>
@@ -1888,7 +1958,14 @@
     /// </summary>
     /// <param name="text">Testo con i segni</param>
     /// <returns>Frammento della cella</returns>
-    private static RenderFragment MarkedText(string text) => builder =>
+    private static RenderFragment MarkedText(string text) => builder => BuildMarkedText(builder, text);
+
+    /// <summary>
+    /// Scrive il testo di una battuta con aperture e chiusure dei segni evidenziate
+    /// </summary>
+    /// <param name="builder">Builder del render</param>
+    /// <param name="text">Testo con i segni</param>
+    private static void BuildMarkedText(RenderTreeBuilder builder, string text)
     {
         int position = 0;
         int sequence = 0;
@@ -1904,7 +1981,7 @@
             position = match.Index + match.Length;
         }
         builder.AddContent(sequence, text.Substring(position));
-    };
+    }
 
     /// <summary>
     /// Tempo di una battuta come ore, minuti, secondi e millesimi
