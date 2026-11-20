@@ -240,9 +240,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                             record.Usage = new TranslationCallUsage(response.Usage, 0);
                             if (response.Status == AiResponseStatus.Incomplete)
                             {
-                                record.ResponseStatus = TranslationCallResponseStatus.Incomplete;
-                                record.IncompleteReason = response.IncompleteReason;
-                                record.Outcome = TranslationCallOutcome.PartiallyRejected;
+                                record.MarkIncomplete(response, TranslationCallOutcome.PartiallyRejected);
                                 truncated &= response.IncompleteReason == INCOMPLETE_MAX_OUTPUT_TOKENS;
                                 reason = response.IncompleteReason == INCOMPLETE_CONTENT_FILTER ? REASON_CONTENT_FILTER : REASON_INCOMPLETE;
                             }

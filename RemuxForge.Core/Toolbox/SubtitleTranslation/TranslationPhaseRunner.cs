@@ -314,10 +314,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 if (response.Status == AiResponseStatus.Incomplete)
                 {
                     bool length = response.IncompleteReason == INCOMPLETE_MAX_OUTPUT_TOKENS;
-                    record.ResponseStatus = TranslationCallResponseStatus.Incomplete;
-                    record.IncompleteReason = response.IncompleteReason;
-                    record.Outcome = TranslationCallOutcome.Reduced;
-                    record.Usage = new TranslationCallUsage(response.Usage, 0);
+                    record.MarkIncomplete(response, TranslationCallOutcome.Reduced);
                     this.RecordCall(record, work);
                     if (length && first)
                         return true;
@@ -540,7 +537,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             request.Request.Tools = tools;
 
             // Ogni fase offre un tool solo e lo forza: una risposta in testo libero non consegna nulla e si ripagherebbe intera
-            request.Request.ToolChoice = new JsonObject { ["type"] = "function", ["name"] = tools[0]["name"].DeepClone() };
+            request.Request.ToolChoice = TranslationRequestBuilder.CreateForcedToolChoice(tools, 0);
             return request;
         }
 
@@ -558,30 +555,15 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         protected async Task<KeyValuePair<AiResponseResult, TranslationCallRecord>> SendAsync(TranslationModelRequest request, string fileId, DeliveryWork work, List<int> ids, int? attempt,
             ITranslationModelProvider provider, CancellationToken cancellation)
         {
-            TranslationTransportAttempt delivered = null;
-            request.AttemptFinished = transport =>
+            request.TrackAttempts(transport =>
             {
-                if (transport.Error == null && !transport.Stopped)
-                {
-                    delivered = transport;
-                    return;
-                }
-
                 TranslationCallRecord failed = this.CreateCallRecord(transport, request.Kind, fileId, work.BlockIndex, ids, attempt);
-                failed.ResponseStatus = TranslationCallResponseStatus.Error;
-                failed.Outcome = TranslationCallOutcome.Error;
-                if (transport.Error != null)
-                {
-                    failed.HttpStatus = transport.Error.HttpStatus;
-                    failed.ErrorKind = transport.Error.Kind;
-                    failed.ServiceCode = string.IsNullOrEmpty(transport.Error.ServiceCode) ? null : transport.Error.ServiceCode;
-                    failed.Usage = transport.Error.Usage != null ? new TranslationCallUsage(transport.Error.Usage, 0) : null;
-                }
+                failed.MarkFailed(transport.Error);
                 this.RecordCall(failed, work);
-            };
+            });
 
             AiResponseResult response = await provider.SendAsync(request, cancellation);
-            TranslationCallRecord record = this.CreateCallRecord(delivered, request.Kind, fileId, work.BlockIndex, ids, attempt);
+            TranslationCallRecord record = this.CreateCallRecord(request.DeliveredAttempt, request.Kind, fileId, work.BlockIndex, ids, attempt);
             record.HttpStatus = response.HttpStatus;
             return new KeyValuePair<AiResponseResult, TranslationCallRecord>(response, record);
         }
@@ -682,21 +664,12 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <returns>Riga da completare con l'esito</returns>
         private TranslationCallRecord CreateCallRecord(TranslationTransportAttempt attempt, TranslationCallKind kind, string fileId, int? blockIndex, List<int> ids, int? retry)
         {
-            TranslationCallRecord record = new TranslationCallRecord();
-            record.Kind = kind;
-            record.FileId = fileId;
+            TranslationCallRecord record = TranslationCallRecord.FromAttempt(attempt, kind, fileId);
             record.BlockIndex = blockIndex;
             record.FirstId = ids[0];
             record.LastId = ids[ids.Count - 1];
             record.RequestedIds = ids.Count;
             record.Attempt = retry;
-            record.TransportAttempt = attempt.Number;
-            record.Model = attempt.Model;
-            record.ReasoningEffort = attempt.ReasoningEffort;
-            record.SessionId = attempt.SessionId;
-            record.ServerCacheKey = attempt.Result != null && !string.IsNullOrEmpty(attempt.Result.PromptCacheKey) ? attempt.Result.PromptCacheKey : null;
-            record.StartedAt = attempt.StartedAt;
-            record.DurationMs = attempt.DurationMs;
             return record;
         }
 

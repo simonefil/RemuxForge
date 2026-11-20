@@ -540,6 +540,17 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             return new JsonObject { ["role"] = "user", ["content"] = text };
         }
 
+        /// <summary>
+        /// Crea il tool_choice che forza uno dei tool offerti
+        /// </summary>
+        /// <param name="tools">Tool della richiesta</param>
+        /// <param name="index">Posizione del tool da forzare</param>
+        /// <returns>Scelta del tool</returns>
+        public static JsonObject CreateForcedToolChoice(JsonArray tools, int index)
+        {
+            return new JsonObject { ["type"] = "function", ["name"] = tools[index]["name"].DeepClone() };
+        }
+
         #endregion
 
         #region Metodi privati

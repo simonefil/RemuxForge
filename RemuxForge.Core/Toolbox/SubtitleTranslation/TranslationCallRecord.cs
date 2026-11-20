@@ -75,6 +75,62 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 
         #endregion
 
+        #region Metodi pubblici
+
+        /// <summary>
+        /// Riga del registro di un tentativo di trasporto, da completare con l'unità richiesta e l'esito
+        /// </summary>
+        /// <param name="attempt">Tentativo arrivato al servizio</param>
+        /// <param name="kind">Tipo di chiamata</param>
+        /// <param name="fileId">File, null per le chiamate su più file</param>
+        /// <returns>Riga con tentativo, modello, sessione, chiave di cache e tempi</returns>
+        public static TranslationCallRecord FromAttempt(TranslationTransportAttempt attempt, TranslationCallKind kind, string fileId)
+        {
+            TranslationCallRecord record = new TranslationCallRecord();
+            record.Kind = kind;
+            record.FileId = fileId;
+            record.TransportAttempt = attempt.Number;
+            record.Model = attempt.Model;
+            record.ReasoningEffort = attempt.ReasoningEffort;
+            record.SessionId = attempt.SessionId;
+            record.ServerCacheKey = attempt.Result != null && !string.IsNullOrEmpty(attempt.Result.PromptCacheKey) ? attempt.Result.PromptCacheKey : null;
+            record.StartedAt = attempt.StartedAt;
+            record.DurationMs = attempt.DurationMs;
+            return record;
+        }
+
+        /// <summary>
+        /// Segna la riga come tentativo fallito, con stato HTTP, tipo, codice e consumo dell'errore del servizio
+        /// </summary>
+        /// <param name="error">Errore del servizio, null per un tentativo fermato senza errore</param>
+        public void MarkFailed(AiServiceException error)
+        {
+            this.ResponseStatus = TranslationCallResponseStatus.Error;
+            this.Outcome = TranslationCallOutcome.Error;
+            if (error != null)
+            {
+                this.HttpStatus = error.HttpStatus;
+                this.ErrorKind = error.Kind;
+                this.ServiceCode = string.IsNullOrEmpty(error.ServiceCode) ? null : error.ServiceCode;
+                this.Usage = error.Usage != null ? new TranslationCallUsage(error.Usage, 0) : null;
+            }
+        }
+
+        /// <summary>
+        /// Segna la riga come risposta incompleta, col motivo e il consumo della risposta
+        /// </summary>
+        /// <param name="response">Risposta incompleta</param>
+        /// <param name="outcome">Esito della chiamata</param>
+        public void MarkIncomplete(AiResponseResult response, TranslationCallOutcome outcome)
+        {
+            this.ResponseStatus = TranslationCallResponseStatus.Incomplete;
+            this.IncompleteReason = response.IncompleteReason;
+            this.Outcome = outcome;
+            this.Usage = new TranslationCallUsage(response.Usage, 0);
+        }
+
+        #endregion
+
         #region Proprietà
 
         /// <summary>

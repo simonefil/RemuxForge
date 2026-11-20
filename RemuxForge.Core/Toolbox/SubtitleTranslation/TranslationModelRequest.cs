@@ -21,6 +21,27 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             this.Request = new AiResponseRequest();
             this.PrefixReused = false;
             this.AttemptFinished = null;
+            this.DeliveredAttempt = null;
+        }
+
+        #endregion
+
+        #region Metodi pubblici
+
+        /// <summary>
+        /// Segue i tentativi di trasporto: quello riuscito resta in DeliveredAttempt, i falliti e i fermati vanno a failed
+        /// </summary>
+        /// <param name="failed">Avviso di ogni tentativo fallito o fermato</param>
+        public void TrackAttempts(Action<TranslationTransportAttempt> failed)
+        {
+            this.DeliveredAttempt = null;
+            this.AttemptFinished = transport =>
+            {
+                if (transport.Error == null && !transport.Stopped)
+                    this.DeliveredAttempt = transport;
+                else
+                    failed(transport);
+            };
         }
 
         #endregion
@@ -58,6 +79,11 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// Avviso a ogni tentativo di trasporto arrivato al servizio, riuscito o fallito; null se non serve
         /// </summary>
         public Action<TranslationTransportAttempt> AttemptFinished { get; set; }
+
+        /// <summary>
+        /// Tentativo riuscito seguito da TrackAttempts, null finché non arriva
+        /// </summary>
+        public TranslationTransportAttempt DeliveredAttempt { get; private set; }
 
         #endregion
     }
