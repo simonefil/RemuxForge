@@ -775,11 +775,6 @@
     private static readonly List<string> s_archiveExtensions = new List<string> { "zip" };
 
     /// <summary>
-    /// Aperture e chiusure dei segni nel testo delle battute
-    /// </summary>
-    private static readonly Regex s_marks = new Regex("⟦[0-9]+ |⟧", RegexOptions.CultureInvariant);
-
-    /// <summary>
     /// Tipi di termine nell'ordine della tendina
     /// </summary>
     private static readonly List<GlossaryTermKind> s_termKinds = new List<GlossaryTermKind>((GlossaryTermKind[])Enum.GetValues(typeof(GlossaryTermKind)));
@@ -1897,7 +1892,7 @@
     {
         int position = 0;
         int sequence = 0;
-        foreach (Match match in s_marks.Matches(text))
+        foreach (Match match in SubtitleCueCleaner.FindMarks(text))
         {
             builder.AddContent(sequence++, text.Substring(position, match.Index - position));
             builder.OpenElement(sequence++, "mark");

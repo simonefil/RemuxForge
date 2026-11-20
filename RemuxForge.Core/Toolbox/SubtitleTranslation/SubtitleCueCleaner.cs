@@ -154,6 +154,16 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         }
 
         /// <summary>
+        /// Aperture e chiusure dei segni dei tratti formattati in un testo pulito, nell'ordine del testo
+        /// </summary>
+        /// <param name="text">Testo con segni ⟦n testo⟧</param>
+        /// <returns>Un'apertura «⟦n » o una chiusura «⟧» per corrispondenza</returns>
+        public static MatchCollection FindMarks(string text)
+        {
+            return s_markSyntax.Matches(text);
+        }
+
+        /// <summary>
         /// Allineamento SSA (1-3 in basso, +4 in alto, +8 al centro) nella numerazione ASS
         /// </summary>
         /// <param name="alignment">Allineamento SSA</param>
