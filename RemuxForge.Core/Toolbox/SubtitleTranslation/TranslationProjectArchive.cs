@@ -1,4 +1,3 @@
-using RemuxForge.Core.Infrastructure;
 using RemuxForge.Core.Localization;
 using RemuxForge.Core.Toolbox.Common;
 using System;
@@ -12,7 +11,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 {
     /// <summary>
     /// Archivio di un progetto di traduzione: progetto, job, registri, sorgenti, glossario e file tradotti parziali in uno .zip
-    /// col manifest degli hash. L'import controlla tutto prima di scrivere, estrae in una cartella temporanea dentro la
+    /// col manifest degli hash. Glossario e file tradotti parziali sono per chi apre l'archivio: l'import li controlla come le
+    /// altre voci e non li usa. L'import controlla tutto prima di scrivere, estrae in una cartella temporanea dentro la
     /// configurazione, scrive i sorgenti nella cartella scelta e sposta le cartelle al loro posto
     /// </summary>
     public sealed class TranslationProjectArchive
@@ -143,13 +143,9 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 name = name.Replace(invalid, '_');
 
             TranslationProjectArchiveManifest manifest = new TranslationProjectArchiveManifest();
-            manifest.AppVersion = Utils.GetVersion();
             manifest.ProjectId = project.Id;
-            manifest.ProjectName = project.Name;
             manifest.JobIds = new List<string>(project.JobIds);
             manifest.ActiveJobId = project.ActiveJobId;
-            manifest.SourceLanguage = project.SourceLanguage;
-            manifest.TargetLanguage = project.TargetLanguage;
 
             TranslationJob job = this._jobs.Load(project.ActiveJobId);
             List<TranslationProjectFile> files = project.Files.FindAll(f => job.FileIds.Contains(f.Id));
@@ -726,14 +722,9 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         {
             this.SchemaVersion = SCHEMA_VERSION;
             this.Kind = KIND;
-            this.AppVersion = "";
-            this.CreatedAt = DateTimeOffset.Now;
             this.ProjectId = "";
-            this.ProjectName = "";
             this.JobIds = new List<string>();
             this.ActiveJobId = null;
-            this.SourceLanguage = "";
-            this.TargetLanguage = "";
             this.FileSchemaVersions = new TranslationArchiveSchemaVersions();
             this.Files = new List<TranslationArchiveFile>();
             this.Sources = new List<TranslationArchiveSource>();
@@ -754,24 +745,9 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public string Kind { get; set; }
 
         /// <summary>
-        /// Versione di RemuxForge che ha esportato
-        /// </summary>
-        public string AppVersion { get; set; }
-
-        /// <summary>
-        /// Data dell'export
-        /// </summary>
-        public DateTimeOffset CreatedAt { get; set; }
-
-        /// <summary>
         /// Progetto
         /// </summary>
         public string ProjectId { get; set; }
-
-        /// <summary>
-        /// Nome del progetto
-        /// </summary>
-        public string ProjectName { get; set; }
 
         /// <summary>
         /// Job inclusi
@@ -782,16 +758,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// Job attivo
         /// </summary>
         public string ActiveJobId { get; set; }
-
-        /// <summary>
-        /// Lingua d'origine
-        /// </summary>
-        public string SourceLanguage { get; set; }
-
-        /// <summary>
-        /// Lingua d'arrivo
-        /// </summary>
-        public string TargetLanguage { get; set; }
 
         /// <summary>
         /// Versioni dei file interni
