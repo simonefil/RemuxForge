@@ -852,8 +852,10 @@
                 return;
             }
 
+            // Avviato o no, l'orchestratore ha preso i temporanei: li cancella lui
+            bool started = this.Orchestrator.ApplyDirectChanges(edits.Files.ConvertAll(item => new MetadataDirectEdit(item.InputFile, item.Changes)), edits.TempFiles);
             handedOver = true;
-            if (!this.Orchestrator.ApplyDirectChanges(edits.Files.ConvertAll(item => new MetadataDirectEdit(item.InputFile, item.Changes)), edits.TempFiles))
+            if (!started)
             {
                 this.NotificationService.Notify(NotificationSeverity.Warning, AppText.T("web.mediaCatalogMatch.orchestratorBusy"), "", 6000);
                 return;
@@ -865,7 +867,7 @@
         {
             // La dialog è stata chiusa durante lo scaricamento: nulla da scrivere né da notificare
         }
-        catch (MediaCatalogException ex)
+        catch (Exception ex) when (ex is MediaCatalogException || ex is System.IO.IOException || ex is UnauthorizedAccessException)
         {
             this.NotificationService.Notify(NotificationSeverity.Error, AppText.T("web.mediaCatalogMatch.applyFailed"), ex.Message, 8000);
         }
