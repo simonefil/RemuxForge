@@ -262,7 +262,7 @@
                           Click="@(() => _step = _movie != null ? MatchStep.Search : MatchStep.Match)" />
             <RadzenButton Text="@AppText.T("web.mediaCatalogMatch.apply")" Icon="publish" Disabled="@_busy" Click="@ApplyAsync" />
         }
-        <RadzenButton Text="@AppText.T("web.common.close")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@(() => CloseDialog())" />
+        <RadzenButton Text="@AppText.T("web.common.close")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Disabled="@(_busy && _step == MatchStep.Preview)" Click="@(() => CloseDialog())" />
     </div>
 </div>
 
@@ -354,6 +354,11 @@
     /// Annulla il caricamento in corso
     /// </summary>
     private CancellationTokenSource _cancellation;
+
+    /// <summary>
+    /// Annullato alla chiusura della dialog: ferma lo scaricamento delle copertine
+    /// </summary>
+    private readonly CancellationTokenSource _closing = new CancellationTokenSource();
 
     /// <summary>
     /// Episodi caricati
@@ -454,6 +459,7 @@
         if (this._cancellation != null)
             this._cancellation.Cancel();
 
+        this._closing.Cancel();
         await base.DisposeAsync();
     }
 
@@ -586,7 +592,6 @@
     private async Task SelectHitAsync(MediaCatalogSearchHit hit)
     {
         List<string> files = this.GetSelectedFiles();
-        CancellationTokenSource cancellation = new CancellationTokenSource();
 
         if (hit.Kind == MediaCatalogKind.Movie && files.Count > 1)
         {
@@ -594,6 +599,7 @@
             return;
         }
 
+        CancellationTokenSource cancellation = new CancellationTokenSource();
         this._cancellation = cancellation;
         this._source = this.SourceProvider.GetSource(this._hitsProvider);
         this._series = null;
@@ -851,13 +857,14 @@
     }
 
     /// <summary>
-    /// Scarica le copertine, una per poster, e passa le modifiche di tutti i file all'orchestratore
+    /// Scarica le copertine, una per poster, e passa le modifiche di tutti i file all'orchestratore, che da lì cancella i temporanei
     /// </summary>
     private async Task ApplyAsync()
     {
         Dictionary<string, string> covers = new Dictionary<string, string>(StringComparer.Ordinal);
         List<string> tempFiles = new List<string>();
         List<MetadataDirectEdit> edits = new List<MetadataDirectEdit>();
+        bool handedOver = false;
 
         this._busy = true;
         try
@@ -869,7 +876,7 @@
 
                 if (url.Length > 0 && !covers.TryGetValue(url, out coverPath))
                 {
-                    coverPath = await this.ImageDownloader.DownloadCoverAsync(url, CancellationToken.None);
+                    coverPath = await this.ImageDownloader.DownloadCoverAsync(url, this._closing.Token);
                     covers[url] = coverPath;
                     if (coverPath.Length > 0)
                         tempFiles.Add(coverPath);
@@ -879,35 +886,39 @@
                 if (changes.Count > 0)
                     edits.Add(new MetadataDirectEdit(file, changes));
             }
+
+            if (edits.Count == 0)
+            {
+                this.NotificationService.Notify(NotificationSeverity.Info, AppText.T("web.mediaCatalogMatch.noChanges"), "", 4000);
+                return;
+            }
+
+            handedOver = true;
+            if (!this.Orchestrator.ApplyDirectChanges(edits, tempFiles))
+            {
+                this.NotificationService.Notify(NotificationSeverity.Warning, AppText.T("web.mediaCatalogMatch.orchestratorBusy"), "", 6000);
+                return;
+            }
+
+            this.CloseDialog();
+        }
+        catch (OperationCanceledException)
+        {
+            // La dialog è stata chiusa durante lo scaricamento: nulla da scrivere né da notificare
         }
         catch (MediaCatalogException ex)
         {
-            foreach (string tempFile in tempFiles)
-                FileHelper.DeleteTempFile(tempFile);
-
             this.NotificationService.Notify(NotificationSeverity.Error, AppText.T("web.mediaCatalogMatch.applyFailed"), ex.Message, 8000);
+        }
+        finally
+        {
             this._busy = false;
-            return;
+            if (!handedOver)
+            {
+                foreach (string tempFile in tempFiles)
+                    FileHelper.DeleteTempFile(tempFile);
+            }
         }
-
-        this._busy = false;
-
-        if (edits.Count == 0)
-        {
-            foreach (string tempFile in tempFiles)
-                FileHelper.DeleteTempFile(tempFile);
-
-            this.NotificationService.Notify(NotificationSeverity.Info, AppText.T("web.mediaCatalogMatch.noChanges"), "", 4000);
-            return;
-        }
-
-        if (!this.Orchestrator.ApplyDirectChanges(edits, tempFiles))
-        {
-            this.NotificationService.Notify(NotificationSeverity.Warning, AppText.T("web.mediaCatalogMatch.orchestratorBusy"), "", 6000);
-            return;
-        }
-
-        this.CloseDialog();
     }
 
     /// <summary>
