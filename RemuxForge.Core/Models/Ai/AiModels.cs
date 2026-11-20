@@ -728,7 +728,6 @@ namespace RemuxForge.Core.Models
             this.Usage = new AiUsage();
             this.Status = AiResponseStatus.Completed;
             this.IncompleteReason = "";
-            this.ResponseId = "";
             this.PromptCacheKey = "";
             this.HttpStatus = 0;
         }
@@ -756,11 +755,6 @@ namespace RemuxForge.Core.Models
         /// Motivo del troncamento (incomplete_details.reason), vuoto se completa
         /// </summary>
         public string IncompleteReason { get; set; }
-
-        /// <summary>
-        /// Identificativo della risposta assegnato dal servizio
-        /// </summary>
-        public string ResponseId { get; set; }
 
         /// <summary>
         /// Chiave di cache applicata dal servizio (response.prompt_cache_key), vuota se non dichiarata

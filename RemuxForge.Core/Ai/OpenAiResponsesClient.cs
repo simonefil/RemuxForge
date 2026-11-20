@@ -479,8 +479,6 @@ namespace RemuxForge.Core.Ai
                         }
                     }
 
-                    result.ResponseId = AiOAuthFlow.GetString(responseObject, "id");
-
                     // La chiave applicata dal servizio sta nella risposta finale; se manca vale quella dell'evento iniziale
                     result.PromptCacheKey = AiOAuthFlow.GetString(responseObject, "prompt_cache_key");
                     if (string.IsNullOrEmpty(result.PromptCacheKey))

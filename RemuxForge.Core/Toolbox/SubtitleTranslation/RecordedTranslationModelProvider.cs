@@ -490,7 +490,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 });
             }
 
-            result.ResponseId = "resp_recorded";
             result.HttpStatus = 200;
 
             // Consumo stimato a 4 caratteri per token, sempre uguale a parità di richiesta
