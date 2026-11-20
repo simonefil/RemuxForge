@@ -237,7 +237,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                             KeyValuePair<AiResponseResult, TranslationCallRecord> sent = await this.SendAsync(request, state.FileId, diagnosis, partIds, attempt > 0 ? attempt : null, provider, cancellation);
                             AiResponseResult response = sent.Key;
                             TranslationCallRecord record = sent.Value;
-                            record.Usage = new TranslationCallUsage(response.Usage, 0);
                             if (response.Status == AiResponseStatus.Incomplete)
                             {
                                 record.MarkIncomplete(response, TranslationCallOutcome.PartiallyRejected);
@@ -247,6 +246,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                             else
                             {
                                 truncated = false;
+                                record.Usage = new TranslationCallUsage(response.Usage, 0);
                                 string code;
                                 partIssues = TranslationValidator.ReadDiagnosis(response, partIds, out code);
                                 if (partIssues == null)
