@@ -68,16 +68,6 @@ namespace RemuxForge.Web.Services
             return this._settingsService.Load().TvdbMode == TvdbAccessMode.Site ? this._tvdbSite : this._tvdbApi;
         }
 
-        /// <summary>
-        /// Nome del catalogo mostrato all'utente
-        /// </summary>
-        /// <param name="catalog">Catalogo</param>
-        /// <returns>Nome</returns>
-        public static string GetCatalogName(MediaCatalogProvider catalog)
-        {
-            return catalog == MediaCatalogProvider.Tmdb ? "TMDB" : "TheTVDB";
-        }
-
         #endregion
     }
 }

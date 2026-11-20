@@ -26,7 +26,7 @@ namespace RemuxForge.Core.MediaCatalog
         /// <summary>
         /// Nome del catalogo nei messaggi all'utente
         /// </summary>
-        private const string DISPLAY_NAME = "TheTVDB";
+        private static readonly string DISPLAY_NAME = MediaCatalogProviderNames.GetCatalogName(MediaCatalogProvider.Tvdb);
 
         /// <summary>
         /// Indirizzo della ricerca web del sito

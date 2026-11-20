@@ -41,8 +41,8 @@
                 <div class="form-row">
                     <RadzenLabel class="form-label" Text="@AppText.T("web.mediaCatalogMatch.catalog")" Component="CatalogMatchProvider" />
                     <RadzenDropDown TValue="MediaCatalogProvider" Name="CatalogMatchProvider" Data="@s_providers" @bind-Value="_provider">
-                        <Template Context="provider">@MediaCatalogSourceProvider.GetCatalogName((MediaCatalogProvider)provider)</Template>
-                        <ValueTemplate Context="provider">@MediaCatalogSourceProvider.GetCatalogName((MediaCatalogProvider)provider)</ValueTemplate>
+                        <Template Context="provider">@MediaCatalogProviderNames.GetCatalogName((MediaCatalogProvider)provider)</Template>
+                        <ValueTemplate Context="provider">@MediaCatalogProviderNames.GetCatalogName((MediaCatalogProvider)provider)</ValueTemplate>
                     </RadzenDropDown>
                 </div>
                 <div class="form-row">

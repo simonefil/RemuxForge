@@ -16,6 +16,26 @@ namespace RemuxForge.Core.Models
     }
 
     /// <summary>
+    /// Nomi dei cataloghi mostrati all'utente
+    /// </summary>
+    public static class MediaCatalogProviderNames
+    {
+        #region Metodi pubblici
+
+        /// <summary>
+        /// Nome del catalogo mostrato all'utente
+        /// </summary>
+        /// <param name="provider">Catalogo</param>
+        /// <returns>Nome</returns>
+        public static string GetCatalogName(MediaCatalogProvider provider)
+        {
+            return provider == MediaCatalogProvider.Tmdb ? "TMDB" : "TheTVDB";
+        }
+
+        #endregion
+    }
+
+    /// <summary>
     /// Tipo di titolo cercato
     /// </summary>
     public enum MediaCatalogKind

@@ -40,11 +40,6 @@ namespace RemuxForge.Core.MediaCatalog
         private const string SEASON_TYPE = "official";
 
         /// <summary>
-        /// Risultati massimi di una ricerca
-        /// </summary>
-        private const int SEARCH_LIMIT = 20;
-
-        /// <summary>
         /// Risultati chiesti al catalogo: la ricerca è approssimata e il titolo cercato può stare oltre i primi venti
         /// </summary>
         private const int SEARCH_FETCH_LIMIT = 50;
@@ -188,22 +183,19 @@ namespace RemuxForge.Core.MediaCatalog
             series.PosterUrl = ToArtworkUrl(ReadString(data["image"]));
             ReadGenres(data["genres"] as JsonArray, series.Genres);
 
-            HashSet<int> seasonNumbers = new HashSet<int>();
             if (data["seasons"] is JsonArray seasons)
             {
                 foreach (JsonNode season in seasons)
                 {
-                    long? number = season != null ? ReadLong(season["number"]) : null;
-                    if (!number.HasValue || number.Value < 0 || ReadString(season["type"]?["type"]) != SEASON_TYPE || !seasonNumbers.Add((int)number.Value))
+                    if (season == null || ReadString(season["type"]?["type"]) != SEASON_TYPE)
                         continue;
 
-                    MediaCatalogSeason item = new MediaCatalogSeason();
-                    item.Number = (int)number.Value;
-                    item.PosterUrl = ToArtworkUrl(ReadString(season["image"]));
-                    series.Seasons.Add(item);
+                    MediaCatalogSeason item = AddSeason(series, ReadLong(season["number"]));
+                    if (item != null)
+                        item.PosterUrl = ToArtworkUrl(ReadString(season["image"]));
                 }
             }
-            series.Seasons.Sort((a, b) => a.Number.CompareTo(b.Number));
+
             return series;
         }
 
@@ -247,7 +239,7 @@ namespace RemuxForge.Core.MediaCatalog
                     FillMissingTexts(result, await this.ReadEpisodeListAsync(listUrl + "?season=" + seasonNumber.ToString(CultureInfo.InvariantCulture) + "&", cancellationToken));
             }
 
-            result.Sort((a, b) => a.SeasonNumber != b.SeasonNumber ? a.SeasonNumber.CompareTo(b.SeasonNumber) : a.EpisodeNumber.CompareTo(b.EpisodeNumber));
+            SortEpisodes(result);
             return result;
         }
 
@@ -459,41 +451,6 @@ namespace RemuxForge.Core.MediaCatalog
         }
 
         /// <summary>
-        /// Completa titoli e sinossi vuoti con quelli di un altro elenco, per ID episodio
-        /// </summary>
-        /// <param name="episodes">Episodi da completare</param>
-        /// <param name="list">Elenco episodi base</param>
-        private static void FillMissingTexts(List<MediaCatalogEpisode> episodes, List<JsonNode> list)
-        {
-            foreach (JsonNode item in list)
-            {
-                long? id = ReadLong(item["id"]);
-                MediaCatalogEpisode episode = episodes.Find(e => e.Id == id);
-                if (episode == null)
-                    continue;
-
-                if (episode.Title.Length == 0)
-                    episode.Title = ReadString(item["name"]);
-                if (episode.Overview.Length == 0)
-                    episode.Overview = ReadString(item["overview"]);
-            }
-        }
-
-        /// <summary>
-        /// Chiave TVDB come ID numerico per i percorsi
-        /// </summary>
-        /// <param name="key">Chiave del risultato di ricerca</param>
-        /// <returns>ID in forma testuale invariante</returns>
-        private string ParseKey(string key)
-        {
-            long id;
-            if (!long.TryParse((key ?? "").Trim(), NumberStyles.None, CultureInfo.InvariantCulture, out id) || id <= 0)
-                throw new MediaCatalogException(AppText.F("mediaCatalog.error.notFound", this.DisplayName));
-
-            return id.ToString(CultureInfo.InvariantCulture);
-        }
-
-        /// <summary>
         /// Testo da una mappa lingua -> testo: lingua chiesta, poi inglese, poi il valore di base
         /// </summary>
         /// <param name="map">Mappa delle traduzioni</param>
@@ -551,23 +508,6 @@ namespace RemuxForge.Core.MediaCatalog
         }
 
         /// <summary>
-        /// Nomi dei generi
-        /// </summary>
-        /// <param name="genres">Array GenreBaseRecord</param>
-        /// <param name="target">Lista da riempire</param>
-        private static void ReadGenres(JsonArray genres, List<string> target)
-        {
-            if (genres == null)
-                return;
-
-            foreach (JsonNode genre in genres)
-            {
-                if (genre != null)
-                    AddDistinct(target, ReadString(genre["name"]));
-            }
-        }
-
-        /// <summary>
         /// Registi, sceneggiatori e attori dai Character, nell'ordine dei crediti
         /// </summary>
         /// <param name="characters">Array Character</param>
@@ -579,16 +519,8 @@ namespace RemuxForge.Core.MediaCatalog
             if (characters == null)
                 return;
 
-            List<JsonNode> sorted = new List<JsonNode>();
-            foreach (JsonNode character in characters)
-            {
-                if (character != null)
-                    sorted.Add(character);
-            }
-            sorted.Sort((a, b) => (ReadLong(a["sort"]) ?? long.MaxValue).CompareTo(ReadLong(b["sort"]) ?? long.MaxValue));
-
             List<string> guestStars = new List<string>();
-            foreach (JsonNode character in sorted)
+            foreach (JsonNode character in SortByCreditOrder(characters, "sort"))
             {
                 string person = ReadString(character["personName"]);
                 switch (ReadString(character["peopleType"]))

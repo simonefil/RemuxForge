@@ -2,6 +2,7 @@ using RemuxForge.Core.Localization;
 using RemuxForge.Core.Models;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Net;
 using System.Net.Http;
@@ -19,6 +20,11 @@ namespace RemuxForge.Core.MediaCatalog
     public abstract class MediaCatalogApiSourceBase : IMediaCatalogSource
     {
         #region Costanti
+
+        /// <summary>
+        /// Risultati massimi di una ricerca
+        /// </summary>
+        protected const int SEARCH_LIMIT = 20;
 
         /// <summary>
         /// Ritentativi dopo il primo invio su limite di frequenza o errore transitorio
@@ -309,7 +315,7 @@ namespace RemuxForge.Core.MediaCatalog
                 return (long)real;
 
             long parsed;
-            if (value.TryGetValue(out string text) && long.TryParse(text, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out parsed))
+            if (value.TryGetValue(out string text) && long.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out parsed))
                 return parsed;
 
             return null;
@@ -338,10 +344,107 @@ namespace RemuxForge.Core.MediaCatalog
         {
             string text = ReadString(node);
             DateTime date;
-            if (text.Length >= 10 && DateTime.TryParseExact(text.Substring(0, 10), "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out date))
+            if (text.Length >= 10 && DateTime.TryParseExact(text.Substring(0, 10), "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out date))
                 return date;
 
             return null;
+        }
+
+        /// <summary>
+        /// Chiave del risultato di ricerca come ID numerico per i percorsi
+        /// </summary>
+        /// <param name="key">Chiave del risultato di ricerca</param>
+        /// <returns>ID in forma testuale invariante</returns>
+        protected string ParseKey(string key)
+        {
+            long id;
+            if (!long.TryParse((key ?? "").Trim(), NumberStyles.None, CultureInfo.InvariantCulture, out id) || id <= 0)
+                throw new MediaCatalogException(AppText.F("mediaCatalog.error.notFound", this.DisplayName));
+
+            return id.ToString(CultureInfo.InvariantCulture);
+        }
+
+        /// <summary>
+        /// Aggiunge alla serie una stagione nell'ordine dei numeri; un numero assente, negativo o già presente non aggiunge nulla
+        /// </summary>
+        /// <param name="series">Serie</param>
+        /// <param name="number">Numero della stagione letto dal catalogo</param>
+        /// <returns>Stagione aggiunta, null se scartata</returns>
+        protected static MediaCatalogSeason AddSeason(MediaCatalogSeries series, long? number)
+        {
+            if (!number.HasValue || number.Value < 0 || series.Seasons.Exists(item => item.Number == number.Value))
+                return null;
+
+            MediaCatalogSeason season = new MediaCatalogSeason();
+            int index = series.Seasons.FindIndex(item => item.Number > number.Value);
+            season.Number = (int)number.Value;
+            series.Seasons.Insert(index >= 0 ? index : series.Seasons.Count, season);
+            return season;
+        }
+
+        /// <summary>
+        /// Ordina gli episodi per stagione e numero
+        /// </summary>
+        /// <param name="episodes">Episodi</param>
+        protected static void SortEpisodes(List<MediaCatalogEpisode> episodes)
+        {
+            episodes.Sort((a, b) => a.SeasonNumber != b.SeasonNumber ? a.SeasonNumber.CompareTo(b.SeasonNumber) : a.EpisodeNumber.CompareTo(b.EpisodeNumber));
+        }
+
+        /// <summary>
+        /// Completa titoli e sinossi vuoti con quelli di un altro elenco del catalogo, per ID episodio
+        /// </summary>
+        /// <param name="episodes">Episodi da completare</param>
+        /// <param name="list">Episodi dell'altro elenco, con id, name e overview</param>
+        protected static void FillMissingTexts(List<MediaCatalogEpisode> episodes, IEnumerable<JsonNode> list)
+        {
+            foreach (JsonNode item in list)
+            {
+                long? id = item != null ? ReadLong(item["id"]) : null;
+                MediaCatalogEpisode episode = id.HasValue ? episodes.Find(e => e.Id == id) : null;
+                if (episode == null)
+                    continue;
+
+                if (episode.Title.Length == 0)
+                    episode.Title = ReadString(item["name"]);
+                if (episode.Overview.Length == 0)
+                    episode.Overview = ReadString(item["overview"]);
+            }
+        }
+
+        /// <summary>
+        /// Nomi dei generi
+        /// </summary>
+        /// <param name="genres">Array dei generi, con name</param>
+        /// <param name="target">Lista da riempire</param>
+        protected static void ReadGenres(JsonArray genres, List<string> target)
+        {
+            if (genres == null)
+                return;
+
+            foreach (JsonNode genre in genres)
+            {
+                if (genre != null)
+                    AddDistinct(target, ReadString(genre["name"]));
+            }
+        }
+
+        /// <summary>
+        /// Voci dei crediti nell'ordine indicato dal catalogo; quelle senza ordine in fondo
+        /// </summary>
+        /// <param name="credits">Array dei crediti</param>
+        /// <param name="orderField">Campo dell'ordine</param>
+        /// <returns>Voci non nulle ordinate</returns>
+        protected static List<JsonNode> SortByCreditOrder(JsonArray credits, string orderField)
+        {
+            List<JsonNode> sorted = new List<JsonNode>();
+            foreach (JsonNode credit in credits)
+            {
+                if (credit != null)
+                    sorted.Add(credit);
+            }
+            sorted.Sort((a, b) => (ReadLong(a[orderField]) ?? long.MaxValue).CompareTo(ReadLong(b[orderField]) ?? long.MaxValue));
+            return sorted;
         }
 
         /// <summary>
@@ -402,7 +505,7 @@ namespace RemuxForge.Core.MediaCatalog
         /// <summary>
         /// Nome del catalogo nei messaggi all'utente
         /// </summary>
-        protected string DisplayName { get { return this.Provider == MediaCatalogProvider.Tvdb ? "TheTVDB" : "TMDB"; } }
+        protected string DisplayName { get { return MediaCatalogProviderNames.GetCatalogName(this.Provider); } }
 
         #endregion
     }
