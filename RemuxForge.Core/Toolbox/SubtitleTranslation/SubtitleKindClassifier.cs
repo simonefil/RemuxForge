@@ -86,7 +86,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 
         #endregion
 
-        #region Variabili di istanza
+        #region Variabili di classe
 
         /// <summary>
         /// Lingua d'origine del progetto
@@ -212,18 +212,30 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         int c = rune.Value;
                         string script;
                         if (c <= 0x024F || (c >= 0x1E00 && c <= 0x1EFF) || (c >= 0x2C60 && c <= 0x2C7F) || (c >= 0xA720 && c <= 0xA7FF) || (c >= 0xFF21 && c <= 0xFF5A))
+                        {
                             script = "latin";
+                        }
                         else if ((c >= 0x0370 && c <= 0x03FF) || (c >= 0x1F00 && c <= 0x1FFF))
+                        {
                             script = "greek";
+                        }
                         else if (c >= 0x0400 && c <= 0x052F)
+                        {
                             script = "cyrillic";
+                        }
                         else if ((c >= 0x3040 && c <= 0x30FF) || (c >= 0x31F0 && c <= 0x31FF) || (c >= 0x3400 && c <= 0x4DBF) || (c >= 0x4E00 && c <= 0x9FFF) ||
                             (c >= 0xF900 && c <= 0xFAFF) || (c >= 0xFF66 && c <= 0xFF9F) || c >= 0x20000)
+                        {
                             script = "cjk";
+                        }
                         else if ((c >= 0x1100 && c <= 0x11FF) || (c >= 0x3130 && c <= 0x318F) || (c >= 0xAC00 && c <= 0xD7AF))
+                        {
                             script = "hangul";
+                        }
                         else
+                        {
                             script = "block" + (c >> 7).ToString(CultureInfo.InvariantCulture);
+                        }
                         counts[script] = counts.GetValueOrDefault(script) + 1;
                         total[script] = total.GetValueOrDefault(script) + 1;
                     }

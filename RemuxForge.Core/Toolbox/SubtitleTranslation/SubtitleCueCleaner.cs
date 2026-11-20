@@ -1351,12 +1351,18 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     // Gli interruttori dello stile sono -1 o 1 se accesi; un colore è AABBGGRR
                     string value;
                     if (this.SwitchBit(column[c]) >= 0)
+                    {
                         value = int.TryParse(field, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out int flag) ? (flag != 0 ? "1" : "0") : null;
+                    }
                     else if (column[0].EndsWith("Colour", StringComparison.Ordinal))
+                    {
                         value = column[c][1] == 'c' ? (readInteger(field) & 0xFFFFFF).ToString("X6", CultureInfo.InvariantCulture)
                             : (readInteger(field) >> 24).ToString("X2", CultureInfo.InvariantCulture);
+                    }
                     else
+                    {
                         value = ChannelValue(column[c], field);
+                    }
                     if (value != null)
                         state[column[c]] = value;
                 }
@@ -1646,16 +1652,26 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     double[] numbers = Array.ConvertAll(argument.TrimStart('(').TrimEnd(')').Split(','),
                         number => double.TryParse(number.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out double value) ? value : 0);
                     if (tag.Name == "an" && alignment == null)
+                    {
                         alignment = (int)numbers[0];
+                    }
                     else if (tag.Name == "a" && alignment == null)
+                    {
                         alignment = (int)numbers[0] switch { 1 => 1, 3 => 3, 5 => 7, 6 => 8, 7 => 9, 9 => 4, 10 => 5, 11 => 6, _ => 2 };
+                    }
                     else if (tag.Name == "fs" && size == null)
+                    {
                         size = numbers[0];
+                    }
                     else if (tag.Name == "fscy" && scaleY == null)
+                    {
                         scaleY = numbers[0];
+                    }
                     else if (points.Count == 0 && ((tag.Name == "pos" && numbers.Length >= 2) || (tag.Name == "move" && numbers.Length >= 4)))
+                    {
                         points.AddRange(tag.Name == "pos" ? new double[][] { new double[] { numbers[0], numbers[1] } }
                             : new double[][] { new double[] { numbers[0], numbers[1] }, new double[] { numbers[2], numbers[3] } });
+                    }
                 }
                 copied = close + 1;
                 open = text.IndexOf('{', copied);

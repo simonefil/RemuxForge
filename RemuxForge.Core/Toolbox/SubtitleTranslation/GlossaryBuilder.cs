@@ -130,6 +130,11 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// </summary>
         private readonly string[] _addressForms;
 
+        /// <summary>
+        /// Definizione di submit_glossary per la lingua d'arrivo
+        /// </summary>
+        private readonly JsonObject _tool;
+
         #endregion
 
         #region Costruttore
@@ -224,7 +229,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 required.Add("addressing");
             }
 
-            this.Tool = new JsonObject
+            this._tool = new JsonObject
             {
                 ["type"] = "function",
                 ["name"] = SUBMIT_TOOL,
@@ -254,7 +259,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             JsonArray tools = new JsonArray();
             if (webSearch)
                 tools.Add(new JsonObject { ["type"] = TranslationProviderCapabilities.WEB_SEARCH });
-            tools.Add(this.Tool.DeepClone());
+            tools.Add(this._tool.DeepClone());
             return tools;
         }
 
@@ -1259,11 +1264,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// Instructions di A2
         /// </summary>
         public string MergeInstructions { get; }
-
-        /// <summary>
-        /// Definizione di submit_glossary per la lingua d'arrivo
-        /// </summary>
-        private JsonObject Tool { get; }
 
         #endregion
     }
