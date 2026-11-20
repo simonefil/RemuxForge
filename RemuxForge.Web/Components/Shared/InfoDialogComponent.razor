@@ -33,7 +33,7 @@
                     <RadzenTableCell class="info-label">@AppText.T("web.info.catalogData")</RadzenTableCell>
                     <RadzenTableCell>
                         <div class="info-catalog">
-                            <img src="@(ThemeService.Theme == "dark" || (ThemeService.Theme ?? "").EndsWith("-dark", StringComparison.Ordinal) ? "tvdb-logo-dark.png" : "tvdb-logo.png")" alt="TheTVDB" class="info-tvdb-logo" />
+                            <img src="@(AppSettingsModel.IsDarkTheme(ThemeService.Theme) ? "tvdb-logo-dark.png" : "tvdb-logo.png")" alt="TheTVDB" class="info-tvdb-logo" />
                             <span>@AppText.T("web.info.tvdbAttribution") <a href="https://thetvdb.com" target="_blank">TheTVDB</a></span>
                             <img src="tmdb-logo.svg" alt="TMDB" class="info-tmdb-logo" />
                             <span>@AppText.T("web.info.tmdbNotice")</span>

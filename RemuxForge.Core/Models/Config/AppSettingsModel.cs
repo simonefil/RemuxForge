@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 
 namespace RemuxForge.Core.Models
@@ -418,6 +419,20 @@ namespace RemuxForge.Core.Models
             this.EncodingProfiles = new List<EncodingProfile>();
             this.RemuxPresets = new List<RemuxPreset>();
             this.Advanced = new AdvancedConfig();
+        }
+
+        #endregion
+
+        #region Metodi pubblici
+
+        /// <summary>
+        /// Indica se un tema è scuro: "dark" e le varianti con suffisso "-dark"
+        /// </summary>
+        /// <param name="theme">Nome del tema, anche null</param>
+        /// <returns>True per un tema scuro</returns>
+        public static bool IsDarkTheme(string theme)
+        {
+            return theme == "dark" || (theme ?? "").EndsWith("-dark", StringComparison.Ordinal);
         }
 
         #endregion
