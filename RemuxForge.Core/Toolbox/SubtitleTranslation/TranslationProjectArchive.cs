@@ -10,9 +10,8 @@ using System.Text.RegularExpressions;
 namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 {
     /// <summary>
-    /// Archivio di un progetto di traduzione: progetto, job, registri, sorgenti, glossario e file tradotti parziali in uno .zip
-    /// col manifest degli hash. Glossario e file tradotti parziali sono per chi apre l'archivio: l'import li controlla come le
-    /// altre voci e non li usa. L'import controlla tutto prima di scrivere, estrae in una cartella temporanea dentro la
+    /// Archivio di un progetto di traduzione: progetto, job, registri e sorgenti in uno .zip col manifest degli hash. Le voci di
+    /// glossario e file tradotti parziali di un archivio si controllano come le altre e non si usano. L'import controlla tutto prima di scrivere, estrae in una cartella temporanea dentro la
     /// configurazione, scrive i sorgenti nella cartella scelta e sposta le cartelle al loro posto
     /// </summary>
     public sealed class TranslationProjectArchive
@@ -43,16 +42,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// Cartella dei sorgenti nell'archivio
         /// </summary>
         private const string SOURCES_FOLDER = "sources/";
-
-        /// <summary>
-        /// Cartella dei file tradotti parziali nell'archivio
-        /// </summary>
-        private const string PARTIAL_FOLDER = "partial/";
-
-        /// <summary>
-        /// Glossario come file a sé nell'archivio
-        /// </summary>
-        private const string GLOSSARY_ENTRY = "glossary/glossary.json";
 
         /// <summary>
         /// Prefisso della cartella temporanea dell'import dentro la configurazione
@@ -130,8 +119,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 
         /// <summary>
         /// Scrive l'archivio di un progetto col job attivo nella cartella scelta, senza sovrascrivere: il progetto tiene solo i file
-        /// del job, i percorsi assoluti dei sorgenti diventano relativi all'archivio, i parziali si ricompongono dalle battute
-        /// accettate. Un sorgente mancante o cambiato dà l'eccezione col motivo: l'import vuole tutti i sorgenti del progetto
+        /// del job, i percorsi assoluti dei sorgenti diventano relativi all'archivio. Un sorgente mancante o cambiato dà l'eccezione col motivo: l'import vuole tutti i sorgenti del progetto
         /// </summary>
         /// <param name="project">Progetto salvato, col job attivo</param>
         /// <param name="folder">Cartella di destinazione</param>
@@ -157,7 +145,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     // Copia del progetto coi soli file del job e i percorsi dei sorgenti dentro l'archivio
                     TranslationProject copy = TranslationJsonFile.Clone(project);
                     copy.Files.RemoveAll(f => !job.FileIds.Contains(f.Id));
-                    Dictionary<string, TranslationJobFileState> activeStates = new Dictionary<string, TranslationJobFileState>(StringComparer.Ordinal);
                     foreach (TranslationProjectFile file in copy.Files)
                     {
                         string archivePath = SOURCES_FOLDER + file.Id + "/" + Path.GetFileName(file.Path);
@@ -188,34 +175,11 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                             if (!File.Exists(Path.Combine(jobFolder, TranslationJobStore.FILES_FOLDER, file.Id + ".json")))
                                 continue;
                             TranslationJobFileState state = this._jobs.LoadFile(jobId, file.Id);
-                            if (jobId == project.ActiveJobId)
-                                activeStates[file.Id] = state;
                             state.ExportedPath = "";
                             state.ExportedSha256 = "";
                             this.AddEntry(zip, manifest, prefix + TranslationJobStore.FILES_FOLDER + "/" + file.Id + ".json", TranslationJsonFile.Serialize(state), TranslationArchiveRole.JobFile);
                         }
                     }
-
-                    // Parziali del job attivo: le battute accettate col testo tradotto, le altre col testo d'origine
-                    foreach (TranslationProjectFile file in files)
-                    {
-                        TranslationJobFileState state;
-                        if (!activeStates.TryGetValue(file.Id, out state))
-                            continue;
-
-                        SubtitleTranslationDocument document = SubtitleTranslationDocument.Read(File.ReadAllBytes(file.Path), file.Format, file.Encoding, project.Styles, project.Stretches);
-                        Dictionary<int, string> translated = new Dictionary<int, string>();
-                        foreach (TranslatedCueState translation in state.Translations)
-                        {
-                            if (translation.Text != null)
-                                translated[translation.Id] = translation.Text;
-                        }
-
-                        this.AddEntry(zip, manifest, PARTIAL_FOLDER + file.Id + "/" + TranslationExporter.GetOutputName(file.Path, project.SourceLanguage, project.TargetLanguage), document.Write(translated), TranslationArchiveRole.Partial);
-                    }
-
-                    if (project.Glossary != null)
-                        this.AddEntry(zip, manifest, GLOSSARY_ENTRY, TranslationJsonFile.Serialize(project.Glossary), TranslationArchiveRole.Glossary);
 
                     ZipArchiveEntry entry = zip.CreateEntry(MANIFEST_ENTRY, CompressionLevel.Optimal);
                     using (Stream target = entry.Open())
