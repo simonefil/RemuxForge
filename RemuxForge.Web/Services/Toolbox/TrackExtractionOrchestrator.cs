@@ -158,6 +158,9 @@ namespace RemuxForge.Web.Services.Toolbox
 
                 List<TrackExtractionTrack> batch = this.SelectTracks().FindAll(t => !t.Result.IsDone);
                 string outputFolder = this.GetBatchOutputFolder();
+
+                // Il piano mostrato durante il lotto è questo, calcolato sui file presenti prima che il lotto ne scriva
+                this.PlanOutputs();
                 this.TryRunExclusive(() => this.ExtractWorker(batch, outputFolder));
             }
         }

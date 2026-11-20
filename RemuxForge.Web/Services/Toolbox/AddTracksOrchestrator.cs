@@ -301,6 +301,9 @@ namespace RemuxForge.Web.Services.Toolbox
                         pairs[this.Records[i]] = this._tracks[i];
                     }
                 }
+
+                // Il piano mostrato durante il lotto è questo, calcolato sui file presenti prima che il lotto ne scriva
+                this.PlanOutputs();
                 this.TryRunExclusive(() => this.AddWorker(batch, pairs, properties, outputFolder));
             }
         }

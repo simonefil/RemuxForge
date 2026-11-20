@@ -517,8 +517,8 @@ namespace RemuxForge.Web.Services.Toolbox
 
         /// <summary>
         /// Uscita prevista di ogni elemento ancora da elaborare, con la stessa regola e lo stesso ordine del lotto sui file presenti
-        /// adesso. Si ricalcola solo dopo un cambio di elenco, scelte, uscita o esiti; durante il lotto resta quella calcolata prima
-        /// dell'avvio, che gli elementi in corso mostrano fino all'esito
+        /// adesso. Si ricalcola solo dopo un cambio di elenco, scelte, uscita o esiti; durante il lotto resta quella calcolata all'avvio,
+        /// prima della riserva, che gli elementi in corso mostrano fino all'esito
         /// </summary>
         /// <typeparam name="TItem">Elemento del lotto: il file o la traccia</typeparam>
         /// <param name="items">Elementi del lotto nell'ordine di elaborazione; chiamata sotto StateLock</param>
