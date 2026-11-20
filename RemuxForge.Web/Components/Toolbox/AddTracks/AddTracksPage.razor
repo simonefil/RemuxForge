@@ -276,15 +276,11 @@
     /// <summary>
     /// Accoda i file di tracce scelti nel browser, partendo dalla cartella dell'ultimo file di tracce o, se non ce ne sono, dell'ultimo video
     /// </summary>
-    private async Task AddTrackFilesAsync()
+    private Task AddTrackFilesAsync()
     {
         List<AddTracksTrackFile> tracks = Orchestrator.GetTracks();
         List<AddTracksVideo> videos = Orchestrator.GetRecords();
-        string initialPath = tracks.Count > 0 ? System.IO.Path.GetDirectoryName(tracks[tracks.Count - 1].InputPath) : videos.Count > 0 ? System.IO.Path.GetDirectoryName(videos[videos.Count - 1].InputPath) : "";
-        List<string> paths = await AppDialogs.BrowseFilesAsync(DialogService, JsModule, initialPath, s_trackExtensions);
-
-        if (paths.Count > 0)
-            Orchestrator.AddTrackFiles(paths);
+        return BrowseAndAddFilesAsync(s_trackExtensions, Orchestrator.AddTrackFiles, tracks.Count > 0 ? tracks[tracks.Count - 1].InputPath : videos.Count > 0 ? videos[videos.Count - 1].InputPath : "");
     }
 
     /// <summary>

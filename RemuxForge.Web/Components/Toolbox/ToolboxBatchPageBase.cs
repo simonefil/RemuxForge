@@ -90,14 +90,25 @@ namespace RemuxForge.Web.Components.Toolbox
         /// <summary>
         /// Accoda i file scelti nel browser, partendo dalla cartella dell'ultimo file dell'elenco
         /// </summary>
-        protected async Task AddFilesAsync()
+        protected Task AddFilesAsync()
         {
             List<TRecord> records = this.Orchestrator.GetRecords();
-            string initialPath = records.Count > 0 ? Path.GetDirectoryName(records[records.Count - 1].InputPath) : "";
-            List<string> paths = await AppDialogs.BrowseFilesAsync(this.DialogService, this.JsModule, initialPath, this.FileExtensions);
+            return this.BrowseAndAddFilesAsync(this.FileExtensions, this.Orchestrator.AddFiles, records.Count > 0 ? records[records.Count - 1].InputPath : "");
+        }
+
+        /// <summary>
+        /// Accoda a un elenco della card i file scelti nel browser, partendo dalla cartella di un file già scelto
+        /// </summary>
+        /// <param name="extensions">Estensioni proposte dal browser</param>
+        /// <param name="add">Accoda i percorsi scelti</param>
+        /// <param name="lastPath">File dalla cui cartella parte il browser, vuoto per la cartella predefinita</param>
+        protected async Task BrowseAndAddFilesAsync(List<string> extensions, Action<List<string>> add, string lastPath)
+        {
+            string initialPath = lastPath.Length > 0 ? Path.GetDirectoryName(lastPath) : "";
+            List<string> paths = await AppDialogs.BrowseFilesAsync(this.DialogService, this.JsModule, initialPath, extensions);
 
             if (paths.Count > 0)
-                this.Orchestrator.AddFiles(paths);
+                add(paths);
         }
 
         #endregion
