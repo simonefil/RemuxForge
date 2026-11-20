@@ -123,7 +123,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             List<RecurringCandidate> sequences = candidates.FindAll(c => c.Term.IndexOf(' ') >= 0);
             candidates.RemoveAll(c => c.Term.IndexOf(' ') < 0 && sequences.Exists(s => s.Total == c.Total && Array.IndexOf(s.Term.Replace(". ", " ").Split(' '), c.Term) >= 0));
 
-            candidates.RemoveAll(c => c.Total < MIN_COUNT && c.Counts.Count < 2);
+            candidates.RemoveAll(c => c.Total < MIN_COUNT);
             candidates.Sort((a, b) => a.Total != b.Total ? b.Total.CompareTo(a.Total) : string.CompareOrdinal(a.Term, b.Term));
             if (candidates.Count > MAX_CANDIDATES)
                 candidates.RemoveRange(MAX_CANDIDATES, candidates.Count - MAX_CANDIDATES);

@@ -328,7 +328,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             }
 
             // A capo della traduzione: in SRT il primo terminatore interno, in ASS/SSA \N, o \n se la battuta usa solo quello
-            string lineBreakToken = isSrt ? fallbackLineBreak ?? "\n" : ASS_HARD_BREAK;
+            string lineBreakToken = isSrt ? fallbackLineBreak : ASS_HARD_BREAK;
             bool hardBreak = false;
             bool softBreak = false;
             foreach (CleanItem item in items)
@@ -533,7 +533,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         // codice non legge: il blocco resta al suo posto fra le parole, come in una battuta posizionale
                         for (int t = index; t <= groupEnd && !isSrt; t++)
                         {
-                            foreach (AssTag tag in items[t].AssTags ?? new List<AssTag>())
+                            foreach (AssTag tag in items[t].AssTags)
                                 segmented |= this.SwitchBit(tag.Name) >= 0 || tag.Name == ASS_STYLE_CHANNEL || tag.Name == ASS_TRANSFORM || s_assStateChannels.ContainsKey(tag.Name);
                         }
                     }
@@ -1128,7 +1128,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             if (run.Length > 0)
                 pieces.Add(new RecomposePiece(RecomposePieceKind.Text, run.ToString(), runStart, 0));
 
-            // Gli spazi subito prima di un'apertura o subito dopo una chiusura tornano dentro i tag del tratto
+            // Gli spazi subito prima di un'apertura o subito dopo una chiusura tornano dentro i tag del tratto; i segni vanno da 1 al
+            // numero dei tratti della ricetta perché il validatore ripara o respinge gli altri
             int openNumber = 0;
             for (int i = 0; i < pieces.Count; i++)
             {
@@ -1136,8 +1137,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     openNumber = pieces[i].Number;
                 if (pieces[i].Kind == RecomposePieceKind.Close)
                     pieces[i] = new RecomposePiece(RecomposePieceKind.Close, "", pieces[i].Offset, openNumber);
-                if (pieces[i].Kind == RecomposePieceKind.Open && i > 0 && pieces[i - 1].Kind == RecomposePieceKind.Text
-                    && pieces[i].Number <= recipe.Marks.Count)
+                if (pieces[i].Kind == RecomposePieceKind.Open && i > 0 && pieces[i - 1].Kind == RecomposePieceKind.Text)
                 {
                     string leading = recipe.Marks[pieces[i].Number - 1].InnerLeading;
                     RecomposePiece before = pieces[i - 1];
@@ -1153,8 +1153,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         }
                     }
                 }
-                if (pieces[i].Kind == RecomposePieceKind.Close && pieces[i].Number > 0 && pieces[i].Number <= recipe.Marks.Count
-                    && i + 1 < pieces.Count && pieces[i + 1].Kind == RecomposePieceKind.Text)
+                if (pieces[i].Kind == RecomposePieceKind.Close && i + 1 < pieces.Count && pieces[i + 1].Kind == RecomposePieceKind.Text)
                 {
                     string trailing = recipe.Marks[pieces[i].Number - 1].InnerTrailing;
                     RecomposePiece after = pieces[i + 1];

@@ -216,14 +216,14 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         #region Metodi privati
 
         /// <summary>
-        /// Chiave di tre battute consecutive
+        /// Chiave di MIN_CUES battute consecutive
         /// </summary>
         /// <param name="keys">Chiavi delle battute</param>
         /// <param name="start">Prima battuta</param>
-        /// <returns>Chiave delle tre battute</returns>
+        /// <returns>Chiave delle battute</returns>
         private static string Gram(string[] keys, int start)
         {
-            return keys[start] + "\n" + keys[start + 1] + "\n" + keys[start + 2];
+            return string.Join("\n", keys, start, MIN_CUES);
         }
 
         /// <summary>
