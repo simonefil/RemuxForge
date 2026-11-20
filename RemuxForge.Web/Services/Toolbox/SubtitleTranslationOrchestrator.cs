@@ -253,7 +253,7 @@ namespace RemuxForge.Web.Services.Toolbox
                 jobCalls = this._jobStore.ReadCalls(job.Id);
             }
 
-            // I file si leggono prima del lock: il progetto letto non è ancora quello della card
+            // I file si leggono prima del lock, sul progetto appena letto da disco
             Dictionary<string, SubtitleTranslationDocument> documents = new Dictionary<string, SubtitleTranslationDocument>(StringComparer.Ordinal);
             foreach (TranslationProjectFile file in project.Files)
             {
