@@ -1,4 +1,5 @@
 using RemuxForge.Core.Ai;
+using RemuxForge.Core.Infrastructure;
 using RemuxForge.Core.Localization;
 using RemuxForge.Core.Models;
 using System;
@@ -178,6 +179,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         catch (Exception ex)
                         {
                             // L'unità in corso si scarta: il file resta com'era all'ultima unità salvata
+                            if (!(ex is AiServiceException || ex is OperationCanceledException))
+                                ConsoleHelper.Write(LogSection.General, LogLevel.Error, ex.ToString());
                             bool stopped = cancellation.IsCancellationRequested;
                             TranslationStop stop = TranslationStop.Create(ex, stopped);
                             lock (this._lock)
