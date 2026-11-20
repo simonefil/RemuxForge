@@ -1,4 +1,5 @@
 using HtmlAgilityPack;
+using RemuxForge.Core.Infrastructure;
 using RemuxForge.Core.Localization;
 using RemuxForge.Core.Models;
 using System;
@@ -794,13 +795,14 @@ namespace RemuxForge.Core.MediaCatalog
         }
 
         /// <summary>
-        /// Errore di pagina o risposta non interpretabile
+        /// Errore di pagina o risposta non interpretabile: il dettaglio va nel log, all'utente il messaggio senza dettaglio
         /// </summary>
         /// <param name="detail">Cosa manca o non torna</param>
         /// <returns>Eccezione da lanciare</returns>
         private static MediaCatalogException CreateFormatError(string detail)
         {
-            return new MediaCatalogException(AppText.F("mediaCatalog.error.format", DISPLAY_NAME, detail));
+            ConsoleHelper.Write(LogSection.General, LogLevel.Warning, AppText.F("mediaCatalog.error.format", DISPLAY_NAME, detail));
+            return new MediaCatalogException(AppText.F("mediaCatalog.error.unreadable", DISPLAY_NAME));
         }
 
         #endregion

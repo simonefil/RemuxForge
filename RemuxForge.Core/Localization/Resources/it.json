@@ -4065,6 +4065,7 @@
   "mediaCatalog.error.network": "Errore di rete verso {0}: {1}",
   "mediaCatalog.error.service": "{0} ha risposto con il codice {1}",
   "mediaCatalog.error.format": "Risposta di {0} non interpretabile: {1}",
+  "mediaCatalog.error.unreadable": "Risposta di {0} non interpretabile",
   "mediaCatalog.error.emptyBody": "risposta vuota",
   "mediaCatalog.settingsLoadError": "Errore caricamento {0}, impostazioni di TVDB e TMDB predefinite: {1}",
   "web.menu.mediaCatalog": "TVDB e TMDB",
