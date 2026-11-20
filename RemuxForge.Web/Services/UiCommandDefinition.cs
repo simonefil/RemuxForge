@@ -103,6 +103,20 @@ namespace RemuxForge.Web.Services
         }
 
         /// <summary>
+        /// Verifica se il tasto premuto è la scorciatoia del comando
+        /// </summary>
+        /// <param name="key">Tasto premuto</param>
+        /// <param name="ctrl">Flag Ctrl</param>
+        /// <returns>True se la scorciatoia del comando è il tasto premuto, con o senza Ctrl come indicato</returns>
+        public bool Matches(string key, bool ctrl)
+        {
+            if (string.IsNullOrEmpty(key))
+                return false;
+
+            return string.Equals(this.Shortcut, ctrl ? "Ctrl+" + key.ToUpperInvariant() : key, StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>
         /// Verifica se il tasto premuto appartiene soltanto a comandi disabilitati
         /// </summary>
         /// <param name="commands">Comandi della modalità corrente</param>
@@ -111,16 +125,14 @@ namespace RemuxForge.Web.Services
         /// <returns>True se almeno un comando usa la scorciatoia e nessuno di quelli che la usano è attivo</returns>
         public static bool IsShortcutDisabled(IReadOnlyList<UiCommandDefinition> commands, string key, bool ctrl)
         {
-            string shortcut;
             bool found = false;
 
-            if (commands == null || string.IsNullOrEmpty(key))
+            if (commands == null)
                 return false;
 
-            shortcut = ctrl ? "Ctrl+" + key.ToUpperInvariant() : key;
             for (int i = 0; i < commands.Count; i++)
             {
-                if (commands[i] == null || !string.Equals(commands[i].Shortcut, shortcut, StringComparison.OrdinalIgnoreCase))
+                if (commands[i] == null || !commands[i].Matches(key, ctrl))
                     continue;
                 if (!commands[i].Disabled)
                     return false;
