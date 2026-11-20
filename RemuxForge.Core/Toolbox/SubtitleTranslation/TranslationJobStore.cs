@@ -11,7 +11,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
     /// modo atomico, calls.jsonl in sola aggiunta. I file in parallelo scrivono ciascuno il proprio stato; testata e registro
     /// passano dal lock dello store
     /// </summary>
-    public class TranslationJobStore
+    public class TranslationJobStore : TranslationStoreBase
     {
         #region Costanti
 
@@ -30,25 +30,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// </summary>
         public const string FILES_FOLDER = "files";
 
-        /// <summary>
-        /// Registro delle chiamate del job
-        /// </summary>
-        public const string CALLS_FILE = "calls.jsonl";
-
-        #endregion
-
-        #region Variabili di classe
-
-        /// <summary>
-        /// Cartella dei job
-        /// </summary>
-        private readonly string _root;
-
-        /// <summary>
-        /// Protegge testata e registro dei job
-        /// </summary>
-        private readonly object _lock;
-
         #endregion
 
         #region Costruttore
@@ -58,9 +39,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// </summary>
         /// <param name="configFolder">Cartella di configurazione di RemuxForge</param>
         public TranslationJobStore(string configFolder)
+            : base(configFolder, FOLDER_NAME)
         {
-            this._root = Path.Combine(configFolder ?? "", FOLDER_NAME);
-            this._lock = new object();
         }
 
         #endregion
@@ -103,8 +83,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 
             lock (this._lock)
             {
-                CheckSchemaVersion(path, TranslationJob.SCHEMA_VERSION);
-                job = TranslationJsonFile.Read<TranslationJob>(path, AppText.F("toolbox.subtitleTranslation.jobUnreadable", path));
+                job = TranslationJsonFile.ReadVersioned<TranslationJob>(path, TranslationJob.SCHEMA_VERSION, AppText.F("toolbox.subtitleTranslation.jobTooNew", path),
+                    AppText.F("toolbox.subtitleTranslation.jobOutdated", path), AppText.F("toolbox.subtitleTranslation.jobUnreadable", path));
             }
 
             return job;
@@ -136,8 +116,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public TranslationJobFileState LoadFile(string jobId, string fileId)
         {
             string path = Path.Combine(this.GetFolder(jobId), FILES_FOLDER, fileId + ".json");
-            CheckSchemaVersion(path, TranslationJobFileState.SCHEMA_VERSION);
-            return TranslationJsonFile.Read<TranslationJobFileState>(path, AppText.F("toolbox.subtitleTranslation.jobUnreadable", path));
+            return TranslationJsonFile.ReadVersioned<TranslationJobFileState>(path, TranslationJobFileState.SCHEMA_VERSION, AppText.F("toolbox.subtitleTranslation.jobTooNew", path),
+                AppText.F("toolbox.subtitleTranslation.jobOutdated", path), AppText.F("toolbox.subtitleTranslation.jobUnreadable", path));
         }
 
         /// <summary>
@@ -163,21 +143,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             string path = Path.Combine(this.GetFolder(jobId), FILES_FOLDER, fileId + ".json");
             if (File.Exists(path))
                 File.Delete(path);
-        }
-
-        /// <summary>
-        /// Cancella un job con tutto il suo stato su disco
-        /// </summary>
-        /// <param name="id">Identificativo del job</param>
-        public void Delete(string id)
-        {
-            string folder = this.GetFolder(id);
-
-            lock (this._lock)
-            {
-                if (Directory.Exists(folder))
-                    Directory.Delete(folder, true);
-            }
         }
 
         /// <summary>
@@ -208,73 +173,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 if (job.ProjectId == projectId)
                     this.Delete(id);
             }
-        }
-
-        /// <summary>
-        /// Accoda una riga al registro delle chiamate del job
-        /// </summary>
-        /// <param name="jobId">Identificativo del job</param>
-        /// <param name="record">Chiamata da registrare</param>
-        public void AppendCall(string jobId, TranslationCallRecord record)
-        {
-            lock (this._lock)
-            {
-                TranslationJsonFile.AppendLine(Path.Combine(this.GetFolder(jobId), CALLS_FILE), record);
-            }
-        }
-
-        /// <summary>
-        /// Legge il registro delle chiamate del job; una riga illeggibile, come l'ultima troncata da una chiusura brusca, si salta
-        /// </summary>
-        /// <param name="jobId">Identificativo del job</param>
-        /// <returns>Chiamate nell'ordine del registro</returns>
-        public List<TranslationCallRecord> ReadCalls(string jobId)
-        {
-            lock (this._lock)
-            {
-                return TranslationJsonFile.ReadLines<TranslationCallRecord>(Path.Combine(this.GetFolder(jobId), CALLS_FILE));
-            }
-        }
-
-        /// <summary>
-        /// Cartella di un job
-        /// </summary>
-        /// <param name="id">Identificativo del job</param>
-        /// <returns>Percorso della cartella, anche se non esiste</returns>
-        public string GetFolder(string id)
-        {
-            return Path.Combine(this._root, id);
-        }
-
-        #endregion
-
-        #region Metodi privati
-
-        /// <summary>
-        /// Rifiuta un file del job di un'altra versione prima di leggerlo: uno di una versione precedente può avere valori che il
-        /// formato di oggi non legge più, e si rifiuta col motivo invece che come file guasto
-        /// </summary>
-        /// <param name="path">File del job</param>
-        /// <param name="current">Versione del formato di oggi</param>
-        private static void CheckSchemaVersion(string path, int current)
-        {
-            int version = File.Exists(path) ? TranslationJsonFile.ReadSchemaVersion(File.ReadAllBytes(path)) : 0;
-            if (version > current)
-                throw new InvalidDataException(AppText.F("toolbox.subtitleTranslation.jobTooNew", path));
-            if (version > 0 && version < current)
-                throw new InvalidDataException(AppText.F("toolbox.subtitleTranslation.jobOutdated", path));
-        }
-
-        #endregion
-
-        #region Proprietà
-
-        /// <summary>
-        /// Cartella dei job
-        /// </summary>
-        public string Root
-        {
-            get { return this._root; }
         }
 
         #endregion

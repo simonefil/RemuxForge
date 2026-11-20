@@ -42,55 +42,68 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         }
 
         /// <summary>
-        /// Legge un file intero; un file mancante o un contenuto guasto dà InvalidDataException col messaggio indicato
+        /// Legge un file intero col controllo della versione del formato, fatto prima del contenuto: un file di una versione
+        /// precedente può avere valori che il formato di oggi non legge più, e si rifiuta col motivo invece che come file guasto.
+        /// Ogni rifiuto dà InvalidDataException col messaggio indicato
         /// </summary>
         /// <typeparam name="T">Tipo del contenuto</typeparam>
         /// <param name="path">File da leggere</param>
-        /// <param name="unreadableMessage">Messaggio per il file guasto</param>
+        /// <param name="current">Versione del formato di oggi</param>
+        /// <param name="tooNewMessage">Messaggio per il file di una versione più recente</param>
+        /// <param name="outdatedMessage">Messaggio per il file di una versione precedente</param>
+        /// <param name="unreadableMessage">Messaggio per il file mancante o guasto</param>
         /// <returns>Contenuto letto</returns>
-        public static T Read<T>(string path, string unreadableMessage) where T : class
+        public static T ReadVersioned<T>(string path, int current, string tooNewMessage, string outdatedMessage, string unreadableMessage) where T : class
         {
-            T value;
+            byte[] bytes;
             try
             {
-                value = JsonSerializer.Deserialize<T>(File.ReadAllText(path, Encoding.UTF8), s_options);
+                bytes = File.ReadAllBytes(path);
             }
             catch (Exception ex)
             {
-                if (!(ex is JsonException || ex is FileNotFoundException || ex is DirectoryNotFoundException))
+                if (!(ex is FileNotFoundException || ex is DirectoryNotFoundException))
                     throw;
                 throw new InvalidDataException(unreadableMessage, ex);
             }
 
-            if (value == null)
-                throw new InvalidDataException(unreadableMessage);
-            return value;
-        }
-
-        /// <summary>
-        /// Versione del formato di un file salvato, letta prima del contenuto: un file di una versione precedente può avere valori
-        /// che il formato di oggi non legge più
-        /// </summary>
-        /// <param name="bytes">Byte UTF-8 del file</param>
-        /// <returns>Valore di schemaVersion, 0 se il file non è un oggetto JSON con una versione intera</returns>
-        public static int ReadSchemaVersion(byte[] bytes)
-        {
+            int version = 0;
             try
             {
                 using (JsonDocument document = JsonDocument.Parse(bytes))
                 {
-                    JsonElement version;
+                    JsonElement element;
                     int value;
-                    if (document.RootElement.ValueKind == JsonValueKind.Object && document.RootElement.TryGetProperty("schemaVersion", out version) && version.ValueKind == JsonValueKind.Number && version.TryGetInt32(out value))
-                        return value;
+                    if (document.RootElement.ValueKind == JsonValueKind.Object && document.RootElement.TryGetProperty("schemaVersion", out element) && element.ValueKind == JsonValueKind.Number && element.TryGetInt32(out value))
+                        version = value;
                 }
             }
             catch (JsonException)
             {
-                // Contenuto guasto: lo segnala la lettura vera
+                // Contenuto guasto: lo segnala la lettura del contenuto
             }
 
-            return 0;
+            if (version > current)
+                throw new InvalidDataException(tooNewMessage);
+            if (version > 0 && version < current)
+                throw new InvalidDataException(outdatedMessage);
+
+            T content;
+            try
+            {
+                using (StreamReader reader = new StreamReader(new MemoryStream(bytes), Encoding.UTF8))
+                {
+                    content = JsonSerializer.Deserialize<T>(reader.ReadToEnd(), s_options);
+                }
+            }
+            catch (JsonException ex)
+            {
+                throw new InvalidDataException(unreadableMessage, ex);
+            }
+
+            if (content == null)
+                throw new InvalidDataException(unreadableMessage);
+            return content;
         }
 
         /// <summary>

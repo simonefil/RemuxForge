@@ -10,7 +10,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
     /// Progetti di traduzione nella cartella di configurazione: translation-projects/&lt;id&gt;/project.json, scritto in modo
     /// atomico, e il registro calls.jsonl delle chiamate di analisi, in sola aggiunta
     /// </summary>
-    public class TranslationProjectStore
+    public class TranslationProjectStore : TranslationStoreBase
     {
         #region Costanti
 
@@ -24,25 +24,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// </summary>
         public const string PROJECT_FILE = "project.json";
 
-        /// <summary>
-        /// Registro delle chiamate del progetto
-        /// </summary>
-        public const string CALLS_FILE = "calls.jsonl";
-
-        #endregion
-
-        #region Variabili di classe
-
-        /// <summary>
-        /// Cartella dei progetti
-        /// </summary>
-        private readonly string _root;
-
-        /// <summary>
-        /// Protegge la scrittura dei file dei progetti
-        /// </summary>
-        private readonly object _lock;
-
         #endregion
 
         #region Costruttore
@@ -52,9 +33,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// </summary>
         /// <param name="configFolder">Cartella di configurazione di RemuxForge</param>
         public TranslationProjectStore(string configFolder)
+            : base(configFolder, FOLDER_NAME)
         {
-            this._root = Path.Combine(configFolder ?? "", FOLDER_NAME);
-            this._lock = new object();
         }
 
         #endregion
@@ -96,19 +76,13 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <returns>Progetto letto</returns>
         public TranslationProject Load(string id)
         {
-            string path = Path.Combine(this._root, id, PROJECT_FILE);
+            string path = Path.Combine(this.GetFolder(id), PROJECT_FILE);
             TranslationProject project;
 
             lock (this._lock)
             {
-                // Versione letta prima del contenuto: un progetto di una versione precedente può avere valori che il formato di oggi
-                // non legge più, e si rifiuta col motivo invece che come file guasto
-                int version = File.Exists(path) ? TranslationJsonFile.ReadSchemaVersion(File.ReadAllBytes(path)) : 0;
-                if (version > TranslationProject.SCHEMA_VERSION)
-                    throw new InvalidDataException(AppText.F("toolbox.subtitleTranslation.projectTooNew", path));
-                if (version > 0 && version < TranslationProject.SCHEMA_VERSION)
-                    throw new InvalidDataException(AppText.F("toolbox.subtitleTranslation.projectOutdated", path));
-                project = TranslationJsonFile.Read<TranslationProject>(path, AppText.F("toolbox.subtitleTranslation.projectUnreadable", path));
+                project = TranslationJsonFile.ReadVersioned<TranslationProject>(path, TranslationProject.SCHEMA_VERSION, AppText.F("toolbox.subtitleTranslation.projectTooNew", path),
+                    AppText.F("toolbox.subtitleTranslation.projectOutdated", path), AppText.F("toolbox.subtitleTranslation.projectUnreadable", path));
             }
 
             return project;
@@ -134,63 +108,11 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             if (project == null)
                 throw new ArgumentNullException(nameof(project));
 
-            project.UpdatedAt = DateTimeOffset.Now;
             lock (this._lock)
             {
-                TranslationJsonFile.Write(Path.Combine(this._root, project.Id, PROJECT_FILE), project);
+                project.UpdatedAt = DateTimeOffset.Now;
+                TranslationJsonFile.Write(Path.Combine(this.GetFolder(project.Id), PROJECT_FILE), project);
             }
-        }
-
-        /// <summary>
-        /// Cancella un progetto con tutto il suo stato su disco
-        /// </summary>
-        /// <param name="id">Identificativo del progetto</param>
-        public void Delete(string id)
-        {
-            string folder = Path.Combine(this._root, id);
-
-            lock (this._lock)
-            {
-                if (Directory.Exists(folder))
-                    Directory.Delete(folder, true);
-            }
-        }
-
-        /// <summary>
-        /// Accoda una riga al registro delle chiamate del progetto; dopo un'ultima riga troncata da una chiusura brusca la riga
-        /// nuova parte a capo
-        /// </summary>
-        /// <param name="projectId">Identificativo del progetto</param>
-        /// <param name="record">Chiamata da registrare</param>
-        public void AppendCall(string projectId, TranslationCallRecord record)
-        {
-            lock (this._lock)
-            {
-                TranslationJsonFile.AppendLine(Path.Combine(this._root, projectId, CALLS_FILE), record);
-            }
-        }
-
-        /// <summary>
-        /// Legge il registro delle chiamate del progetto; una riga illeggibile, come l'ultima troncata da una chiusura brusca, si salta
-        /// </summary>
-        /// <param name="projectId">Identificativo del progetto</param>
-        /// <returns>Chiamate nell'ordine del registro</returns>
-        public List<TranslationCallRecord> ReadCalls(string projectId)
-        {
-            lock (this._lock)
-            {
-                return TranslationJsonFile.ReadLines<TranslationCallRecord>(Path.Combine(this._root, projectId, CALLS_FILE));
-            }
-        }
-
-        /// <summary>
-        /// Cartella di un progetto
-        /// </summary>
-        /// <param name="id">Identificativo del progetto</param>
-        /// <returns>Percorso della cartella, anche se non esiste</returns>
-        public string GetFolder(string id)
-        {
-            return Path.Combine(this._root, id);
         }
 
         #endregion
