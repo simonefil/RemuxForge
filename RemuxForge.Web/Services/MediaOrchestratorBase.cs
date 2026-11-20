@@ -260,6 +260,20 @@ namespace RemuxForge.Web.Services
         }
 
         /// <summary>
+        /// Interrompe l'operazione corrente: annulla il suo token, poi registra lo stop e lo scrive nel log
+        /// </summary>
+        /// <param name="message">Messaggio di stop</param>
+        protected void StopOperation(string message)
+        {
+            // Il token prima del flag: il flag ferma i processi, e chi vede un processo interrotto deve trovare già l'annullamento
+            lock (this.StateLock)
+            {
+                this.OperationCancellationState?.Cancel();
+            }
+            this.RequestStop(message);
+        }
+
+        /// <summary>
         /// True quando è stato richiesto lo stop cooperativo
         /// </summary>
         /// <returns>Stato corrente della richiesta</returns>

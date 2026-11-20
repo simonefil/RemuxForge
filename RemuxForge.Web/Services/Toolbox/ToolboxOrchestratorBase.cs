@@ -90,12 +90,7 @@ namespace RemuxForge.Web.Services.Toolbox
         /// </summary>
         public override void Stop()
         {
-            // Il token prima del flag: chi trova lo strumento interrotto deve trovare già l'annullamento
-            lock (this.StateLock)
-            {
-                this.OperationCancellationState?.Cancel();
-            }
-            this.RequestStop(AppText.T(this.TextPrefix + ".stopRequested"));
+            this.StopOperation(AppText.T(this.TextPrefix + ".stopRequested"));
         }
 
         #endregion

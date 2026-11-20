@@ -312,13 +312,8 @@ namespace RemuxForge.Web.Services
         /// </summary>
         public override void Stop()
         {
-            // Il token prima del flag: il flag ferma i processi, e chi vede un processo interrotto deve trovare già l'annullamento.
             // L'unione in corso interrompe anche la normalizzazione delle parti
-            lock (this.StateLock)
-            {
-                this.OperationCancellationState?.Cancel();
-            }
-            this.RequestStop(AppText.T("web.split.stopRequested"));
+            this.StopOperation(AppText.T("web.split.stopRequested"));
         }
 
         /// <summary>
