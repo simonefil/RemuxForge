@@ -557,8 +557,6 @@ namespace RemuxForge.Web.Services.Toolbox
                 next.TargetLanguage = this._project.TargetLanguage;
                 next.Revision = this._project.Glossary != null ? this._project.Glossary.Revision : 0;
                 next.Status = GlossaryStatus.Draft;
-            if (discarded > 0)
-                this.AppendLog(AppText.Count(TEXT_PREFIX + ".discardedForImport", discarded));
                 builder.SetEpisodes(next, this.GetEpisodes(), this.KindsSettled);
                 this._project.Glossary = next;
                 this._project.ImportedGlossary = new ImportedGlossaryInfo
@@ -573,6 +571,8 @@ namespace RemuxForge.Web.Services.Toolbox
                 this._store.Save(this._project);
             }
 
+            if (discarded > 0)
+                this.AppendLog(AppText.Count(TEXT_PREFIX + ".discardedForImport", discarded));
             this.AppendLog(AppText.F(TEXT_PREFIX + ".glossaryImported", name, this._project.ImportedGlossary.TermCount, this._project.ImportedGlossary.CharacterCount));
             this.NotifyRecordsChanged();
             return result;
