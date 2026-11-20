@@ -22,12 +22,6 @@
                     int phase = i;
                     <div class="rf-translation-models-phase">
                         <RadzenLabel class="rf-tool-label" Text="@AppText.T("web.toolbox.subtitleTranslation.models.phase." + s_phases[phase])" Component="@("TranslationModel" + s_phases[phase])" />
-                        <RadzenButton @ref="_infoButtons[phase]" Icon="info" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" Size="ButtonSize.ExtraSmall"
-                                      aria-label="@AppText.T("web.toolbox.subtitleTranslation.models.phase." + s_phases[phase])"
-                                      Click="@(() => _infoPopups[phase].ToggleAsync(_infoButtons[phase].Element))" />
-                        <RadzenPopup @ref="_infoPopups[phase]" Lazy="true" class="rf-translation-models-info">
-                            @AppText.T("web.toolbox.subtitleTranslation.models.info." + s_phases[phase])
-                        </RadzenPopup>
                     </div>
                     <RadzenBadge IsPill="true" BadgeStyle="@s_difficultyStyles[phase]" Text="@AppText.T("web.toolbox.subtitleTranslation.models.difficulty." + s_difficulties[phase])" />
                     <RadzenDropDown TValue="string" Name="@("TranslationModel" + s_phases[phase])" Data="@_phaseModels[phase]" TextProperty="DisplayName" ValueProperty="Id" Value="@_selectedModels[phase]"
@@ -115,20 +109,9 @@
     private bool[] _locked = new bool[3];
 
     /// <summary>
-    /// Pulsanti delle informazioni per passo, ancore dei popup
-    /// </summary>
-    private RadzenButton[] _infoButtons = new RadzenButton[3];
-
-    /// <summary>
-    /// Popup delle informazioni per passo
-    /// </summary>
-    private RadzenPopup[] _infoPopups = new RadzenPopup[3];
-
-    /// <summary>
     /// File tradotti in parallelo
     /// </summary>
     private int _parallelFiles = TranslationProjectOptions.DEFAULT_PARALLEL_FILES;
-
 
     /// <summary>
     /// True mentre si leggono i modelli
@@ -142,7 +125,7 @@
 
     #endregion
 
-    #region Metodi protected
+    #region Metodi protetti
 
     /// <summary>
     /// Legge i modelli e riempie le tendine coi valori del progetto; col job i passi del giro mostrano modello e livello del job
