@@ -64,6 +64,11 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// </summary>
         private const string NO = "no";
 
+        /// <summary>
+        /// Larghezza delle colonne dei fogli
+        /// </summary>
+        private const int COLUMN_WIDTH = 28;
+
         #endregion
 
         #region Variabili statiche
@@ -338,7 +343,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             WriteRow(sheet, 1, header);
             sheet.Row(1).Style.Font.Bold = true;
             for (int column = 1; column <= header.Length; column++)
-                sheet.Column(column).Width = 28;
+                sheet.Column(column).Width = COLUMN_WIDTH;
             return sheet;
         }
 

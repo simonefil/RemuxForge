@@ -5,7 +5,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
     /// </summary>
     public enum SubtitleCueKind
     {
-        /// <summary>Battuta parlata, anche nei job salvati prima dei tipi</summary>
+        /// <summary>Battuta parlata</summary>
         Dialogue,
 
         /// <summary>Testo di una canzone: sigla, sigla finale, canzone di scena</summary>

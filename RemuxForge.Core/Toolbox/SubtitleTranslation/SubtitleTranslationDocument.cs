@@ -40,8 +40,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public const string DEFAULT_ENCODING = "UTF-8";
 
         /// <summary>
-        /// Margine in millisecondi attorno ai tempi di una riga Comment entro cui le righe disegnate dalle sue lettere le si legano: il
-        /// massimo misurato sugli ingressi e le uscite animati delle release
+        /// Margine in millisecondi attorno ai tempi di una riga Comment entro cui le righe disegnate dalle sue lettere le si legano:
+        /// la durata massima di un ingresso o di un'uscita animati fuori dai tempi della riga Comment
         /// </summary>
         public const long LETTER_EFFECT_TOLERANCE_MS = 1210;
 
@@ -469,6 +469,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 // tutti i caratteri della frase. La frase è la riga più lunga fra quelle che contengono tutti i tratti, una Dialogue prima
                 // di un Comment; la riga principale è la Dialogue con la frase, la più lunga nel tempo e poi sul layer più basso, o il
                 // Comment
+                // PlayRes mancanti come in libass quando lo script non li dichiara
                 int screenWidth = assDocument.TryGetScriptInfoInt("PlayResX", out int scriptWidth) ? scriptWidth : 0;
                 int screenHeight = assDocument.TryGetScriptInfoInt("PlayResY", out int scriptHeight) ? scriptHeight : 0;
                 if (screenWidth <= 0 && screenHeight <= 0)
