@@ -188,7 +188,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             int offset = 0;
             Encoding decoding;
             Encoding outputEncoding;
-            List<SubtitleCue> empty = new List<SubtitleCue>();
 
             // BOM, poi UTF-8 senza BOM, poi la codifica scelta come in Aggiungi tracce
             if (data.Length >= 3 && data[0] == 0xEF && data[1] == 0xBB && data[2] == 0xBF)
@@ -205,8 +204,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             }
             else if (Array.IndexOf(data, (byte)0) >= 0)
             {
-                return new SubtitleTranslationDocument(format, "", new byte[0], null, empty, new List<SubtitleStyleUsage>(), new Dictionary<int, LetterEffect>(), new Dictionary<int, List<SourceLine>>(),
-                    new HashSet<int>(), REJECTION_UTF16_WITHOUT_BOM);
+                return Rejected(format, REJECTION_UTF16_WITHOUT_BOM);
             }
             else
             {
@@ -219,8 +217,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 catch (DecoderFallbackException)
                 {
                     if (string.IsNullOrEmpty(encoding) || string.Equals(encoding, DEFAULT_ENCODING, StringComparison.OrdinalIgnoreCase))
-                        return new SubtitleTranslationDocument(format, "", new byte[0], null, empty, new List<SubtitleStyleUsage>(), new Dictionary<int, LetterEffect>(), new Dictionary<int, List<SourceLine>>(),
-                            new HashSet<int>(), REJECTION_ENCODING_REQUIRED);
+                        return Rejected(format, REJECTION_ENCODING_REQUIRED);
 
                     // Le codifiche di Aggiungi tracce che il runtime non ha di suo stanno nel provider delle code page
                     try
@@ -229,8 +226,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     }
                     catch (ArgumentException)
                     {
-                        return new SubtitleTranslationDocument(format, "", new byte[0], null, empty, new List<SubtitleStyleUsage>(), new Dictionary<int, LetterEffect>(), new Dictionary<int, List<SourceLine>>(),
-                            new HashSet<int>(), REJECTION_ENCODING_UNKNOWN);
+                        return Rejected(format, REJECTION_ENCODING_UNKNOWN);
                     }
                 }
             }
@@ -242,8 +238,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             for (int i = 0; same && i < encoded.Length; i++)
                 same = encoded[i] == data[offset + i];
             if (!same)
-                return new SubtitleTranslationDocument(format, "", new byte[0], null, empty, new List<SubtitleStyleUsage>(), new Dictionary<int, LetterEffect>(), new Dictionary<int, List<SourceLine>>(),
-                    new HashSet<int>(), REJECTION_ROUNDTRIP_MISMATCH);
+                return Rejected(format, REJECTION_ROUNDTRIP_MISMATCH);
 
             byte[] preamble = new byte[offset];
             Array.Copy(data, preamble, offset);
@@ -348,8 +343,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 }
                 catch (InvalidDataException)
                 {
-                    return new SubtitleTranslationDocument(format, "", new byte[0], null, empty, new List<SubtitleStyleUsage>(), new Dictionary<int, LetterEffect>(), new Dictionary<int, List<SourceLine>>(),
-                        new HashSet<int>(), REJECTION_ASS_INVALID_DIALOGUE);
+                    return Rejected(format, REJECTION_ASS_INVALID_DIALOGUE);
                 }
 
                 // Format di [Events] in vigore su ogni riga, letto come ReadDialogues, per Style, Layer e margini; le righe Comment
@@ -399,8 +393,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                             && marginVColumn >= 0 && AssSubtitleUtils.TryParseInt(styleFields[marginVColumn], out int marginV))
                         {
                             if (ssaStyles)
-                                alignment = alignment >= 1 && alignment <= 3 ? alignment : alignment >= 5 && alignment <= 7 ? alignment + 2
-                                    : alignment >= 9 && alignment <= 11 ? alignment - 5 : 0;
+                                alignment = SubtitleCueCleaner.ToAssAlignment(alignment);
                             styleLayouts[styleFields[nameColumn].Trim()] = new AssStyleLayout(alignment, marginL, marginR, marginV);
                         }
                     }
@@ -825,7 +818,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                                 int marginL = marginLColumn >= 0 && AssSubtitleUtils.TryParseInt(dialogue.Fields[marginLColumn], out int lineMarginL) && lineMarginL != 0 ? lineMarginL : layout.MarginL;
                                 int marginR = marginRColumn >= 0 && AssSubtitleUtils.TryParseInt(dialogue.Fields[marginRColumn], out int lineMarginR) && lineMarginR != 0 ? lineMarginR : layout.MarginR;
                                 int column = (layout.Alignment - 1) % 3;
-                                double x = column == 0 ? marginL : column == 2 ? playResX - marginR : (marginL + playResX - marginR) / 2.0;
+                                double x = SubtitleCueCleaner.AnchorX(column, marginL, marginR, playResX);
                                 tags = "\\an" + ((look.Alignment.Value - 1) / 3 * 3 + column + 1).ToString(CultureInfo.InvariantCulture)
                                     + "\\pos(" + x.ToString(CultureInfo.InvariantCulture) + "," + look.PositionY + ")" + tags;
                             }
@@ -890,7 +883,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     TranslationStyleKind? styleKind;
                     kinds.TryGetValue(style + "\u0001" + actor + "\u0001" + effect, out styleKind);
                     string exclusion = styleKind == TranslationStyleKind.NotTranslatable || fragment ? SubtitleCue.EXCLUSION_NOT_TRANSLATABLE : "";
-                    SubtitleCueKind kind = styleKind == TranslationStyleKind.Song ? SubtitleCueKind.Song : styleKind == TranslationStyleKind.Sign ? SubtitleCueKind.Sign : SubtitleCueKind.Dialogue;
+                    SubtitleCueKind kind = ToCueKind(styleKind);
                     rawCues.Add(new RawCue(dialogue.StartMs, dialogue.EndMs, assEvent.TextStart, assEvent.TextLength, style, assEvent.Layer, kind, exclusion, ""));
                 }
 
@@ -928,7 +921,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             }
 
             if (rawCues.Count == 0)
-                return new SubtitleTranslationDocument(format, text, preamble, outputEncoding, empty, usages, letterEffects, attachedLines, new HashSet<int>(shownTexts.Keys), REJECTION_NO_CUES);
+                return new SubtitleTranslationDocument(format, text, preamble, outputEncoding, new List<SubtitleCue>(), usages, letterEffects, attachedLines, new HashSet<int>(shownTexts.Keys), REJECTION_NO_CUES);
 
             // Pulizia
             List<SubtitleCleanResult> cleanedCues = new List<SubtitleCleanResult>();
@@ -976,7 +969,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                             {
                                 TranslationStyleKind lineKind = stretch.Kinds[q + r - p];
                                 claimed[r] = true;
-                                srtKinds[timed[r]] = lineKind == TranslationStyleKind.Song ? SubtitleCueKind.Song : lineKind == TranslationStyleKind.Sign ? SubtitleCueKind.Sign : SubtitleCueKind.Dialogue;
+                                srtKinds[timed[r]] = ToCueKind(lineKind);
                                 if (lineKind == TranslationStyleKind.NotTranslatable)
                                     cleanedCues[timed[r]] = new SubtitleCleanResult("", null, SubtitleCue.EXCLUSION_NOT_TRANSLATABLE);
                             }
@@ -1101,6 +1094,32 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             Array.Copy(this._preamble, result, this._preamble.Length);
             Array.Copy(body, 0, result, this._preamble.Length, body.Length);
             return result;
+        }
+
+        #endregion
+
+        #region Metodi privati
+
+        /// <summary>
+        /// Documento di un file rifiutato, senza testo né battute
+        /// </summary>
+        /// <param name="format">Formato del file</param>
+        /// <param name="reason">Motivo del rifiuto</param>
+        /// <returns>Documento rifiutato</returns>
+        private static SubtitleTranslationDocument Rejected(SubtitleTranslationFormat format, string reason)
+        {
+            return new SubtitleTranslationDocument(format, "", new byte[0], null, new List<SubtitleCue>(), new List<SubtitleStyleUsage>(), new Dictionary<int, LetterEffect>(),
+                new Dictionary<int, List<SourceLine>>(), new HashSet<int>(), reason);
+        }
+
+        /// <summary>
+        /// Tipo della battuta dal tipo riconosciuto: canzone e scritta restano tali, il resto è dialogo
+        /// </summary>
+        /// <param name="kind">Tipo riconosciuto, null senza</param>
+        /// <returns>Tipo della battuta</returns>
+        private static SubtitleCueKind ToCueKind(TranslationStyleKind? kind)
+        {
+            return kind == TranslationStyleKind.Song ? SubtitleCueKind.Song : kind == TranslationStyleKind.Sign ? SubtitleCueKind.Sign : SubtitleCueKind.Dialogue;
         }
 
         #endregion

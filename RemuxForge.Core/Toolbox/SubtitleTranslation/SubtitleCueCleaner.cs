@@ -154,6 +154,29 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         }
 
         /// <summary>
+        /// Allineamento SSA (1-3 in basso, +4 in alto, +8 al centro) nella numerazione ASS
+        /// </summary>
+        /// <param name="alignment">Allineamento SSA</param>
+        /// <returns>Allineamento ASS, 0 per un valore SSA non valido</returns>
+        public static int ToAssAlignment(int alignment)
+        {
+            return alignment >= 1 && alignment <= 3 ? alignment : alignment >= 5 && alignment <= 7 ? alignment + 2 : alignment >= 9 && alignment <= 11 ? alignment - 5 : 0;
+        }
+
+        /// <summary>
+        /// x del punto d'ancoraggio di una riga dalla colonna dell'allineamento e dai margini
+        /// </summary>
+        /// <param name="column">Colonna dell'allineamento: 0 a sinistra, 1 al centro, 2 a destra</param>
+        /// <param name="left">Margine sinistro</param>
+        /// <param name="right">Margine destro</param>
+        /// <param name="playResX">Larghezza dello schermo dello script</param>
+        /// <returns>x del punto d'ancoraggio</returns>
+        public static double AnchorX(int column, int left, int right, int playResX)
+        {
+            return column == 0 ? left : column == 2 ? playResX - right : (playResX + left - right) / 2.0;
+        }
+
+        /// <summary>
         /// Pulisce il campo Text di una battuta
         /// </summary>
         /// <param name="text">Campo Text originale; in SRT le righe con i loro terminatori</param>
@@ -439,10 +462,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 item.Channels = new Dictionary<string, AssChannel>(channels, StringComparer.Ordinal);
                 if (isSrt)
                 {
-                    StringBuilder key = new StringBuilder();
-                    foreach (SrtEntry entry in stack)
-                        key.Append(entry.Raw).Append('\u0001');
-                    item.StateKey = key.ToString();
+                    item.StateKey = SrtStateKey(stack);
                 }
                 else
                 {
@@ -485,10 +505,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             string baseKey;
             if (isSrt)
             {
-                StringBuilder key = new StringBuilder();
-                foreach (SrtEntry entry in baseStack)
-                    key.Append(entry.Raw).Append('\u0001');
-                baseKey = key.ToString();
+                baseKey = SrtStateKey(baseStack);
             }
             else
             {
@@ -1242,12 +1259,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     else if (this._format == SubtitleTranslationFormat.Srt && next != null && next.Kind == RecomposePieceKind.Open)
                     {
                         // Tratti adiacenti in SRT: i tag comuni non si chiudono e riaprono
-                        List<string> closedOpens = new List<string>();
-                        List<string> nextOpens = new List<string>();
-                        for (Match tag = s_srtTag.Match(closed.Open); tag.Success; tag = s_srtTag.Match(closed.Open, tag.Index + tag.Length))
-                            closedOpens.Add(tag.Value);
-                        for (Match tag = s_srtTag.Match(recipe.Marks[next.Number - 1].Open); tag.Success; tag = s_srtTag.Match(recipe.Marks[next.Number - 1].Open, tag.Index + tag.Length))
-                            nextOpens.Add(tag.Value);
+                        List<string> closedOpens = ReadSrtTags(closed.Open);
+                        List<string> nextOpens = ReadSrtTags(recipe.Marks[next.Number - 1].Open);
                         int common = 0;
                         while (common < closedOpens.Count && common < nextOpens.Count && closedOpens[common] == nextOpens[common])
                             common++;
@@ -1672,7 +1685,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     }
                     else if (tag.Name == "a" && alignment == null)
                     {
-                        alignment = (int)numbers[0] switch { 1 => 1, 3 => 3, 5 => 7, 6 => 8, 7 => 9, 9 => 4, 10 => 5, 11 => 6, _ => 2 };
+                        int legacy = ToAssAlignment((int)numbers[0]);
+                        alignment = legacy > 0 ? legacy : 2;
                     }
                     else if (tag.Name == "fs" && size == null)
                     {
@@ -1703,7 +1717,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 int left = margins.Left != 0 ? margins.Left : layout.MarginL;
                 int right = margins.Right != 0 ? margins.Right : layout.MarginR;
                 int vertical = margins.Vertical != 0 ? margins.Vertical : layout.MarginV;
-                points.Add(new double[] { column == 0 ? left : column == 2 ? playResX - right : (playResX + left - right) / 2.0,
+                points.Add(new double[] { AnchorX(column, left, right, playResX),
                     row == 0 ? playResY - vertical : row == 2 ? vertical : playResY / 2.0 });
             }
             return points.ConvertAll(point =>
@@ -1756,6 +1770,32 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         #endregion
 
         #region Metodi privati
+
+        /// <summary>
+        /// Chiave dello stato SRT: i tag aperti della pila, nell'ordine
+        /// </summary>
+        /// <param name="stack">Tag aperti</param>
+        /// <returns>Chiave dello stato</returns>
+        private static string SrtStateKey(IEnumerable<SrtEntry> stack)
+        {
+            StringBuilder key = new StringBuilder();
+            foreach (SrtEntry entry in stack)
+                key.Append(entry.Raw).Append('\u0001');
+            return key.ToString();
+        }
+
+        /// <summary>
+        /// Tag SRT consecutivi in testa a un testo
+        /// </summary>
+        /// <param name="text">Testo che comincia coi tag</param>
+        /// <returns>Tag nell'ordine</returns>
+        private static List<string> ReadSrtTags(string text)
+        {
+            List<string> tags = new List<string>();
+            for (Match tag = s_srtTag.Match(text); tag.Success; tag = s_srtTag.Match(text, tag.Index + tag.Length))
+                tags.Add(tag.Value);
+            return tags;
+        }
 
         /// <summary>
         /// Concatena i gettoni originali di un intervallo
