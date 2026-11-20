@@ -445,7 +445,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 bool whole = true;
                 lock (this._lock)
                 {
-                    // Un blocco riaperto richiede solo le battute senza esito, e non si divide dal chiamante: i blocchi dopo sono già tradotti
+                    // Un blocco riaperto richiede solo le battute senza esito, e non si divide dal chiamante se ha già esiti o blocchi
+                    // tradotti dopo di sé, che la divisione ripianificherebbe
                     foreach (FrozenCue cue in state.GetSpan(block.FirstId, block.LastId))
                     {
                         if (context.Shared.ContainsKey(cue.Id))
@@ -454,6 +455,17 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                             whole = false;
                         else
                             ids.Add(cue.Id);
+                    }
+                    int index = state.Blocks.IndexOf(block);
+                    if (state.Blocks.FindIndex(index + 1, b => b.Status != TranslationBlockStatus.Pending) >= 0)
+                        whole = false;
+
+                    // Un blocco senza battute da chiedere si chiude senza chiamata
+                    if (ids.Count == 0)
+                    {
+                        block.Status = TranslationBlockStatus.Done;
+                        this.SaveFile(state);
+                        continue;
                     }
 
                     List<TranslationBlock> planned = state.Blocks.FindAll(b => b.Status != TranslationBlockStatus.Split);
