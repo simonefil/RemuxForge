@@ -58,7 +58,6 @@ namespace RemuxForge.Core.MediaCatalog
         /// </summary>
         private readonly Func<string> _apiKeyProvider;
 
-
         /// <summary>
         /// Serializza il login
         /// </summary>
@@ -174,7 +173,7 @@ namespace RemuxForge.Core.MediaCatalog
         /// <returns>Serie</returns>
         public override async Task<MediaCatalogSeries> GetSeriesAsync(string key, string language, CancellationToken cancellationToken)
         {
-            string id = ParseKey(key);
+            string id = this.ParseKey(key);
             string tvdbLanguage = await this.ResolveLanguageAsync(language, cancellationToken);
             JsonNode root = await this.GetJsonAsync(API_BASE_URL + "/series/" + id + "/extended?meta=translations&short=true", cancellationToken);
             JsonNode data = root["data"];
@@ -311,7 +310,7 @@ namespace RemuxForge.Core.MediaCatalog
         /// <returns>Film</returns>
         public override async Task<MediaCatalogMovie> GetMovieAsync(string key, string language, CancellationToken cancellationToken)
         {
-            string id = ParseKey(key);
+            string id = this.ParseKey(key);
             string tvdbLanguage = await this.ResolveLanguageAsync(language, cancellationToken);
             JsonNode root = await this.GetJsonAsync(API_BASE_URL + "/movies/" + id + "/extended?meta=translations", cancellationToken);
             JsonNode data = root["data"];
@@ -346,7 +345,7 @@ namespace RemuxForge.Core.MediaCatalog
 
         #endregion
 
-        #region Metodi protected
+        #region Metodi protetti
 
         /// <summary>
         /// Il token della sessione scade dopo un mese: un 401 lo rinnova

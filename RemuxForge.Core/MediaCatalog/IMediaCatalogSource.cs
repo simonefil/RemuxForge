@@ -13,7 +13,7 @@ namespace RemuxForge.Core.MediaCatalog
     /// - language è il codice ISO 639-2/T dell'app (ita, eng, jpn...): la conversione al formato del catalogo la fa la fonte;
     /// - ogni testo è nella lingua chiesta, altrimenti in inglese, altrimenti nell'originale: il ripiego lo fa la fonte, campo per campo;
     /// - la cancellazione esce come OperationCanceledException, ogni altro errore come MediaCatalogException;
-    /// - nessun riferimento restituito è null: stringhe e liste vuote per i dati mancanti.
+    /// - nessun riferimento restituito è null: stringhe e liste vuote per i dati mancanti
     /// </summary>
     public interface IMediaCatalogSource
     {

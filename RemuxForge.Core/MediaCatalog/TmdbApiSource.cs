@@ -219,7 +219,7 @@ namespace RemuxForge.Core.MediaCatalog
 
         #endregion
 
-        #region Metodi protected
+        #region Metodi protetti
 
         /// <summary>
         /// La credenziale TMDB non scade: un 401 è una credenziale sbagliata

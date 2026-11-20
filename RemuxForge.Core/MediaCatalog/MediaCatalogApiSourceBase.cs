@@ -117,7 +117,7 @@ namespace RemuxForge.Core.MediaCatalog
 
         #endregion
 
-        #region Metodi protected
+        #region Metodi protetti
 
         /// <summary>
         /// Mette le credenziali sulla richiesta
@@ -392,7 +392,7 @@ namespace RemuxForge.Core.MediaCatalog
                 throw new MediaCatalogException(AppText.F("mediaCatalog.error.format", displayName, ex.Message), ex);
             }
 
-            throw new MediaCatalogException(AppText.F("mediaCatalog.error.format", displayName, "empty body"));
+            throw new MediaCatalogException(AppText.F("mediaCatalog.error.format", displayName, AppText.T("mediaCatalog.error.emptyBody")));
         }
 
         #endregion
