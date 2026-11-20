@@ -236,8 +236,7 @@ namespace RemuxForge.Core.Ai
                 if (!string.IsNullOrEmpty(request.SessionId))
                     message.Headers.TryAddWithoutValidation("session_id", request.SessionId);
                 message.Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json");
-                if (request.Progress != null)
-                    request.Progress(new AiStreamProgress(AiStreamStage.Sent, ""));
+                Report(request.Progress, AiStreamStage.Sent, "");
 
                 try
                 {
