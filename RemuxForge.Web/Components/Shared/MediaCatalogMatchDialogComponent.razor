@@ -229,7 +229,7 @@
     <div class="rf-dialog-footer">
         @if (_step == MatchStep.Files)
         {
-            <RadzenButton Text="@AppText.T("web.mediaCatalogMatch.next")" Icon="arrow_forward" Disabled="@(_selectedFiles.Count == 0 || (!RenameMode && !_containerDataLoaded))" Click="@GoToSearch" />
+            <RadzenButton Text="@AppText.T("web.mediaCatalogMatch.next")" Icon="arrow_forward" Disabled="@(_selectedFiles.Count == 0 || (!RenameMode && !_containerDataLoaded))" Click="@(() => _step = MatchStep.Search)" />
         }
         else if (_step == MatchStep.Search)
         {
@@ -551,14 +551,6 @@
     private List<string> GetSelectedFiles()
     {
         return this.Files.Where(file => this._selectedFiles.Contains(file)).ToList();
-    }
-
-    /// <summary>
-    /// Passa alla ricerca
-    /// </summary>
-    private void GoToSearch()
-    {
-        this._step = MatchStep.Search;
     }
 
     /// <summary>

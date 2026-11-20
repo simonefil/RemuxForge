@@ -103,7 +103,7 @@ namespace RemuxForge.Core.MediaCatalog
             if (separator > 0)
             {
                 name = tagContent.Substring(0, separator);
-                if (!IsNumeric(name) || !int.TryParse(tagContent.Substring(separator + 1), NumberStyles.None, CultureInfo.InvariantCulture, out width))
+                if ((name != SEASON && name != EPISODE && name != ABSOLUTE) || !int.TryParse(tagContent.Substring(separator + 1), NumberStyles.None, CultureInfo.InvariantCulture, out width))
                     return false;
             }
 
@@ -134,16 +134,6 @@ namespace RemuxForge.Core.MediaCatalog
         #endregion
 
         #region Metodi privati
-
-        /// <summary>
-        /// Indica se il segnaposto è un numero che accetta la larghezza
-        /// </summary>
-        /// <param name="name">Nome del segnaposto</param>
-        /// <returns>True per Season, Episode e Absolute</returns>
-        private static bool IsNumeric(string name)
-        {
-            return name == SEASON || name == EPISODE || name == ABSOLUTE;
-        }
 
         /// <summary>
         /// Numero singolo o intervallo primo-ultimo

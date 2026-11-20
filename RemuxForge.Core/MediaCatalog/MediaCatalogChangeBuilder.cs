@@ -30,12 +30,12 @@ namespace RemuxForge.Core.MediaCatalog
         /// <summary>
         /// Nome dell'allegato della copertina JPEG
         /// </summary>
-        public const string COVER_JPEG_NAME = "cover.jpg";
+        private const string COVER_JPEG_NAME = "cover.jpg";
 
         /// <summary>
         /// Nome dell'allegato della copertina PNG
         /// </summary>
-        public const string COVER_PNG_NAME = "cover.png";
+        private const string COVER_PNG_NAME = "cover.png";
 
         /// <summary>
         /// Campo del titolo del segmento
