@@ -49,7 +49,6 @@ namespace RemuxForge.Web.Services.Toolbox
         /// </summary>
         private TrackExtractionView _view;
 
-
         #endregion
 
         #region Costruttore

@@ -88,7 +88,6 @@ namespace RemuxForge.Web.Services.Toolbox
         /// </summary>
         private string _charset;
 
-
         /// <summary>
         /// Video sostituiti in questo processo, con i file di tracce già aggiunti e l'ultimo esito: un video sostituito contiene già
         /// la traccia, e riabbinarlo allo stesso file la aggiungerebbe una seconda volta

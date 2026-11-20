@@ -465,6 +465,7 @@
             this._cancellation.Cancel();
 
         this._closing.Cancel();
+        this._closing.Dispose();
         await base.DisposeAsync();
     }
 

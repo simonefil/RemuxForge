@@ -111,14 +111,65 @@ namespace RemuxForge.Core.MediaCatalog
             if (record == null || record.FileInfo == null)
                 return new List<MkvMetadataChange>();
 
+            MkvMetadataFileInfo fileInfo = record.FileInfo;
+            List<MkvMetadataChange> changes = new List<MkvMetadataChange>();
+            string description;
+
             if (match.Movie != null)
-                return BuildMovieChanges(record.FileInfo, match.Provider, match.Movie, titleTemplate, coverSource);
+            {
+                MediaCatalogMovie movie = match.Movie;
+
+                description = AppText.F("metadata.catalog.ruleDescription", movie.Title);
+                AddSegmentTitle(changes, fileInfo, description, MediaCatalogPlaceholders.Expand(titleTemplate, MediaCatalogPlaceholders.FromMovie(movie)));
+                AddTag(changes, fileInfo, description, "TITLE", MetadataTagTargetLevels.EPISODE, movie.Title);
+                AddTag(changes, fileInfo, description, "SYNOPSIS", MetadataTagTargetLevels.EPISODE, movie.Overview);
+                if (match.Provider == MediaCatalogProvider.Tvdb)
+                    AddTag(changes, fileInfo, description, "TVDB2", MetadataTagTargetLevels.EPISODE, movie.Id.HasValue ? "movies/" + FormatId(movie.Id) : "");
+                else
+                    AddTag(changes, fileInfo, description, "TMDB", MetadataTagTargetLevels.EPISODE, movie.Id.HasValue ? "movie/" + FormatId(movie.Id) : "");
+
+                AddTag(changes, fileInfo, description, "DATE_RELEASED", MetadataTagTargetLevels.EPISODE, FormatDate(movie.ReleaseDate));
+                AddTag(changes, fileInfo, description, "GENRE", MetadataTagTargetLevels.EPISODE, string.Join(LIST_SEPARATOR, movie.Genres));
+                AddTag(changes, fileInfo, description, "DIRECTOR", MetadataTagTargetLevels.EPISODE, JoinPeople(movie.Directors));
+                AddTag(changes, fileInfo, description, "WRITTEN_BY", MetadataTagTargetLevels.EPISODE, JoinPeople(movie.Writers));
+                AddTag(changes, fileInfo, description, "ACTOR", MetadataTagTargetLevels.EPISODE, JoinPeople(movie.Actors));
+                AddCover(changes, fileInfo, description, coverSource);
+                return changes;
+            }
 
             MediaCatalogMatchRow row = match.Rows.FirstOrDefault(item => item.FilePath == file);
             if (row == null || row.Episodes.Count == 0)
-                return new List<MkvMetadataChange>();
+                return changes;
 
-            return BuildSeriesChanges(record.FileInfo, match.Provider, match.Series, row.Episodes, titleTemplate, coverSource);
+            // Il file può essere abbinato a più episodi consecutivi: numeri, ID e data sono quelli del primo
+            MediaCatalogSeries series = match.Series;
+            List<MediaCatalogEpisode> episodes = row.Episodes;
+            MediaCatalogEpisode first = episodes[0];
+
+            description = AppText.F("metadata.catalog.ruleDescription", series.Title);
+            AddSegmentTitle(changes, fileInfo, description, MediaCatalogPlaceholders.Expand(titleTemplate, MediaCatalogPlaceholders.FromEpisodes(series, episodes)));
+            AddTag(changes, fileInfo, description, "TITLE", MetadataTagTargetLevels.COLLECTION, series.Title);
+            AddTag(changes, fileInfo, description, "TITLE", MetadataTagTargetLevels.EPISODE, string.Join(MediaCatalogPlaceholders.TITLE_SEPARATOR, episodes.Select(episode => episode.Title).Where(title => title.Length > 0)));
+            AddTag(changes, fileInfo, description, "SYNOPSIS", MetadataTagTargetLevels.EPISODE, string.Join(SYNOPSIS_SEPARATOR, episodes.Select(episode => episode.Overview).Where(overview => overview.Length > 0)));
+            if (match.Provider == MediaCatalogProvider.Tvdb)
+            {
+                AddTag(changes, fileInfo, description, "TVDB", MetadataTagTargetLevels.COLLECTION, FormatId(series.Id));
+                AddTag(changes, fileInfo, description, "TVDB", MetadataTagTargetLevels.EPISODE, FormatId(first.Id));
+            }
+            else
+            {
+                AddTag(changes, fileInfo, description, "TMDB", MetadataTagTargetLevels.COLLECTION, series.Id.HasValue ? "tv/" + FormatId(series.Id) : "");
+            }
+
+            AddTag(changes, fileInfo, description, "DATE_RELEASED", MetadataTagTargetLevels.EPISODE, FormatDate(first.AiredDate));
+            AddTag(changes, fileInfo, description, "PART_NUMBER", MetadataTagTargetLevels.SEASON, first.SeasonNumber.ToString(CultureInfo.InvariantCulture));
+            AddTag(changes, fileInfo, description, "PART_NUMBER", MetadataTagTargetLevels.EPISODE, first.EpisodeNumber.ToString(CultureInfo.InvariantCulture));
+            AddTag(changes, fileInfo, description, "GENRE", MetadataTagTargetLevels.COLLECTION, string.Join(LIST_SEPARATOR, series.Genres));
+            AddTag(changes, fileInfo, description, "DIRECTOR", MetadataTagTargetLevels.EPISODE, JoinPeople(episodes.SelectMany(episode => episode.Directors)));
+            AddTag(changes, fileInfo, description, "WRITTEN_BY", MetadataTagTargetLevels.EPISODE, JoinPeople(episodes.SelectMany(episode => episode.Writers)));
+            AddTag(changes, fileInfo, description, "ACTOR", MetadataTagTargetLevels.EPISODE, JoinPeople(episodes.SelectMany(episode => episode.Actors)));
+            AddCover(changes, fileInfo, description, coverSource);
+            return changes;
         }
 
         /// <summary>
@@ -176,78 +227,6 @@ namespace RemuxForge.Core.MediaCatalog
         #endregion
 
         #region Metodi privati
-
-        /// <summary>
-        /// Modifiche di un file abbinato a uno o più episodi consecutivi; numeri, ID e data sono quelli del primo episodio
-        /// </summary>
-        /// <param name="fileInfo">Dati attuali del file, con tag e allegati letti</param>
-        /// <param name="provider">Catalogo di provenienza</param>
-        /// <param name="series">Serie</param>
-        /// <param name="episodes">Episodi del file, in ordine</param>
-        /// <param name="titleTemplate">Modello del titolo del segmento</param>
-        /// <param name="coverSource">File della copertina, vuoto per non scriverla</param>
-        /// <returns>Modifiche</returns>
-        private static List<MkvMetadataChange> BuildSeriesChanges(MkvMetadataFileInfo fileInfo, MediaCatalogProvider provider, MediaCatalogSeries series, List<MediaCatalogEpisode> episodes, string titleTemplate, string coverSource)
-        {
-            List<MkvMetadataChange> changes = new List<MkvMetadataChange>();
-            string description = AppText.F("metadata.catalog.ruleDescription", series.Title);
-            MediaCatalogEpisode first = episodes[0];
-
-            AddSegmentTitle(changes, fileInfo, description, MediaCatalogPlaceholders.Expand(titleTemplate, MediaCatalogPlaceholders.FromEpisodes(series, episodes)));
-            AddTag(changes, fileInfo, description, "TITLE", MetadataTagTargetLevels.COLLECTION, series.Title);
-            AddTag(changes, fileInfo, description, "TITLE", MetadataTagTargetLevels.EPISODE, string.Join(MediaCatalogPlaceholders.TITLE_SEPARATOR, episodes.Select(episode => episode.Title).Where(title => title.Length > 0)));
-            AddTag(changes, fileInfo, description, "SYNOPSIS", MetadataTagTargetLevels.EPISODE, string.Join(SYNOPSIS_SEPARATOR, episodes.Select(episode => episode.Overview).Where(overview => overview.Length > 0)));
-            if (provider == MediaCatalogProvider.Tvdb)
-            {
-                AddTag(changes, fileInfo, description, "TVDB", MetadataTagTargetLevels.COLLECTION, FormatId(series.Id));
-                AddTag(changes, fileInfo, description, "TVDB", MetadataTagTargetLevels.EPISODE, FormatId(first.Id));
-            }
-            else
-            {
-                AddTag(changes, fileInfo, description, "TMDB", MetadataTagTargetLevels.COLLECTION, series.Id.HasValue ? "tv/" + FormatId(series.Id) : "");
-            }
-
-            AddTag(changes, fileInfo, description, "DATE_RELEASED", MetadataTagTargetLevels.EPISODE, FormatDate(first.AiredDate));
-            AddTag(changes, fileInfo, description, "PART_NUMBER", MetadataTagTargetLevels.SEASON, first.SeasonNumber.ToString(CultureInfo.InvariantCulture));
-            AddTag(changes, fileInfo, description, "PART_NUMBER", MetadataTagTargetLevels.EPISODE, first.EpisodeNumber.ToString(CultureInfo.InvariantCulture));
-            AddTag(changes, fileInfo, description, "GENRE", MetadataTagTargetLevels.COLLECTION, string.Join(LIST_SEPARATOR, series.Genres));
-            AddTag(changes, fileInfo, description, "DIRECTOR", MetadataTagTargetLevels.EPISODE, JoinPeople(episodes.SelectMany(episode => episode.Directors)));
-            AddTag(changes, fileInfo, description, "WRITTEN_BY", MetadataTagTargetLevels.EPISODE, JoinPeople(episodes.SelectMany(episode => episode.Writers)));
-            AddTag(changes, fileInfo, description, "ACTOR", MetadataTagTargetLevels.EPISODE, JoinPeople(episodes.SelectMany(episode => episode.Actors)));
-            AddCover(changes, fileInfo, description, coverSource);
-            return changes;
-        }
-
-        /// <summary>
-        /// Modifiche di un film
-        /// </summary>
-        /// <param name="fileInfo">Dati attuali del file, con tag e allegati letti</param>
-        /// <param name="provider">Catalogo di provenienza</param>
-        /// <param name="movie">Film</param>
-        /// <param name="titleTemplate">Modello del titolo del segmento</param>
-        /// <param name="coverSource">File della copertina, vuoto per non scriverla</param>
-        /// <returns>Modifiche</returns>
-        private static List<MkvMetadataChange> BuildMovieChanges(MkvMetadataFileInfo fileInfo, MediaCatalogProvider provider, MediaCatalogMovie movie, string titleTemplate, string coverSource)
-        {
-            List<MkvMetadataChange> changes = new List<MkvMetadataChange>();
-            string description = AppText.F("metadata.catalog.ruleDescription", movie.Title);
-
-            AddSegmentTitle(changes, fileInfo, description, MediaCatalogPlaceholders.Expand(titleTemplate, MediaCatalogPlaceholders.FromMovie(movie)));
-            AddTag(changes, fileInfo, description, "TITLE", MetadataTagTargetLevels.EPISODE, movie.Title);
-            AddTag(changes, fileInfo, description, "SYNOPSIS", MetadataTagTargetLevels.EPISODE, movie.Overview);
-            if (provider == MediaCatalogProvider.Tvdb)
-                AddTag(changes, fileInfo, description, "TVDB2", MetadataTagTargetLevels.EPISODE, movie.Id.HasValue ? "movies/" + FormatId(movie.Id) : "");
-            else
-                AddTag(changes, fileInfo, description, "TMDB", MetadataTagTargetLevels.EPISODE, movie.Id.HasValue ? "movie/" + FormatId(movie.Id) : "");
-
-            AddTag(changes, fileInfo, description, "DATE_RELEASED", MetadataTagTargetLevels.EPISODE, FormatDate(movie.ReleaseDate));
-            AddTag(changes, fileInfo, description, "GENRE", MetadataTagTargetLevels.EPISODE, string.Join(LIST_SEPARATOR, movie.Genres));
-            AddTag(changes, fileInfo, description, "DIRECTOR", MetadataTagTargetLevels.EPISODE, JoinPeople(movie.Directors));
-            AddTag(changes, fileInfo, description, "WRITTEN_BY", MetadataTagTargetLevels.EPISODE, JoinPeople(movie.Writers));
-            AddTag(changes, fileInfo, description, "ACTOR", MetadataTagTargetLevels.EPISODE, JoinPeople(movie.Actors));
-            AddCover(changes, fileInfo, description, coverSource);
-            return changes;
-        }
 
         /// <summary>
         /// Aggiunge il titolo del segmento
