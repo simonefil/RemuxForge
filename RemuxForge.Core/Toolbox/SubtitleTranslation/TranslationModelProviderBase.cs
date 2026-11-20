@@ -1,5 +1,4 @@
 using RemuxForge.Core.Ai;
-using RemuxForge.Core.Localization;
 using RemuxForge.Core.Models;
 using System;
 using System.Collections.Generic;
@@ -123,8 +122,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 
         /// <summary>
         /// Manda una richiesta preparata con la politica di retry del job e avvisa la chiamata di ogni tentativo arrivato al servizio,
-        /// anche di quello interrotto da Stop. Il timeout del client arriva come annullamento senza che l'operazione sia ferma:
-        /// diventa un errore di rete
+        /// anche di quello interrotto da Stop
         /// </summary>
         /// <param name="request">Chiamata della traduzione</param>
         /// <param name="prepared">Richiesta preparata secondo le capacità</param>
@@ -144,19 +142,13 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     AiServiceException error = ex as AiServiceException;
                     bool stopped = ex is OperationCanceledException && cancellationToken.IsCancellationRequested;
                     if (error == null && !stopped)
-                    {
-                        if (!(ex is OperationCanceledException))
-                            throw;
-                        error = new AiServiceException(AiErrorKind.Network, AppText.F("ai.error.network", ex.Message), ex);
-                    }
+                        throw;
 
                     tracked.Error = error;
                     tracked.Stopped = stopped;
                     tracked.Finish();
                     if (request.AttemptFinished != null)
                         request.AttemptFinished(tracked);
-                    if (error != null && !ReferenceEquals(error, ex))
-                        throw error;
                     throw;
                 }
 

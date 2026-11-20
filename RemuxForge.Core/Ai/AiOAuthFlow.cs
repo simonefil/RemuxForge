@@ -296,8 +296,9 @@ namespace RemuxForge.Core.Ai
                     status = (int)response.StatusCode;
                 }
             }
-            catch (HttpRequestException ex)
+            catch (Exception ex) when (ex is HttpRequestException || (ex is OperationCanceledException && !cancellationToken.IsCancellationRequested))
             {
+                // Il timeout del client arriva come annullamento senza che l'operazione sia ferma
                 throw new AiServiceException(AiErrorKind.Network, AppText.F("ai.error.network", ex.Message), ex);
             }
 
