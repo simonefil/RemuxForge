@@ -303,7 +303,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 
         /// <summary>
         /// SHA-256 di instructions e messaggio della chiamata: con contesto, glossario caricato o file cambiati il parziale non vale
-        /// più e la ripresa lo rifà; vuoto nei parziali salvati prima dell'impronta, che si rifanno allo stesso modo
+        /// più e la ripresa lo rifà
         /// </summary>
         public string InputSha256 { get; set; }
 

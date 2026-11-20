@@ -61,7 +61,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// tiene le impronte salvate: se i byte sono cambiati si rifiuta, altrimenti si rilegge senza toccarle
         /// </summary>
         /// <param name="file">File del progetto</param>
-        /// <param name="styles">Tabella degli stili del progetto, null nei progetti salvati prima</param>
+        /// <param name="styles">Tabella degli stili del progetto</param>
         /// <param name="stretches">Tratte SRT riconosciute del progetto, null prima del riconoscimento</param>
         /// <param name="locked">True con l'analisi partita</param>
         /// <returns>Documento letto, null se il file è rifiutato</returns>

@@ -588,8 +588,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         }
 
         /// <summary>
-        /// Testata di un record: id e, per canzoni e cartelli, [song] o [sign]; il dialogo non ha segno, così i record dei job
-        /// salvati prima dei tipi restano uguali
+        /// Testata di un record: id e, per canzoni e cartelli, [song] o [sign]; il dialogo non ha segno
         /// </summary>
         /// <param name="id">Id della battuta</param>
         /// <param name="kind">Tipo della battuta</param>

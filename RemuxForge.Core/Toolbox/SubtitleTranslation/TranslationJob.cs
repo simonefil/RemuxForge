@@ -1,8 +1,6 @@
 using RemuxForge.Core.Models;
 using System;
 using System.Collections.Generic;
-using System.Text.Json;
-using System.Text.Json.Serialization;
 
 namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 {
@@ -265,17 +263,17 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public List<string> DisabledCapabilities { get; set; }
 
         /// <summary>
-        /// Modalità della revisione AI del progetto all'avvio, completa se il file non la porta
+        /// Modalità della revisione AI del progetto all'avvio
         /// </summary>
         public TranslationReviewMode ReviewMode { get; set; }
 
         /// <summary>
-        /// Tratte ripetute fra i file, tradotte una volta sola; vuoto nei job creati prima delle tratte
+        /// Tratte ripetute fra i file, tradotte una volta sola
         /// </summary>
         public List<SharedStretch> SharedStretches { get; set; }
 
         /// <summary>
-        /// True dopo un export che ha scritto tutti i file, finché una battuta non cambia; falso se il file non lo porta
+        /// True dopo un export che ha scritto tutti i file, finché una battuta non cambia
         /// </summary>
         public bool Exported { get; set; }
 
@@ -327,8 +325,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         #region Metodi pubblici
 
         /// <summary>
-        /// Battute congelate da una a un'altra nell'ordine di Cues, estremi compresi: l'ordine di tempo nei job nuovi, quello di id
-        /// nei job salvati prima, dove il tratto coincide con l'intervallo di id
+        /// Battute congelate da una a un'altra nell'ordine di Cues, che è quello di tempo, estremi compresi
         /// </summary>
         /// <param name="firstId">Prima battuta</param>
         /// <param name="lastId">Ultima battuta</param>
@@ -381,7 +378,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <summary>
         /// Sorgente numerato congelato: la parte del file nel prefisso non cambia per tutta la vita del job, mentre contesto della
         /// serie e glossario possono cambiare e aprire un prefisso nuovo. In ordine di tempo, che dà l'ordine di blocchi, contesto e
-        /// revisione; i job salvati prima lo hanno in ordine di id
+        /// revisione
         /// </summary>
         public List<FrozenCue> Cues { get; set; }
 
@@ -451,7 +448,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public string Text { get; set; }
 
         /// <summary>
-        /// Dialogo, canzone o cartello; dialogo nei job salvati prima dei tipi
+        /// Dialogo, canzone o cartello
         /// </summary>
         public SubtitleCueKind Kind { get; set; }
 
@@ -807,7 +804,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <summary>
         /// Stato
         /// </summary>
-        [JsonConverter(typeof(TranslationReviewBlockStatusJsonConverter))]
         public TranslationReviewBlockStatus Status { get; set; }
 
         /// <summary>
@@ -875,53 +871,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// Testo corretto suggerito, vuoto se la diagnosi non lo dà
         /// </summary>
         public string Suggestion { get; set; }
-
-        #endregion
-    }
-
-    /// <summary>
-    /// Stato della revisione AI di un blocco in JSON col nome del valore, come gli altri enum dei file della traduzione. In
-    /// lettura accetta anche DiagnosisFailed e Failed dei job e degli archivi salvati prima, i blocchi non rivisti di allora, che
-    /// diventano blocchi conclusi: il motivo stava nel blocco e non arriva alle battute
-    /// </summary>
-    public sealed class TranslationReviewBlockStatusJsonConverter : JsonConverter<TranslationReviewBlockStatus>
-    {
-        #region Costanti
-
-        /// <summary>
-        /// Valore tolto: diagnosi non valida salvata, con la correzione delle sole battute da rivedere ancora da fare
-        /// </summary>
-        private const string LEGACY_DIAGNOSIS_FAILED = "DiagnosisFailed";
-
-        /// <summary>
-        /// Valore tolto: blocco non rivisto, col motivo nel blocco
-        /// </summary>
-        private const string LEGACY_FAILED = "Failed";
-
-        #endregion
-
-        #region Metodi pubblici
-
-        /// <inheritdoc />
-        public override TranslationReviewBlockStatus Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
-        {
-            string name = reader.TokenType == JsonTokenType.String ? reader.GetString() : null;
-            if (string.Equals(name, LEGACY_DIAGNOSIS_FAILED, StringComparison.OrdinalIgnoreCase) || string.Equals(name, LEGACY_FAILED, StringComparison.OrdinalIgnoreCase))
-                return TranslationReviewBlockStatus.Done;
-
-            TranslationReviewBlockStatus status;
-            if (name == null || !Array.Exists(Enum.GetNames<TranslationReviewBlockStatus>(), n => string.Equals(n, name, StringComparison.OrdinalIgnoreCase))
-                || !Enum.TryParse(name, true, out status))
-                throw new JsonException("Stato del blocco di revisione non valido: " + (name ?? reader.TokenType.ToString()));
-
-            return status;
-        }
-
-        /// <inheritdoc />
-        public override void Write(Utf8JsonWriter writer, TranslationReviewBlockStatus value, JsonSerializerOptions options)
-        {
-            writer.WriteStringValue(value.ToString());
-        }
 
         #endregion
     }
