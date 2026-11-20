@@ -185,49 +185,30 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             IReadOnlyList<TranslationProjectStretch> stretches)
         {
             byte[] data = bytes ?? new byte[0];
-            int offset = 0;
+            TextSubtitleEncodingResult detected = TextSubtitleEncoding.Detect(data);
+            int offset = detected.BomLength;
             Encoding decoding;
             Encoding outputEncoding;
 
             // BOM, poi UTF-8 senza BOM, poi la codifica scelta come in Aggiungi tracce
-            if (data.Length >= 3 && data[0] == 0xEF && data[1] == 0xBB && data[2] == 0xBF)
-            {
-                decoding = new UTF8Encoding(false);
-                outputEncoding = decoding;
-                offset = 3;
-            }
-            else if (data.Length >= 2 && ((data[0] == 0xFF && data[1] == 0xFE) || (data[0] == 0xFE && data[1] == 0xFF)))
-            {
-                decoding = new UnicodeEncoding(data[0] == 0xFE, false);
-                outputEncoding = decoding;
-                offset = 2;
-            }
-            else if (Array.IndexOf(data, (byte)0) >= 0)
-            {
+            if (detected.Kind == TextSubtitleEncodingKind.Utf16WithoutBom)
                 return Rejected(format, REJECTION_UTF16_WITHOUT_BOM);
-            }
-            else
+
+            outputEncoding = detected.Kind == TextSubtitleEncodingKind.NotUtf8 ? new UTF8Encoding(false) : detected.Encoding;
+            decoding = outputEncoding;
+            if (detected.Kind == TextSubtitleEncodingKind.NotUtf8)
             {
-                outputEncoding = new UTF8Encoding(false);
-                decoding = outputEncoding;
+                if (string.IsNullOrEmpty(encoding) || string.Equals(encoding, DEFAULT_ENCODING, StringComparison.OrdinalIgnoreCase))
+                    return Rejected(format, REJECTION_ENCODING_REQUIRED);
+
+                // Le codifiche di Aggiungi tracce che il runtime non ha di suo stanno nel provider delle code page
                 try
                 {
-                    new UTF8Encoding(false, true).GetString(data);
+                    decoding = CodePagesEncodingProvider.Instance.GetEncoding(encoding) ?? Encoding.GetEncoding(encoding);
                 }
-                catch (DecoderFallbackException)
+                catch (ArgumentException)
                 {
-                    if (string.IsNullOrEmpty(encoding) || string.Equals(encoding, DEFAULT_ENCODING, StringComparison.OrdinalIgnoreCase))
-                        return Rejected(format, REJECTION_ENCODING_REQUIRED);
-
-                    // Le codifiche di Aggiungi tracce che il runtime non ha di suo stanno nel provider delle code page
-                    try
-                    {
-                        decoding = CodePagesEncodingProvider.Instance.GetEncoding(encoding) ?? Encoding.GetEncoding(encoding);
-                    }
-                    catch (ArgumentException)
-                    {
-                        return Rejected(format, REJECTION_ENCODING_UNKNOWN);
-                    }
+                    return Rejected(format, REJECTION_ENCODING_UNKNOWN);
                 }
             }
 

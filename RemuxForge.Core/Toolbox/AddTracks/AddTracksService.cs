@@ -4,12 +4,12 @@ using RemuxForge.Core.Localization;
 using RemuxForge.Core.Media;
 using RemuxForge.Core.Media.Mkv;
 using RemuxForge.Core.Models;
+using RemuxForge.Core.Subtitles;
 using RemuxForge.Core.Toolbox.Common;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
-using System.Text;
 using System.Threading;
 
 namespace RemuxForge.Core.Toolbox.AddTracks
@@ -116,23 +116,10 @@ namespace RemuxForge.Core.Toolbox.AddTracks
             // con nessuna codifica, e passerebbe da UTF-8 valido: non si aggiunge
             if (Array.IndexOf(s_textSubtitleExtensions, extension) >= 0)
             {
-                byte[] bytes = File.ReadAllBytes(fullPath);
-                bool hasBom = (bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF) ||
-                    (bytes.Length >= 2 && ((bytes[0] == 0xFF && bytes[1] == 0xFE) || (bytes[0] == 0xFE && bytes[1] == 0xFF)));
-
-                if (!hasBom)
-                {
-                    if (Array.IndexOf(bytes, (byte)0) >= 0)
-                        throw new InvalidOperationException(AppText.F("toolbox.addTracks.utf16WithoutBom", name));
-                    try
-                    {
-                        new UTF8Encoding(false, true).GetString(bytes);
-                    }
-                    catch (DecoderFallbackException)
-                    {
-                        needsCharset = true;
-                    }
-                }
+                TextSubtitleEncodingKind encodingKind = TextSubtitleEncoding.Detect(File.ReadAllBytes(fullPath)).Kind;
+                if (encodingKind == TextSubtitleEncodingKind.Utf16WithoutBom)
+                    throw new InvalidOperationException(AppText.F("toolbox.addTracks.utf16WithoutBom", name));
+                needsCharset = encodingKind == TextSubtitleEncodingKind.NotUtf8;
             }
 
             // mkvmerge termina senza errori anche su un file che non riconosce: nessuna traccia vuol dire file illeggibile
