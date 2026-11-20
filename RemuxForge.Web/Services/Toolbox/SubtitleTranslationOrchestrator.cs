@@ -1687,7 +1687,7 @@ namespace RemuxForge.Web.Services.Toolbox
                         analysis.Stop = stop;
                     }
 
-                    // Un disco che non scrive non deve chiudere l'app: la fermata resta in memoria e all'apertura diventa Crash
+                    // Un salvataggio non riuscito non deve chiudere l'app: la fermata resta in memoria e all'apertura diventa Crash
                     try
                     {
                         lock (this.StateLock)
@@ -1697,8 +1697,6 @@ namespace RemuxForge.Web.Services.Toolbox
                     }
                     catch (Exception saveError)
                     {
-                        if (!(saveError is IOException || saveError is UnauthorizedAccessException))
-                            throw;
                         this.AppendLog(AppText.F(TEXT_PREFIX + ".projectNotSaved", saveError.Message));
                     }
                 }
@@ -1972,7 +1970,7 @@ namespace RemuxForge.Web.Services.Toolbox
                             this.ProgressState.CurrentPercent = 100;
                     }
 
-                    // Un disco che non scrive non deve chiudere l'app: la fermata resta in memoria e all'apertura diventa Crash
+                    // Un salvataggio non riuscito non deve chiudere l'app: la fermata resta in memoria e all'apertura diventa Crash
                     try
                     {
                         lock (this.StateLock)
@@ -1982,8 +1980,6 @@ namespace RemuxForge.Web.Services.Toolbox
                     }
                     catch (Exception saveError)
                     {
-                        if (!(saveError is IOException || saveError is UnauthorizedAccessException))
-                            throw;
                         this.AppendLog(AppText.F(TEXT_PREFIX + ".projectNotSaved", saveError.Message));
                     }
 
