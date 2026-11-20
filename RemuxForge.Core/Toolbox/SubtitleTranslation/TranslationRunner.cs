@@ -264,7 +264,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     if (shared.ContainsKey(id) || state.Translations.RemoveAll(t => t.Id == id) == 0)
                         continue;
 
-                    state.Blocks.Find(b => b.Status == TranslationBlockStatus.Done && state.GetSpan(b.FirstId, b.LastId).Exists(c => c.Id == id)).Status = TranslationBlockStatus.Pending;
+                    state.Blocks.Find(b => b.Status != TranslationBlockStatus.Split && state.GetSpan(b.FirstId, b.LastId).Exists(c => c.Id == id)).Status = TranslationBlockStatus.Pending;
                     if (state.TranslationStatus == TranslationFileStatus.Completed)
                         state.TranslationStatus = TranslationFileStatus.InProgress;
                     reopened++;
