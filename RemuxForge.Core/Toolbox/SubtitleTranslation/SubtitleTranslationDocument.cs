@@ -320,40 +320,31 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 try
                 {
                     assDocument = AssSubtitleDocument.Parse(text);
-                    dialogues = assDocument.ReadDialogues();
+                    dialogues = assDocument.ReadDialogues(true);
                 }
                 catch (InvalidDataException)
                 {
                     return Rejected(format, REJECTION_ASS_INVALID_DIALOGUE);
                 }
 
-                // Format di [Events] in vigore su ogni riga, letto come ReadDialogues, per Style, Layer e margini; le righe Comment
-                // valide con lo stesso Format possono dare la frase di righe animate. Degli stili ([V4+ Styles], o [V4 Styles] di un
+                // Le righe Comment valide possono dare la frase di righe animate. Degli stili ([V4+ Styles], o [V4 Styles] di un
                 // SSA) servono allineamento e margini, per la riga a schermo delle righe e la posizione della riga che prende il posto
                 // delle righe disegnate da un Comment, e lo stato per canale, per la visibilità e l'aspetto; l'allineamento SSA (1-3
                 // in basso, +4 in alto, +8 al centro) passa alla numerazione ASS
-                string[] formatByLine = new string[lines.Count];
-                List<EventLine> lineEvents = dialogues.ConvertAll(d => new EventLine(d, false));
                 Dictionary<string, AssStyleLayout> styleLayouts = new Dictionary<string, AssStyleLayout>(StringComparer.Ordinal);
                 Dictionary<string, Dictionary<string, string>> styleStates = new Dictionary<string, Dictionary<string, string>>(StringComparer.Ordinal);
-                bool inEvents = false;
                 bool inStyles = false;
                 bool ssaStyles = false;
-                string eventFormat = null;
                 string styleFormat = null;
                 for (int l = 0; l < lines.Count; l++)
                 {
                     string trimmed = text.Substring(lines[l].Start, lines[l].Length).Replace("\0", "").Trim();
                     if (trimmed.StartsWith("[", StringComparison.Ordinal))
                     {
-                        inEvents = trimmed.Equals("[Events]", StringComparison.OrdinalIgnoreCase);
                         ssaStyles = trimmed.Equals("[V4 Styles]", StringComparison.OrdinalIgnoreCase);
                         inStyles = ssaStyles || trimmed.Equals("[V4+ Styles]", StringComparison.OrdinalIgnoreCase);
-                        eventFormat = null;
                         styleFormat = null;
                     }
-                    if (inEvents && trimmed.StartsWith("Format:", StringComparison.OrdinalIgnoreCase))
-                        eventFormat = trimmed.Substring(7);
                     if (inStyles && trimmed.StartsWith("Format:", StringComparison.OrdinalIgnoreCase))
                         styleFormat = trimmed.Substring(7);
                     if (inStyles && trimmed.StartsWith("Style:", StringComparison.OrdinalIgnoreCase))
@@ -378,39 +369,22 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                             styleLayouts[styleFields[nameColumn].Trim()] = new AssStyleLayout(alignment, marginL, marginR, marginV);
                         }
                     }
-                    formatByLine[l] = eventFormat;
-                    if (!inEvents || !trimmed.StartsWith("Comment:", StringComparison.OrdinalIgnoreCase))
-                        continue;
-
-                    int count = AssSubtitleUtils.CountFields(eventFormat);
-                    int startColumn = AssSubtitleUtils.ResolveFieldIndex(eventFormat, "Start");
-                    int endColumn = AssSubtitleUtils.ResolveFieldIndex(eventFormat, "End");
-                    string[] fields = AssSubtitleUtils.SplitFields(trimmed.Substring("Comment:".Length).TrimStart(), count);
-                    if (count > 0 && startColumn >= 0 && endColumn >= 0 && AssSubtitleUtils.ResolveFieldIndex(eventFormat, "Text") == count - 1 && fields.Length == count
-                        && AssSubtitleTimelineRewriter.TryParseTimestamp(fields[startColumn].Trim(), out long commentStart)
-                        && AssSubtitleTimelineRewriter.TryParseTimestamp(fields[endColumn].Trim(), out long commentEnd))
-                    {
-                        lineEvents.Add(new EventLine(new AssSubtitleDialogue(l, fields, startColumn, endColumn,
-                            AssSubtitleUtils.ResolveFieldIndex(eventFormat, "Effect"), commentStart, commentEnd), true));
-                    }
                 }
-                lineEvents.Sort((a, b) => a.Line.LineIndex.CompareTo(b.Line.LineIndex));
 
                 List<AssEvent> events = new List<AssEvent>();
-                foreach (EventLine lineEvent in lineEvents)
+                foreach (AssSubtitleDialogue dialogue in dialogues)
                 {
                     // Text: dopo la virgola che chiude il penultimo campo, fino alla fine della riga fisica (spazi in coda compresi)
-                    AssSubtitleDialogue dialogue = lineEvent.Line;
                     SourceLine line = lines[dialogue.LineIndex];
                     int position = line.Start;
                     int lineEnd = line.Start + line.Length;
                     while (position < lineEnd && (char.IsWhiteSpace(text[position]) || text[position] == '\0'))
                         position++;
-                    position += lineEvent.Comment ? "Comment:".Length : "Dialogue:".Length;
+                    position += dialogue.Comment ? "Comment:".Length : "Dialogue:".Length;
                     for (int commas = 0; commas < dialogue.Fields.Length - 1; commas++)
                         position = text.IndexOf(',', position, lineEnd - position) + 1;
 
-                    string lineFormat = formatByLine[dialogue.LineIndex];
+                    string lineFormat = dialogue.Format;
                     int styleColumn = AssSubtitleUtils.ResolveFieldIndex(lineFormat, "Style");
                     int layerColumn = AssSubtitleUtils.ResolveFieldIndex(lineFormat, "Layer");
                     int actorColumn = AssSubtitleUtils.ResolveFieldIndex(lineFormat, "Name");
@@ -420,7 +394,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     if (layerColumn >= 0 && AssSubtitleUtils.TryParseInt(dialogue.Fields[layerColumn], out int layerValue))
                         layer = layerValue;
                     string raw = text.Substring(position, lineEnd - position);
-                    events.Add(new AssEvent(dialogue, lineEvent.Comment, position, lineEnd - position, layerColumn, layer,
+                    events.Add(new AssEvent(dialogue, dialogue.Comment, position, lineEnd - position, layerColumn, layer,
                         styleColumn >= 0 ? dialogue.Fields[styleColumn].Trim() : "", actorColumn >= 0 ? dialogue.Fields[actorColumn].Trim() : "",
                         dialogue.EffectColumn >= 0 ? dialogue.Fields[dialogue.EffectColumn].Trim() : "", raw,
                         s_assBlock.Replace(raw, "").Replace("\\N", " ").Replace("\\n", " ").Replace("\\h", " ").Trim(), s_drawing.IsMatch(raw)));
@@ -505,7 +479,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     if (!linesByUnit.ContainsKey(group + "\u0001" + assEvent.Effect))
                         linesByUnit[group + "\u0001" + assEvent.Effect] = new List<int>();
                     linesByUnit[group + "\u0001" + assEvent.Effect].Add(e);
-                    string lineFormat = formatByLine[assEvent.Line.LineIndex];
+                    string lineFormat = assEvent.Line.Format;
                     int lineMarginLColumn = AssSubtitleUtils.ResolveFieldIndex(lineFormat, "MarginL");
                     int lineMarginRColumn = AssSubtitleUtils.ResolveFieldIndex(lineFormat, "MarginR");
                     int lineMarginVColumn = AssSubtitleUtils.ResolveFieldIndex(lineFormat, "MarginV");
@@ -761,8 +735,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                             if (!layers.Contains(events[g].Layer))
                                 layers.Add(events[g].Layer);
                         }
-                        int marginLColumn = AssSubtitleUtils.ResolveFieldIndex(formatByLine[dialogue.LineIndex], "MarginL");
-                        int marginRColumn = AssSubtitleUtils.ResolveFieldIndex(formatByLine[dialogue.LineIndex], "MarginR");
+                        int marginLColumn = AssSubtitleUtils.ResolveFieldIndex(dialogue.Format, "MarginL");
+                        int marginRColumn = AssSubtitleUtils.ResolveFieldIndex(dialogue.Format, "MarginR");
                         List<string> prefixes = new List<string>();
                         foreach (int? letterLayer in layers)
                         {
@@ -1248,13 +1222,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <param name="FallbackLineBreak">Terminatore della riga dei tempi SRT</param>
         private sealed record RawCue(long StartMs, long EndMs, int TextStart, int TextLength, string Style, int? Layer, SubtitleCueKind Kind,
             string ExclusionReason, string FallbackLineBreak);
-
-        /// <summary>
-        /// Riga Dialogue o Comment di [Events] letta col suo Format
-        /// </summary>
-        /// <param name="Line">Riga letta</param>
-        /// <param name="Comment">True per una riga Comment</param>
-        private sealed record EventLine(AssSubtitleDialogue Line, bool Comment);
 
         /// <summary>
         /// Tempi di una riga contata negli indizi di una combinazione, allungati dalle righe che la continuano
