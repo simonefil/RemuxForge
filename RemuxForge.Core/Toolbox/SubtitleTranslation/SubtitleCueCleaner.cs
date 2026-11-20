@@ -1623,12 +1623,12 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// </summary>
         /// <param name="text">Campo Text</param>
         /// <param name="styleState">Stato dello stile della riga per canale (<see cref="ReadStyleState"/>)</param>
-        /// <param name="layout">Allineamento ASS e margini sinistro, destro e verticale dello stile</param>
-        /// <param name="margins">Margini sinistro, destro e verticale della riga, 0 per quelli dello stile</param>
+        /// <param name="layout">Allineamento ASS e margini dello stile</param>
+        /// <param name="margins">Margini della riga, 0 per quelli dello stile</param>
         /// <param name="playResX">Larghezza dello schermo dello script</param>
         /// <param name="playResY">Altezza dello schermo dello script</param>
-        /// <returns>Per ogni punto d'ancoraggio x e y del punto, alto e basso del riquadro</returns>
-        public List<double[]> ReadScreenBoxes(string text, IReadOnlyDictionary<string, string> styleState, int[] layout, int[] margins, int playResX, int playResY)
+        /// <returns>Riquadro di ogni punto d'ancoraggio</returns>
+        public List<AssScreenBox> ReadScreenBoxes(string text, IReadOnlyDictionary<string, string> styleState, AssStyleLayout layout, AssLineMargins margins, int playResX, int playResY)
         {
             int? alignment = null;
             double? size = null;
@@ -1679,22 +1679,22 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 
             Func<string, double, double> styleNumber = (channel, fallback) => styleState != null && styleState.TryGetValue(channel, out string value)
                 && double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out double number) ? number : fallback;
-            int anchor = alignment >= 1 && alignment <= 9 ? alignment.Value : layout[0] >= 1 && layout[0] <= 9 ? layout[0] : 2;
+            int anchor = alignment >= 1 && alignment <= 9 ? alignment.Value : layout.Alignment >= 1 && layout.Alignment <= 9 ? layout.Alignment : 2;
             int column = (anchor - 1) % 3;
             int row = (anchor - 1) / 3;
             double height = rows * (size ?? styleNumber("fs", 20)) * (scaleY ?? styleNumber("fscy", 100)) / 100;
             if (points.Count == 0)
             {
-                int left = margins[0] != 0 ? margins[0] : layout[1];
-                int right = margins[1] != 0 ? margins[1] : layout[2];
-                int vertical = margins[2] != 0 ? margins[2] : layout[3];
+                int left = margins.Left != 0 ? margins.Left : layout.MarginL;
+                int right = margins.Right != 0 ? margins.Right : layout.MarginR;
+                int vertical = margins.Vertical != 0 ? margins.Vertical : layout.MarginV;
                 points.Add(new double[] { column == 0 ? left : column == 2 ? playResX - right : (playResX + left - right) / 2.0,
                     row == 0 ? playResY - vertical : row == 2 ? vertical : playResY / 2.0 });
             }
             return points.ConvertAll(point =>
             {
                 double top = row == 0 ? point[1] - height : row == 2 ? point[1] : point[1] - height / 2;
-                return new double[] { point[0], point[1], top, top + height };
+                return new AssScreenBox(point[0], point[1], top, top + height);
             });
         }
 
@@ -2054,4 +2054,30 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
     /// <param name="PositionY">y delle righe ferme, null se manca o cambia</param>
     /// <param name="VisibilityShared">Vero se alpha, bordo e ombra a riposo sono gli stessi su tutte le righe considerate</param>
     public sealed record SubtitleLetterLook(string Tags, int? Alignment, string PositionY, bool VisibilityShared);
+
+    /// <summary>
+    /// Allineamento e margini di uno stile ASS/SSA
+    /// </summary>
+    /// <param name="Alignment">Allineamento nella numerazione ASS, 0 se non valido</param>
+    /// <param name="MarginL">Margine sinistro</param>
+    /// <param name="MarginR">Margine destro</param>
+    /// <param name="MarginV">Margine verticale</param>
+    public sealed record AssStyleLayout(int Alignment, int MarginL, int MarginR, int MarginV);
+
+    /// <summary>
+    /// Margini di una riga ASS/SSA, 0 per quelli dello stile
+    /// </summary>
+    /// <param name="Left">Margine sinistro</param>
+    /// <param name="Right">Margine destro</param>
+    /// <param name="Vertical">Margine verticale</param>
+    public sealed record AssLineMargins(int Left, int Right, int Vertical);
+
+    /// <summary>
+    /// Riquadro di una riga ASS/SSA a schermo
+    /// </summary>
+    /// <param name="X">x del punto d'ancoraggio</param>
+    /// <param name="Y">y del punto d'ancoraggio</param>
+    /// <param name="Top">Alto del riquadro</param>
+    /// <param name="Bottom">Basso del riquadro</param>
+    public sealed record AssScreenBox(double X, double Y, double Top, double Bottom);
 }

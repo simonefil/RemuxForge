@@ -285,8 +285,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             Dictionary<int, string> shownTexts = new Dictionary<int, string>();
             Dictionary<int, int> copyPositions = new Dictionary<int, int>();
             List<SubtitleStyleUsage> usages = new List<SubtitleStyleUsage>();
-            List<List<long[]>> intervals = new List<List<long[]>>();
-            Dictionary<string, List<long[]>> shown = new Dictionary<string, List<long[]>>(StringComparer.Ordinal);
+            List<List<ShownInterval>> intervals = new List<List<ShownInterval>>();
+            Dictionary<string, List<ShownInterval>> shown = new Dictionary<string, List<ShownInterval>>(StringComparer.Ordinal);
             if (format == SubtitleTranslationFormat.Srt)
             {
                 // Blocchi: righe non vuote consecutive; una riga di soli spazi conta come vuota
@@ -363,8 +363,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 // delle righe disegnate da un Comment, e lo stato per canale, per la visibilità e l'aspetto; l'allineamento SSA (1-3
                 // in basso, +4 in alto, +8 al centro) passa alla numerazione ASS
                 string[] formatByLine = new string[lines.Count];
-                List<KeyValuePair<AssSubtitleDialogue, bool>> lineEvents = dialogues.ConvertAll(d => new KeyValuePair<AssSubtitleDialogue, bool>(d, false));
-                Dictionary<string, int[]> styleLayouts = new Dictionary<string, int[]>(StringComparer.Ordinal);
+                List<EventLine> lineEvents = dialogues.ConvertAll(d => new EventLine(d, false));
+                Dictionary<string, AssStyleLayout> styleLayouts = new Dictionary<string, AssStyleLayout>(StringComparer.Ordinal);
                 Dictionary<string, Dictionary<string, string>> styleStates = new Dictionary<string, Dictionary<string, string>>(StringComparer.Ordinal);
                 bool inEvents = false;
                 bool inStyles = false;
@@ -390,19 +390,23 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     {
                         int styleCount = AssSubtitleUtils.CountFields(styleFormat);
                         string[] styleFields = AssSubtitleUtils.SplitFields(trimmed.Substring("Style:".Length).TrimStart(), styleCount);
-                        int[] columns = new int[] { AssSubtitleUtils.ResolveFieldIndex(styleFormat, "Alignment"), AssSubtitleUtils.ResolveFieldIndex(styleFormat, "MarginL"),
-                            AssSubtitleUtils.ResolveFieldIndex(styleFormat, "MarginR"), AssSubtitleUtils.ResolveFieldIndex(styleFormat, "MarginV") };
+                        int alignmentColumn = AssSubtitleUtils.ResolveFieldIndex(styleFormat, "Alignment");
+                        int marginLColumn = AssSubtitleUtils.ResolveFieldIndex(styleFormat, "MarginL");
+                        int marginRColumn = AssSubtitleUtils.ResolveFieldIndex(styleFormat, "MarginR");
+                        int marginVColumn = AssSubtitleUtils.ResolveFieldIndex(styleFormat, "MarginV");
                         int nameColumn = AssSubtitleUtils.ResolveFieldIndex(styleFormat, "Name");
-                        int[] layout = new int[4];
                         if (styleCount > 0 && styleFields.Length == styleCount && nameColumn >= 0)
                             styleStates[styleFields[nameColumn].Trim()] = cleaner.ReadStyleState(styleFormat, styleFields, ssaStyles);
                         if (styleCount > 0 && styleFields.Length == styleCount && nameColumn >= 0
-                            && Array.TrueForAll(new int[] { 0, 1, 2, 3 }, k => columns[k] >= 0 && AssSubtitleUtils.TryParseInt(styleFields[columns[k]], out layout[k])))
+                            && alignmentColumn >= 0 && AssSubtitleUtils.TryParseInt(styleFields[alignmentColumn], out int alignment)
+                            && marginLColumn >= 0 && AssSubtitleUtils.TryParseInt(styleFields[marginLColumn], out int marginL)
+                            && marginRColumn >= 0 && AssSubtitleUtils.TryParseInt(styleFields[marginRColumn], out int marginR)
+                            && marginVColumn >= 0 && AssSubtitleUtils.TryParseInt(styleFields[marginVColumn], out int marginV))
                         {
                             if (ssaStyles)
-                                layout[0] = layout[0] >= 1 && layout[0] <= 3 ? layout[0] : layout[0] >= 5 && layout[0] <= 7 ? layout[0] + 2
-                                    : layout[0] >= 9 && layout[0] <= 11 ? layout[0] - 5 : 0;
-                            styleLayouts[styleFields[nameColumn].Trim()] = layout;
+                                alignment = alignment >= 1 && alignment <= 3 ? alignment : alignment >= 5 && alignment <= 7 ? alignment + 2
+                                    : alignment >= 9 && alignment <= 11 ? alignment - 5 : 0;
+                            styleLayouts[styleFields[nameColumn].Trim()] = new AssStyleLayout(alignment, marginL, marginR, marginV);
                         }
                     }
                     formatByLine[l] = eventFormat;
@@ -417,23 +421,23 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         && AssSubtitleTimelineRewriter.TryParseTimestamp(fields[startColumn].Trim(), out long commentStart)
                         && AssSubtitleTimelineRewriter.TryParseTimestamp(fields[endColumn].Trim(), out long commentEnd))
                     {
-                        lineEvents.Add(new KeyValuePair<AssSubtitleDialogue, bool>(new AssSubtitleDialogue(l, fields, startColumn, endColumn,
+                        lineEvents.Add(new EventLine(new AssSubtitleDialogue(l, fields, startColumn, endColumn,
                             AssSubtitleUtils.ResolveFieldIndex(eventFormat, "Effect"), commentStart, commentEnd), true));
                     }
                 }
-                lineEvents.Sort((a, b) => a.Key.LineIndex.CompareTo(b.Key.LineIndex));
+                lineEvents.Sort((a, b) => a.Line.LineIndex.CompareTo(b.Line.LineIndex));
 
                 List<AssEvent> events = new List<AssEvent>();
-                foreach (KeyValuePair<AssSubtitleDialogue, bool> lineEvent in lineEvents)
+                foreach (EventLine lineEvent in lineEvents)
                 {
                     // Text: dopo la virgola che chiude il penultimo campo, fino alla fine della riga fisica (spazi in coda compresi)
-                    AssSubtitleDialogue dialogue = lineEvent.Key;
+                    AssSubtitleDialogue dialogue = lineEvent.Line;
                     SourceLine line = lines[dialogue.LineIndex];
                     int position = line.Start;
                     int lineEnd = line.Start + line.Length;
                     while (position < lineEnd && (char.IsWhiteSpace(text[position]) || text[position] == '\0'))
                         position++;
-                    position += lineEvent.Value ? "Comment:".Length : "Dialogue:".Length;
+                    position += lineEvent.Comment ? "Comment:".Length : "Dialogue:".Length;
                     for (int commas = 0; commas < dialogue.Fields.Length - 1; commas++)
                         position = text.IndexOf(',', position, lineEnd - position) + 1;
 
@@ -447,7 +451,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     if (layerColumn >= 0 && AssSubtitleUtils.TryParseInt(dialogue.Fields[layerColumn], out int layerValue))
                         layer = layerValue;
                     string raw = text.Substring(position, lineEnd - position);
-                    events.Add(new AssEvent(dialogue, lineEvent.Value, position, lineEnd - position, layerColumn, layer,
+                    events.Add(new AssEvent(dialogue, lineEvent.Comment, position, lineEnd - position, layerColumn, layer,
                         styleColumn >= 0 ? dialogue.Fields[styleColumn].Trim() : "", actorColumn >= 0 ? dialogue.Fields[actorColumn].Trim() : "",
                         dialogue.EffectColumn >= 0 ? dialogue.Fields[dialogue.EffectColumn].Trim() : "", raw,
                         s_assBlock.Replace(raw, "").Replace("\\N", " ").Replace("\\n", " ").Replace("\\h", " ").Trim(), s_drawing.IsMatch(raw)));
@@ -488,7 +492,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 string[] spaceless = events.ConvertAll(assEvent => string.Concat(assEvent.Readable.Where(c => !char.IsWhiteSpace(c)))).ToArray();
                 string[] shownOf = new string[events.Count];
                 List<string>[] fragmentsOf = new List<string>[events.Count];
-                List<double[]>[] boxesOf = new List<double[]>[events.Count];
+                List<AssScreenBox>[] boxesOf = new List<AssScreenBox>[events.Count];
                 Dictionary<string, List<int>> linesByUnit = new Dictionary<string, List<int>>(StringComparer.Ordinal);
                 Dictionary<string, List<int>> commentsByStyle = new Dictionary<string, List<int>>(StringComparer.Ordinal);
                 for (int e = 0; e < events.Count; e++)
@@ -532,15 +536,20 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         linesByUnit[group + "\u0001" + assEvent.Effect] = new List<int>();
                     linesByUnit[group + "\u0001" + assEvent.Effect].Add(e);
                     string lineFormat = formatByLine[assEvent.Line.LineIndex];
-                    int[] marginColumns = new string[] { "MarginL", "MarginR", "MarginV" }.Select(name => AssSubtitleUtils.ResolveFieldIndex(lineFormat, name)).ToArray();
-                    int[] margins = marginColumns.Select(column => column >= 0 && AssSubtitleUtils.TryParseInt(assEvent.Line.Fields[column], out int margin) ? margin : 0).ToArray();
-                    if (styleLayouts.TryGetValue(assEvent.Style, out int[] styleLayout))
+                    int lineMarginLColumn = AssSubtitleUtils.ResolveFieldIndex(lineFormat, "MarginL");
+                    int lineMarginRColumn = AssSubtitleUtils.ResolveFieldIndex(lineFormat, "MarginR");
+                    int lineMarginVColumn = AssSubtitleUtils.ResolveFieldIndex(lineFormat, "MarginV");
+                    AssLineMargins margins = new AssLineMargins(
+                        lineMarginLColumn >= 0 && AssSubtitleUtils.TryParseInt(assEvent.Line.Fields[lineMarginLColumn], out int lineMarginL) ? lineMarginL : 0,
+                        lineMarginRColumn >= 0 && AssSubtitleUtils.TryParseInt(assEvent.Line.Fields[lineMarginRColumn], out int lineMarginR) ? lineMarginR : 0,
+                        lineMarginVColumn >= 0 && AssSubtitleUtils.TryParseInt(assEvent.Line.Fields[lineMarginVColumn], out int lineMarginV) ? lineMarginV : 0);
+                    if (styleLayouts.TryGetValue(assEvent.Style, out AssStyleLayout styleLayout))
                         boxesOf[e] = cleaner.ReadScreenBoxes(assEvent.Raw, styleStates.GetValueOrDefault(assEvent.Style), styleLayout, margins, screenWidth, screenHeight);
                 }
 
                 // Stessa riga di testo a schermo (riquadri sovrapposti in verticale), tempi che si toccano e tempo in comune
                 Func<int, int, bool> sameRow = (a, b) => boxesOf[a] != null && boxesOf[b] != null
-                    && boxesOf[a].Exists(boxA => boxesOf[b].Exists(boxB => Math.Min(boxA[3], boxB[3]) - Math.Max(boxA[2], boxB[2]) > 0));
+                    && boxesOf[a].Exists(boxA => boxesOf[b].Exists(boxB => Math.Min(boxA.Bottom, boxB.Bottom) - Math.Max(boxA.Top, boxB.Top) > 0));
                 Func<int, int, bool> touch = (a, b) => events[a].Line.StartMs <= events[b].Line.EndMs && events[b].Line.StartMs <= events[a].Line.EndMs;
                 Func<int, int, long> shared = (a, b) => Math.Max(0, Math.Min(events[a].Line.EndMs, events[b].Line.EndMs) - Math.Max(events[a].Line.StartMs, events[b].Line.StartMs));
                 Func<List<string>, string, bool> contains = (fragments, whole) =>
@@ -700,8 +709,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 
                         // Tutti i caratteri della frase mostrati, contando una volta le righe con lo stesso testo mostrato nello stesso punto
                         Dictionary<char, int> missing = spaceless[phraseLines.OrderByDescending(w => spaceless[w].Length).First()].GroupBy(c => c).ToDictionary(g => g.Key, g => g.Count());
-                        foreach (int m in drawn.GroupBy(m => shownOf[m] + "\u0001" + (boxesOf[m] == null ? "" : Math.Round(boxesOf[m][boxesOf[m].Count - 1][0]).ToString(CultureInfo.InvariantCulture)
-                            + "," + Math.Round(boxesOf[m][boxesOf[m].Count - 1][1]).ToString(CultureInfo.InvariantCulture))).Select(g => g.First()))
+                        foreach (int m in drawn.GroupBy(m => shownOf[m] + "\u0001" + (boxesOf[m] == null ? "" : Math.Round(boxesOf[m][boxesOf[m].Count - 1].X).ToString(CultureInfo.InvariantCulture)
+                            + "," + Math.Round(boxesOf[m][boxesOf[m].Count - 1].Y).ToString(CultureInfo.InvariantCulture))).Select(g => g.First()))
                         {
                             foreach (char c in shownOf[m].Where(missing.ContainsKey))
                                 missing[c]--;
@@ -815,12 +824,12 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                             SubtitleLetterLook look = cleaner.ReadLetterLook(generatedLines.FindAll(g => events[g].Layer == letterLayer).ConvertAll(g => events[g].Raw),
                                 styleStates.GetValueOrDefault(style));
                             string tags = look.Tags;
-                            if (look.Alignment.HasValue && look.PositionY != null && styleLayouts.TryGetValue(style, out int[] layout) && layout[0] >= 1 && layout[0] <= 9
+                            if (look.Alignment.HasValue && look.PositionY != null && styleLayouts.TryGetValue(style, out AssStyleLayout layout) && layout.Alignment >= 1 && layout.Alignment <= 9
                                 && assDocument.TryGetScriptInfoInt("PlayResX", out int playResX))
                             {
-                                int marginL = marginLColumn >= 0 && AssSubtitleUtils.TryParseInt(dialogue.Fields[marginLColumn], out int lineMarginL) && lineMarginL != 0 ? lineMarginL : layout[1];
-                                int marginR = marginRColumn >= 0 && AssSubtitleUtils.TryParseInt(dialogue.Fields[marginRColumn], out int lineMarginR) && lineMarginR != 0 ? lineMarginR : layout[2];
-                                int column = (layout[0] - 1) % 3;
+                                int marginL = marginLColumn >= 0 && AssSubtitleUtils.TryParseInt(dialogue.Fields[marginLColumn], out int lineMarginL) && lineMarginL != 0 ? lineMarginL : layout.MarginL;
+                                int marginR = marginRColumn >= 0 && AssSubtitleUtils.TryParseInt(dialogue.Fields[marginRColumn], out int lineMarginR) && lineMarginR != 0 ? lineMarginR : layout.MarginR;
+                                int column = (layout.Alignment - 1) % 3;
                                 double x = column == 0 ? marginL : column == 2 ? playResX - marginR : (marginL + playResX - marginR) / 2.0;
                                 tags = "\\an" + ((look.Alignment.Value - 1) / 3 * 3 + column + 1).ToString(CultureInfo.InvariantCulture)
                                     + "\\pos(" + x.ToString(CultureInfo.InvariantCulture) + "," + look.PositionY + ")" + tags;
@@ -843,7 +852,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     {
                         usage = new SubtitleStyleUsage(style, actor, effect);
                         usages.Add(usage);
-                        intervals.Add(new List<long[]>());
+                        intervals.Add(new List<ShownInterval>());
                     }
                     bool fragment = new StringInfo(readable).LengthInTextElements == 1;
 
@@ -855,16 +864,16 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     {
                         string shownKey = usages.IndexOf(usage).ToString(CultureInfo.InvariantCulture) + "\u0001" + readable;
                         if (!shown.ContainsKey(shownKey))
-                            shown[shownKey] = new List<long[]>();
-                        long[] counted = shown[shownKey].Find(t => (t[0] == dialogue.StartMs && t[1] == dialogue.EndMs) || t[1] == dialogue.StartMs);
+                            shown[shownKey] = new List<ShownInterval>();
+                        ShownInterval counted = shown[shownKey].Find(t => (t.StartMs == dialogue.StartMs && t.EndMs == dialogue.EndMs) || t.EndMs == dialogue.StartMs);
                         continued = counted != null;
                         if (continued)
                         {
-                            counted[1] = Math.Max(counted[1], dialogue.EndMs);
+                            counted.EndMs = Math.Max(counted.EndMs, dialogue.EndMs);
                         }
                         else
                         {
-                            counted = new long[] { dialogue.StartMs, dialogue.EndMs };
+                            counted = new ShownInterval(dialogue.StartMs, dialogue.EndMs);
                             shown[shownKey].Add(counted);
                             if (!fragment)
                                 intervals[usages.IndexOf(usage)].Add(counted);
@@ -895,21 +904,21 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 // degli inizi allo stesso istante
                 for (int u = 0; u < usages.Count; u++)
                 {
-                    List<long[]> times = intervals[u];
-                    times.Sort((a, b) => a[0] != b[0] ? a[0].CompareTo(b[0]) : a[1].CompareTo(b[1]));
+                    List<ShownInterval> times = intervals[u];
+                    times.Sort((a, b) => a.StartMs != b.StartMs ? a.StartMs.CompareTo(b.StartMs) : a.EndMs.CompareTo(b.EndMs));
                     long reach = long.MinValue;
                     for (int t = 0; t < times.Count; t++)
                     {
-                        if (times[t][0] < reach || (t + 1 < times.Count && times[t + 1][0] < times[t][1]))
+                        if (times[t].StartMs < reach || (t + 1 < times.Count && times[t + 1].StartMs < times[t].EndMs))
                             usages[u].OverlappingLines++;
-                        reach = Math.Max(reach, times[t][1]);
+                        reach = Math.Max(reach, times[t].EndMs);
                     }
 
                     List<KeyValuePair<long, int>> steps = new List<KeyValuePair<long, int>>();
-                    foreach (long[] time in times)
+                    foreach (ShownInterval time in times)
                     {
-                        steps.Add(new KeyValuePair<long, int>(time[0], 1));
-                        steps.Add(new KeyValuePair<long, int>(time[1], -1));
+                        steps.Add(new KeyValuePair<long, int>(time.StartMs, 1));
+                        steps.Add(new KeyValuePair<long, int>(time.EndMs, -1));
                     }
                     steps.Sort((a, b) => a.Key != b.Key ? a.Key.CompareTo(b.Key) : a.Value.CompareTo(b.Value));
                     int concurrent = 0;
@@ -1156,6 +1165,40 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <param name="FallbackLineBreak">Terminatore della riga dei tempi SRT</param>
         private sealed record RawCue(long StartMs, long EndMs, int TextStart, int TextLength, string Style, int? Layer, SubtitleCueKind Kind,
             string ExclusionReason, string FallbackLineBreak);
+
+        /// <summary>
+        /// Riga Dialogue o Comment di [Events] letta col suo Format
+        /// </summary>
+        /// <param name="Line">Riga letta</param>
+        /// <param name="Comment">True per una riga Comment</param>
+        private sealed record EventLine(AssSubtitleDialogue Line, bool Comment);
+
+        /// <summary>
+        /// Tempi di una riga contata negli indizi di una combinazione, allungati dalle righe che la continuano
+        /// </summary>
+        private sealed class ShownInterval
+        {
+            /// <summary>
+            /// Costruttore
+            /// </summary>
+            /// <param name="startMs">Inizio in millisecondi</param>
+            /// <param name="endMs">Fine in millisecondi</param>
+            public ShownInterval(long startMs, long endMs)
+            {
+                this.StartMs = startMs;
+                this.EndMs = endMs;
+            }
+
+            /// <summary>
+            /// Inizio in millisecondi
+            /// </summary>
+            public long StartMs { get; }
+
+            /// <summary>
+            /// Fine in millisecondi, fino alla fine dell'ultima riga che la continua
+            /// </summary>
+            public long EndMs { get; set; }
+        }
 
         /// <summary>
         /// Riga Dialogue o Comment di [Events] coi campi che servono alla lettura
