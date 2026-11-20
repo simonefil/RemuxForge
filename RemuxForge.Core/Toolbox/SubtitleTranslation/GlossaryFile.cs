@@ -230,34 +230,34 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     term.Note = ReadCell(terms, row, 6);
                     term.Origin = GlossaryOrigin.Import;
                     if (string.IsNullOrEmpty(term.Source))
-                        return result.Fail("GLOSSARY_EMPTY", CellPath(terms, row, 1), "");
+                        return result.Fail(GlossaryBuilder.FIELD_EMPTY, CellPath(terms, row, 1), "");
                     if (string.IsNullOrEmpty(term.Target))
-                        return result.Fail("GLOSSARY_EMPTY", CellPath(terms, row, 2), "");
+                        return result.Fail(GlossaryBuilder.FIELD_EMPTY, CellPath(terms, row, 2), "");
 
                     string kindText = ReadCell(terms, row, 3);
                     if (string.IsNullOrEmpty(kindText))
-                        return result.Fail("GLOSSARY_FIELD_MISSING", CellPath(terms, row, 3), "");
+                        return result.Fail(GlossaryBuilder.FIELD_MISSING, CellPath(terms, row, 3), "");
                     if (Array.IndexOf(Enum.GetNames<GlossaryTermKind>(), kindText) < 0)
-                        return result.Fail("GLOSSARY_ENUM", CellPath(terms, row, 3), kindText);
+                        return result.Fail(GlossaryBuilder.FIELD_ENUM, CellPath(terms, row, 3), kindText);
                     term.Kind = Enum.Parse<GlossaryTermKind>(kindText);
 
                     string invariable = ReadCell(terms, row, 4);
                     if (string.IsNullOrEmpty(invariable))
-                        return result.Fail("GLOSSARY_FIELD_MISSING", CellPath(terms, row, 4), "");
+                        return result.Fail(GlossaryBuilder.FIELD_MISSING, CellPath(terms, row, 4), "");
                     if (invariable != YES && invariable != NO)
-                        return result.Fail("GLOSSARY_ENUM", CellPath(terms, row, 4), invariable);
+                        return result.Fail(GlossaryBuilder.FIELD_ENUM, CellPath(terms, row, 4), invariable);
                     term.Invariable = invariable == YES;
 
                     string exactCase = ReadCell(terms, row, 5);
                     if (string.IsNullOrEmpty(exactCase))
-                        return result.Fail("GLOSSARY_FIELD_MISSING", CellPath(terms, row, 5), "");
+                        return result.Fail(GlossaryBuilder.FIELD_MISSING, CellPath(terms, row, 5), "");
                     if (exactCase != YES && exactCase != NO)
-                        return result.Fail("GLOSSARY_ENUM", CellPath(terms, row, 5), exactCase);
+                        return result.Fail(GlossaryBuilder.FIELD_ENUM, CellPath(terms, row, 5), exactCase);
                     term.ExactCase = exactCase == YES;
 
                     string key = builder.TermKey(term.Source);
                     if (seenTerms.ContainsKey(key))
-                        return result.Fail("GLOSSARY_DUPLICATE", CellPath(terms, row, 1), seenTerms[key]);
+                        return result.Fail(GlossaryBuilder.ENTRY_DUPLICATE, CellPath(terms, row, 1), seenTerms[key]);
                     seenTerms[key] = CellPath(terms, row, 1);
                     glossary.Terms.Add(term);
                 }
@@ -275,18 +275,18 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     character.Relationships = ReadCell(characters, row, 4);
                     character.Origin = GlossaryOrigin.Import;
                     if (string.IsNullOrEmpty(character.Name))
-                        return result.Fail("GLOSSARY_EMPTY", CellPath(characters, row, 1), "");
+                        return result.Fail(GlossaryBuilder.FIELD_EMPTY, CellPath(characters, row, 1), "");
 
                     string genderText = ReadCell(characters, row, 2);
                     if (string.IsNullOrEmpty(genderText))
-                        return result.Fail("GLOSSARY_FIELD_MISSING", CellPath(characters, row, 2), "");
+                        return result.Fail(GlossaryBuilder.FIELD_MISSING, CellPath(characters, row, 2), "");
                     if (Array.IndexOf(Enum.GetNames<CharacterGender>(), genderText) < 0)
-                        return result.Fail("GLOSSARY_ENUM", CellPath(characters, row, 2), genderText);
+                        return result.Fail(GlossaryBuilder.FIELD_ENUM, CellPath(characters, row, 2), genderText);
                     character.Gender = Enum.Parse<CharacterGender>(genderText);
 
                     string key = GlossaryBuilder.CharacterKey(character.Name);
                     if (seenCharacters.ContainsKey(key))
-                        return result.Fail("GLOSSARY_DUPLICATE", CellPath(characters, row, 1), seenCharacters[key]);
+                        return result.Fail(GlossaryBuilder.ENTRY_DUPLICATE, CellPath(characters, row, 1), seenCharacters[key]);
                     seenCharacters[key] = CellPath(characters, row, 1);
                     glossary.Characters.Add(character);
                 }
@@ -306,17 +306,17 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     pair.Note = ReadCell(addressing, row, 4);
                     pair.Origin = GlossaryOrigin.Import;
                     if (string.IsNullOrEmpty(pair.Speaker))
-                        return result.Fail("GLOSSARY_EMPTY", CellPath(addressing, row, 1), "");
+                        return result.Fail(GlossaryBuilder.FIELD_EMPTY, CellPath(addressing, row, 1), "");
                     if (string.IsNullOrEmpty(pair.Addressee))
-                        return result.Fail("GLOSSARY_EMPTY", CellPath(addressing, row, 2), "");
+                        return result.Fail(GlossaryBuilder.FIELD_EMPTY, CellPath(addressing, row, 2), "");
                     if (string.IsNullOrEmpty(pair.Form))
-                        return result.Fail("GLOSSARY_FIELD_MISSING", CellPath(addressing, row, 3), "");
+                        return result.Fail(GlossaryBuilder.FIELD_MISSING, CellPath(addressing, row, 3), "");
                     if (Array.IndexOf(forms, pair.Form) < 0)
-                        return result.Fail("GLOSSARY_ENUM", CellPath(addressing, row, 3), pair.Form);
+                        return result.Fail(GlossaryBuilder.FIELD_ENUM, CellPath(addressing, row, 3), pair.Form);
 
                     string key = GlossaryBuilder.AddressingKey(pair.Speaker, pair.Addressee);
                     if (seenAddressing.ContainsKey(key))
-                        return result.Fail("GLOSSARY_DUPLICATE", CellPath(addressing, row, 1), seenAddressing[key]);
+                        return result.Fail(GlossaryBuilder.ENTRY_DUPLICATE, CellPath(addressing, row, 1), seenAddressing[key]);
                     seenAddressing[key] = CellPath(addressing, row, 1);
                     glossary.Addressing.Add(pair);
                 }

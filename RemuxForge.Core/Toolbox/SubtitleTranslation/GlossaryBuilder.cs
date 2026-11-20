@@ -12,7 +12,7 @@ using System.Text.RegularExpressions;
 namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 {
     /// <summary>
-    /// Chiamate del glossario: instructions, tool e messaggi di A1 e A2, validazione della consegna di submit_glossary con la
+    /// Chiamate del glossario: instructions, tool e messaggi dell'analisi e della fusione, validazione della consegna di submit_glossary con la
     /// conversione nella forma del progetto, fusione dei glossari parziali e fusione col glossario caricato
     /// </summary>
     public class GlossaryBuilder
@@ -20,17 +20,47 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         #region Costanti
 
         /// <summary>
+        /// Campo obbligatorio mancante
+        /// </summary>
+        public const string FIELD_MISSING = "GLOSSARY_FIELD_MISSING";
+
+        /// <summary>
+        /// Campo di tipo sbagliato
+        /// </summary>
+        public const string FIELD_TYPE = "GLOSSARY_TYPE";
+
+        /// <summary>
+        /// Testo obbligatorio vuoto
+        /// </summary>
+        public const string FIELD_EMPTY = "GLOSSARY_EMPTY";
+
+        /// <summary>
+        /// Valore fuori dai valori ammessi
+        /// </summary>
+        public const string FIELD_ENUM = "GLOSSARY_ENUM";
+
+        /// <summary>
+        /// Voce ripetuta
+        /// </summary>
+        public const string ENTRY_DUPLICATE = "GLOSSARY_DUPLICATE";
+
+        /// <summary>
+        /// Conflitto senza voce nella consegna della fusione
+        /// </summary>
+        public const string CONFLICT_MISSING = "GLOSSARY_CONFLICT_MISSING";
+
+        /// <summary>
         /// Nome del tool di consegna
         /// </summary>
         public const string SUBMIT_TOOL = "submit_glossary";
 
         /// <summary>
-        /// Richieste con risposta al massimo per una sequenza di A0, A1 o A2
+        /// Richieste con risposta al massimo per una sequenza del riconoscimento dei tipi, dell'analisi o della fusione
         /// </summary>
         public const int MAX_ROUNDS = 3;
 
         /// <summary>
-        /// Token stimati sotto cui tutti i file vanno in una sola A1
+        /// Token stimati sotto cui tutti i file vanno in una sola analisi
         /// </summary>
         public const int SINGLE_ANALYSIS_TOKENS = 30000;
 
@@ -45,7 +75,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         private const string MISSING_SUBMISSION = "This is not a chat: nobody will answer questions. Make reasonable choices, then call submit_glossary with the complete glossary.";
 
         /// <summary>
-        /// Template delle instructions di A1
+        /// Template delle instructions dell'analisi
         /// </summary>
         private const string ANALYSIS_TEMPLATE = "You prepare the glossary used to translate the subtitles of a series from {source_language} to {target_language}, episode by episode, with consistent names, terms and register. The glossary holds the terms, the characters, the addressing between characters, the tone and the register rules of the series.\n" +
             "This is not a chat: nobody reads plain text or answers questions. Deliver only by calling submit_glossary with the complete glossary. If the call returns errors, fix them and call submit_glossary again with the complete glossary.\n" +
@@ -73,7 +103,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             "{record_format}";
 
         /// <summary>
-        /// Template delle instructions di A2
+        /// Template delle instructions della fusione
         /// </summary>
         private const string MERGE_TEMPLATE = "You resolve the conflicts between partial glossaries of one series, translated from {source_language} to {target_language}. Each partial glossary was prepared from one episode file. The code already merged the entries on which the episodes agree.\n" +
             "This is not a chat: nobody reads plain text or answers questions. Deliver only by calling submit_glossary. If the call returns errors, fix them and call submit_glossary again with the complete delivery.\n" +
@@ -252,7 +282,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <summary>
         /// Tool offerti a una chiamata del glossario
         /// </summary>
-        /// <param name="webSearch">True per offrire anche la ricerca web, solo in A1</param>
+        /// <param name="webSearch">True per offrire anche la ricerca web, solo nell'analisi</param>
         /// <returns>Elenco dei tool, sempre nello stesso ordine</returns>
         public JsonArray CreateTools(bool webSearch)
         {
@@ -264,7 +294,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         }
 
         /// <summary>
-        /// Messaggio iniziale di A1
+        /// Messaggio iniziale dell'analisi
         /// </summary>
         /// <param name="context">Campo serie/contesto</param>
         /// <param name="loaded">Glossario caricato, null senza</param>
@@ -293,14 +323,14 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         }
 
         /// <summary>
-        /// Messaggio iniziale di A2
+        /// Messaggio iniziale della fusione
         /// </summary>
         /// <param name="context">Campo serie/contesto</param>
         /// <param name="loaded">Glossario caricato, null senza</param>
         /// <param name="candidates">Candidati ricorrenti di tutto il progetto</param>
         /// <param name="episodes">Tutti i file del progetto</param>
         /// <param name="merge">Fusione del codice con i conflitti</param>
-        /// <param name="partials">Glossari parziali delle A1, in ordine di progetto</param>
+        /// <param name="partials">Glossari parziali delle analisi, in ordine di progetto</param>
         /// <returns>Testo del messaggio</returns>
         public string CreateMergeMessage(string context, Glossary loaded, List<RecurringCandidate> candidates, IReadOnlyList<GlossaryEpisode> episodes, GlossaryMergeResult merge, IReadOnlyList<GlossaryPartial> partials)
         {
@@ -325,12 +355,12 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         }
 
         /// <summary>
-        /// Legge una risposta di A1 o A2: accoda all'ingresso gli item ricevuti e, senza consegna valida, gli esiti per il giro di
+        /// Legge una risposta dell'analisi o della fusione: accoda all'ingresso gli item ricevuti e, senza consegna valida, gli esiti per il giro di
         /// correzione
         /// </summary>
         /// <param name="response">Risposta del servizio</param>
         /// <param name="input">Ingresso della sequenza, a cui si accodano item ed esiti</param>
-        /// <param name="merge">Fusione con i conflitti per A2, null per A1</param>
+        /// <param name="merge">Fusione con i conflitti per la fusione, null per l'analisi</param>
         /// <returns>Consegna valida oppure gli errori dell'ultima consegna</returns>
         public GlossaryDelivery ReadResponse(AiResponseResult response, JsonArray input, GlossaryMergeResult merge)
         {
@@ -403,7 +433,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// Valida gli argomenti di submit_glossary e li converte nella forma del progetto
         /// </summary>
         /// <param name="arguments">Argomenti JSON della chiamata</param>
-        /// <param name="merge">Fusione con i conflitti per A2, null per A1</param>
+        /// <param name="merge">Fusione con i conflitti per la fusione, null per l'analisi</param>
         /// <param name="errors">Righe d'errore, una per problema</param>
         /// <returns>Glossario convertito, valido solo senza errori</returns>
         public Glossary Validate(string arguments, GlossaryMergeResult merge, List<string> errors)
@@ -445,11 +475,11 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 JsonNode invariable;
                 if (!item.TryGetPropertyValue("invariable", out invariable) || invariable == null)
                 {
-                    errors.Add("GLOSSARY_FIELD_MISSING " + path + ".invariable: required field is missing.");
+                    errors.Add(FIELD_MISSING + " " + path + ".invariable: required field is missing.");
                 }
                 else if (invariable.GetValueKind() != JsonValueKind.True && invariable.GetValueKind() != JsonValueKind.False)
                 {
-                    errors.Add("GLOSSARY_TYPE " + path + ".invariable: expected boolean.");
+                    errors.Add(FIELD_TYPE + " " + path + ".invariable: expected boolean.");
                 }
                 else
                 {
@@ -501,21 +531,21 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 glossary.Addressing.Add(pair);
             }
 
-            // A2: un conflitto senza voce consegnata
+            // Fusione: un conflitto senza voce consegnata
             if (merge != null)
             {
                 foreach (JsonNode conflict in merge.Conflicts["terms"].AsArray())
                 {
                     string source = AiOAuthFlow.GetString(conflict.AsObject(), "source");
                     if (!glossary.Terms.Exists(t => this.TermKey(t.Source) == this.TermKey(source)))
-                        errors.Add("GLOSSARY_CONFLICT_MISSING terms: no entry for conflict \"" + source + "\".");
+                        errors.Add(CONFLICT_MISSING + " terms: no entry for conflict \"" + source + "\".");
                 }
 
                 foreach (JsonNode conflict in merge.Conflicts["characters"].AsArray())
                 {
                     string name = AiOAuthFlow.GetString(conflict.AsObject(), "name");
                     if (!glossary.Characters.Exists(c => CharacterKey(c.Name) == CharacterKey(name)))
-                        errors.Add("GLOSSARY_CONFLICT_MISSING characters: no entry for conflict \"" + name + "\".");
+                        errors.Add(CONFLICT_MISSING + " characters: no entry for conflict \"" + name + "\".");
                 }
 
                 JsonArray pairs = merge.Conflicts["addressing"] as JsonArray;
@@ -524,7 +554,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     string speaker = AiOAuthFlow.GetString(pairs[i].AsObject(), "speaker");
                     string addressee = AiOAuthFlow.GetString(pairs[i].AsObject(), "addressee");
                     if (!glossary.Addressing.Exists(a => AddressingKey(a.Speaker, a.Addressee) == AddressingKey(speaker, addressee)))
-                        errors.Add("GLOSSARY_CONFLICT_MISSING addressing: no entry for conflict \"" + speaker + " → " + addressee + "\".");
+                        errors.Add(CONFLICT_MISSING + " addressing: no entry for conflict \"" + speaker + " → " + addressee + "\".");
                 }
             }
 
@@ -532,7 +562,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         }
 
         /// <summary>
-        /// Fonde i glossari parziali delle A1: le voci su cui i file concordano diventano una voce, le altre sono conflitti per A2
+        /// Fonde i glossari parziali delle analisi: le voci su cui i file concordano diventano una voce, le altre sono conflitti per la fusione
         /// </summary>
         /// <param name="partials">Glossari parziali in ordine di progetto</param>
         /// <param name="episodes">Tutti i file del progetto</param>
@@ -663,7 +693,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 merge.AddressingConflicts.Add(key);
             }
 
-            // Senza A2 i testi vengono dal glossario parziale del primo file
+            // Senza fusione i testi vengono dal glossario parziale del primo file
             if (partials.Count > 0)
             {
                 merge.Agreed.Series = partials[0].Glossary.Series;
@@ -679,10 +709,10 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         }
 
         /// <summary>
-        /// Applica la consegna di A2 alle voci concordi: entrano solo le voci dei conflitti, le altre si scartano
+        /// Applica la consegna della fusione alle voci concordi: entrano solo le voci dei conflitti, le altre si scartano
         /// </summary>
         /// <param name="merge">Fusione del codice</param>
-        /// <param name="delivered">Consegna valida di A2</param>
+        /// <param name="delivered">Consegna valida della fusione</param>
         /// <param name="discarded">Voci consegnate fuori dai conflitti</param>
         /// <returns>Glossario fuso</returns>
         public Glossary ApplyResolution(GlossaryMergeResult merge, Glossary delivered, out int discarded)
@@ -977,7 +1007,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         #region Metodi privati
 
         /// <summary>
-        /// Intestazione comune dei messaggi di A1 e A2: contesto, glossario caricato e candidati
+        /// Intestazione comune dei messaggi dell'analisi e della fusione: contesto, glossario caricato e candidati
         /// </summary>
         /// <param name="context">Campo serie/contesto</param>
         /// <param name="loaded">Glossario caricato, null senza</param>
@@ -1022,19 +1052,19 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             if (!source.TryGetPropertyValue(name, out node) || node == null)
             {
                 if (required)
-                    errors.Add("GLOSSARY_FIELD_MISSING " + path + ": required field is missing.");
+                    errors.Add(FIELD_MISSING + " " + path + ": required field is missing.");
                 return "";
             }
 
             if (node.GetValueKind() != JsonValueKind.String)
             {
-                errors.Add("GLOSSARY_TYPE " + path + ": expected string.");
+                errors.Add(FIELD_TYPE + " " + path + ": expected string.");
                 return "";
             }
 
             string value = s_citation.Replace(node.GetValue<string>(), "").Trim();
             if (notEmpty && string.IsNullOrEmpty(value))
-                errors.Add("GLOSSARY_EMPTY " + path + ": must not be empty.");
+                errors.Add(FIELD_EMPTY + " " + path + ": must not be empty.");
 
             return value;
         }
@@ -1051,13 +1081,13 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             JsonNode node;
             if (!root.TryGetPropertyValue(name, out node) || node == null)
             {
-                errors.Add("GLOSSARY_FIELD_MISSING " + name + ": required field is missing.");
+                errors.Add(FIELD_MISSING + " " + name + ": required field is missing.");
                 return null;
             }
 
             if (node.GetValueKind() != JsonValueKind.Array)
             {
-                errors.Add("GLOSSARY_TYPE " + name + ": expected array.");
+                errors.Add(FIELD_TYPE + " " + name + ": expected array.");
                 return null;
             }
 
@@ -1075,7 +1105,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         {
             if (node == null || node.GetValueKind() != JsonValueKind.Object)
             {
-                errors.Add("GLOSSARY_TYPE " + path + ": expected object.");
+                errors.Add(FIELD_TYPE + " " + path + ": expected object.");
                 return null;
             }
 
@@ -1101,7 +1131,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             int index = Array.IndexOf(values, value);
             if (index < 0)
             {
-                errors.Add("GLOSSARY_ENUM " + path + ": '" + value + "' is not one of " + string.Join(", ", values) + ".");
+                errors.Add(FIELD_ENUM + " " + path + ": '" + value + "' is not one of " + string.Join(", ", values) + ".");
                 return 0;
             }
 
@@ -1123,7 +1153,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             string other;
             if (seen.TryGetValue(key, out other))
             {
-                errors.Add("GLOSSARY_DUPLICATE " + path + ": duplicates " + other + ".");
+                errors.Add(ENTRY_DUPLICATE + " " + path + ": duplicates " + other + ".");
             }
             else
             {
@@ -1256,12 +1286,12 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         #region Proprietà
 
         /// <summary>
-        /// Instructions di A1
+        /// Instructions dell'analisi
         /// </summary>
         public string AnalysisInstructions { get; }
 
         /// <summary>
-        /// Instructions di A2
+        /// Instructions della fusione
         /// </summary>
         public string MergeInstructions { get; }
 
@@ -1318,7 +1348,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
     }
 
     /// <summary>
-    /// Esito della lettura di una risposta di A1 o A2
+    /// Esito della lettura di una risposta dell'analisi o della fusione
     /// </summary>
     public class GlossaryDelivery : TranslationDelivery
     {
@@ -1345,7 +1375,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
     }
 
     /// <summary>
-    /// Fusione del codice dei glossari parziali: voci concordi e conflitti per A2
+    /// Fusione del codice dei glossari parziali: voci concordi e conflitti per la fusione
     /// </summary>
     public class GlossaryMergeResult
     {
@@ -1373,7 +1403,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public Glossary Agreed { get; }
 
         /// <summary>
-        /// Conflitti nella forma del messaggio di A2
+        /// Conflitti nella forma del messaggio della fusione
         /// </summary>
         public JsonObject Conflicts { get; set; }
 
@@ -1393,7 +1423,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public HashSet<string> AddressingConflicts { get; }
 
         /// <summary>
-        /// True se restano conflitti da mandare ad A2
+        /// True se restano conflitti da mandare alla fusione
         /// </summary>
         public bool HasConflicts
         {
