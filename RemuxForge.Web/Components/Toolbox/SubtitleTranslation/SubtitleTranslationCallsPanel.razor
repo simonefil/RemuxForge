@@ -65,19 +65,7 @@
                 </RadzenDataGridColumn>
                 <RadzenDataGridColumn TItem="TranslationCallRecord" Title="@AppText.T("web.toolbox.subtitleTranslation.calls.outcome")" Width="11%">
                     <Template Context="call">
-                        @* Un errore senza tipo è il tentativo interrotto da Stop; la diagnosi conta i problemi *@
-                        <RadzenBadge IsPill="true"
-                                     BadgeStyle="@(_discarded.Contains(call) ? BadgeStyle.Base : call.Issues.HasValue && call.Issues.Value > 0 ? BadgeStyle.Warning
-                                         : call.Outcome == TranslationCallOutcome.Accepted ? BadgeStyle.Success : call.Outcome == TranslationCallOutcome.Error && call.ErrorKind.HasValue ? BadgeStyle.Danger
-                                         : call.Outcome == TranslationCallOutcome.Error ? BadgeStyle.Base : BadgeStyle.Warning)"
-                                     Text="@(_discarded.Contains(call) ? AppText.T("web.toolbox.subtitleTranslation.calls.discarded")
-                                         : call.Issues.HasValue ? AppText.Count("web.toolbox.subtitleTranslation.calls.issues", call.Issues.Value)
-                                         : call.Kind == TranslationCallKind.D1 && call.Outcome == TranslationCallOutcome.PartiallyRejected ? AppText.T("web.toolbox.subtitleTranslation.calls.diagnosisInvalid")
-                                         : call.Outcome == TranslationCallOutcome.Accepted ? AppText.T("web.toolbox.subtitleTranslation.calls.accepted")
-                                         : call.Outcome == TranslationCallOutcome.PartiallyRejected ? AppText.T("web.toolbox.subtitleTranslation.calls.rejected")
-                                         : call.Outcome == TranslationCallOutcome.Reduced ? AppText.T("web.toolbox.subtitleTranslation.calls.reduced")
-                                         : !call.ErrorKind.HasValue ? AppText.T("web.toolbox.subtitleTranslation.calls.stopped")
-                                         : call.HttpStatus > 0 ? AppText.F("web.toolbox.subtitleTranslation.calls.errorStatus", call.HttpStatus) : AppText.T("web.toolbox.subtitleTranslation.calls.error"))" />
+                        <RadzenBadge IsPill="true" BadgeStyle="@OutcomeStyle(call)" Text="@OutcomeText(call)" />
                     </Template>
                 </RadzenDataGridColumn>
                 <RadzenDataGridColumn TItem="TranslationCallRecord" Title="@AppText.T("web.toolbox.subtitleTranslation.calls.tokens")" Width="15%" TextAlign="TextAlign.Right">
@@ -158,6 +146,58 @@
     {
         this._rows = this.Calls.Concat(this.JobCalls).OrderBy(c => c.StartedAt).ToList();
         this._discarded = new HashSet<TranslationCallRecord>(this.JobCalls.Where(c => this.Discarded.Contains(c.CallSeq)), ReferenceEqualityComparer.Instance);
+    }
+
+    #endregion
+
+    #region Metodi privati
+
+    /// <summary>
+    /// Colore dell'esito di una chiamata
+    /// </summary>
+    /// <param name="call">Chiamata del registro</param>
+    /// <returns>Stile del badge</returns>
+    private BadgeStyle OutcomeStyle(TranslationCallRecord call)
+    {
+        if (this._discarded.Contains(call))
+            return BadgeStyle.Base;
+        if (call.Issues.HasValue && call.Issues.Value > 0)
+            return BadgeStyle.Warning;
+        if (call.Outcome == TranslationCallOutcome.Accepted)
+            return BadgeStyle.Success;
+        if (call.Outcome == TranslationCallOutcome.Error && call.ErrorKind.HasValue)
+            return BadgeStyle.Danger;
+        if (call.Outcome == TranslationCallOutcome.Error)
+            return BadgeStyle.Base;
+
+        return BadgeStyle.Warning;
+    }
+
+    /// <summary>
+    /// Testo dell'esito di una chiamata: un errore senza tipo è il tentativo interrotto da Stop, la diagnosi conta i problemi
+    /// </summary>
+    /// <param name="call">Chiamata del registro</param>
+    /// <returns>Testo del badge</returns>
+    private string OutcomeText(TranslationCallRecord call)
+    {
+        if (this._discarded.Contains(call))
+            return AppText.T("web.toolbox.subtitleTranslation.calls.discarded");
+        if (call.Issues.HasValue)
+            return AppText.Count("web.toolbox.subtitleTranslation.calls.issues", call.Issues.Value);
+        if (call.Kind == TranslationCallKind.D1 && call.Outcome == TranslationCallOutcome.PartiallyRejected)
+            return AppText.T("web.toolbox.subtitleTranslation.calls.diagnosisInvalid");
+        if (call.Outcome == TranslationCallOutcome.Accepted)
+            return AppText.T("web.toolbox.subtitleTranslation.calls.accepted");
+        if (call.Outcome == TranslationCallOutcome.PartiallyRejected)
+            return AppText.T("web.toolbox.subtitleTranslation.calls.rejected");
+        if (call.Outcome == TranslationCallOutcome.Reduced)
+            return AppText.T("web.toolbox.subtitleTranslation.calls.reduced");
+        if (!call.ErrorKind.HasValue)
+            return AppText.T("web.toolbox.subtitleTranslation.calls.stopped");
+        if (call.HttpStatus > 0)
+            return AppText.F("web.toolbox.subtitleTranslation.calls.errorStatus", call.HttpStatus);
+
+        return AppText.T("web.toolbox.subtitleTranslation.calls.error");
     }
 
     #endregion
