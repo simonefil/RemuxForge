@@ -36,11 +36,21 @@ namespace RemuxForge.Core.Toolbox.Common
         #region Costruttore
 
         /// <summary>
-        /// Crea il temporaneo vuoto accanto al percorso finale; se la cartella non si scrive l'errore arriva qui, prima di lanciare
-        /// il tool che lo riempie
+        /// Crea il temporaneo vuoto accanto al percorso finale, creando la cartella se manca; se la cartella non si scrive l'errore
+        /// arriva qui, prima di lanciare il tool che lo riempie
         /// </summary>
         /// <param name="finalPath">Percorso finale, già prenotato e libero</param>
-        public StagedOutputFile(string finalPath)
+        public StagedOutputFile(string finalPath) : this(finalPath, true)
+        {
+        }
+
+        /// <summary>
+        /// Crea il temporaneo vuoto accanto al percorso finale; se la cartella manca o non si scrive l'errore arriva qui, prima di
+        /// lanciare il tool che lo riempie
+        /// </summary>
+        /// <param name="finalPath">Percorso finale, già prenotato e libero</param>
+        /// <param name="createFolder">True per creare la cartella se manca, false se la cartella è stata scelta e deve esistere</param>
+        public StagedOutputFile(string finalPath, bool createFolder)
         {
             string fullPath = Path.GetFullPath(finalPath);
             string folder = Path.GetDirectoryName(fullPath);
@@ -51,7 +61,8 @@ namespace RemuxForge.Core.Toolbox.Common
             this._tempPaths = companion.Length > 0 ? new string[] { tempPath, FileHelper.GetCompanionPath(tempPath) } : new string[] { tempPath };
             try
             {
-                Directory.CreateDirectory(folder);
+                if (createFolder)
+                    Directory.CreateDirectory(folder);
                 using (new FileStream(tempPath, FileMode.CreateNew))
                 {
                 }

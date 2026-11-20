@@ -86,7 +86,7 @@ namespace RemuxForge.Core.Toolbox.VideoToMkv
 
             try
             {
-                StagedOutputFile output = new StagedOutputFile(finalPath);
+                StagedOutputFile output = new StagedOutputFile(finalPath, false);
                 try
                 {
                     ProcessResult run = MkvToolNixGuiMode.Run(this._mkvMergePath, MediaContainerNormalizer.BuildRemuxArguments(sourceTracks, inputPath, output.TempPath),

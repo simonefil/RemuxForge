@@ -218,7 +218,7 @@ namespace RemuxForge.Core.Toolbox.AddTracks
             try
             {
                 finalPath = replace ? fullVideo : allocator.Reserve(GetDesiredPath(fullVideo, outputFolder));
-                StagedOutputFile output = new StagedOutputFile(finalPath);
+                StagedOutputFile output = new StagedOutputFile(finalPath, false);
                 try
                 {
                     MkvmergeCommand command = new MkvmergeCommand(output.TempPath);

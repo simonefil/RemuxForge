@@ -244,7 +244,7 @@ namespace RemuxForge.Core.Toolbox.TrackExtraction
                         foreach (TrackExtractionResult result in results)
                         {
                             result.ReservedPath = allocator.Reserve(GetDesiredPath(source.Path, outputFolder, result.Track), true);
-                            staged.Add(new StagedOutputFile(result.ReservedPath));
+                            staged.Add(new StagedOutputFile(result.ReservedPath, false));
                         }
                     }
                     catch (IOException ex)
