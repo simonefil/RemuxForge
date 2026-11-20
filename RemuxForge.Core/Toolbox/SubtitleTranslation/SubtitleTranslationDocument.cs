@@ -535,24 +535,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         boxesOf[e] = cleaner.ReadScreenBoxes(assEvent.Raw, styleStates.GetValueOrDefault(assEvent.Style), styleLayout, margins, screenWidth, screenHeight);
                 }
 
-                // Stessa riga di testo a schermo (riquadri sovrapposti in verticale), tempi che si toccano e tempo in comune
-                Func<int, int, bool> sameRow = (a, b) => boxesOf[a] != null && boxesOf[b] != null
-                    && boxesOf[a].Exists(boxA => boxesOf[b].Exists(boxB => Math.Min(boxA.Bottom, boxB.Bottom) - Math.Max(boxA.Top, boxB.Top) > 0));
-                Func<int, int, bool> touch = (a, b) => events[a].Line.StartMs <= events[b].Line.EndMs && events[b].Line.StartMs <= events[a].Line.EndMs;
-                Func<int, int, long> shared = (a, b) => Math.Max(0, Math.Min(events[a].Line.EndMs, events[b].Line.EndMs) - Math.Max(events[a].Line.StartMs, events[b].Line.StartMs));
-                Func<List<string>, string, bool> contains = (fragments, whole) =>
-                {
-                    int at = 0;
-                    foreach (string fragment in fragments)
-                    {
-                        int found = whole.IndexOf(fragment, at, StringComparison.Ordinal);
-                        if (found < 0)
-                            return false;
-                        at = found + fragment.Length;
-                    }
-                    return true;
-                };
-
                 // Per ogni riga di un gruppo che se ne va, la riga principale; le righe disegnate di ogni Comment principale; i pezzi
                 // tolti con la traduzione di ogni riga principale Dialogue; le righe intere lette con la frase visibile e le loro copie
                 int[] phraseOf = new int[events.Count];
@@ -571,12 +553,12 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     List<KeyValuePair<int, List<int>>> tied = new List<KeyValuePair<int, List<int>>>();
                     foreach (int piece in pieces)
                     {
-                        List<int> wholes = candidates.FindAll(w => w != piece && touch(piece, w) && spaceless[w].Length > shownOf[piece].Length
-                            && contains(fragmentsOf[piece], spaceless[w]) && (events[w].Comment || sameRow(piece, w)))
-                            .OrderByDescending(w => shared(piece, w)).ThenBy(w => Math.Abs(events[w].Line.StartMs - events[piece].Line.StartMs)).ThenBy(w => w).ToList();
+                        List<int> wholes = candidates.FindAll(w => w != piece && Touch(events, piece, w) && spaceless[w].Length > shownOf[piece].Length
+                            && ContainsInOrder(fragmentsOf[piece], spaceless[w]) && (events[w].Comment || SameRow(boxesOf, piece, w)))
+                            .OrderByDescending(w => SharedTime(events, piece, w)).ThenBy(w => Math.Abs(events[w].Line.StartMs - events[piece].Line.StartMs)).ThenBy(w => w).ToList();
                         if (wholes.Count == 0)
                             continue;
-                        List<int> best = wholes.FindAll(w => shared(piece, w) == shared(piece, wholes[0])
+                        List<int> best = wholes.FindAll(w => SharedTime(events, piece, w) == SharedTime(events, piece, wholes[0])
                             && Math.Abs(events[w].Line.StartMs - events[piece].Line.StartMs) == Math.Abs(events[wholes[0]].Line.StartMs - events[piece].Line.StartMs));
                         if (best.Select(w => spaceless[w]).Distinct(StringComparer.Ordinal).Count() > 1)
                             tied.Add(new KeyValuePair<int, List<int>>(piece, best));
@@ -586,18 +568,11 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 
                     // Pareggi fra righe intere di testo diverso: un candidato che è a sua volta un pezzo conta come la sua riga intera
                     Dictionary<int, int> firm = new Dictionary<int, int>(owner);
-                    Func<int, int> rootOf = w =>
-                    {
-                        HashSet<int> seen = new HashSet<int>();
-                        while (firm.TryGetValue(w, out int next) && seen.Add(w))
-                            w = next;
-                        return w;
-                    };
                     HashSet<int> ambiguous = new HashSet<int>();
                     foreach (KeyValuePair<int, List<int>> tie in tied)
                     {
-                        List<int> roots = tie.Value.Select(rootOf).Distinct().ToList();
-                        List<int> hits = roots.FindAll(root => pieces.Exists(other => firm.TryGetValue(other, out int whole) && rootOf(whole) == root && sameRow(tie.Key, other)));
+                        List<int> roots = tie.Value.Select(w => RootOf(firm, w)).Distinct().ToList();
+                        List<int> hits = roots.FindAll(root => pieces.Exists(other => firm.TryGetValue(other, out int whole) && RootOf(firm, whole) == root && SameRow(boxesOf, tie.Key, other)));
                         if (roots.Count == 1)
                             owner[tie.Key] = tie.Value[0];
                         else if (hits.Count == 1)
@@ -623,7 +598,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         changed = false;
                         foreach (int piece in pieces.Where(p => !owner.ContainsKey(p)))
                         {
-                            int followed = continuations[piece].FindIndex(next => owner.TryGetValue(next, out int whole) && contains(fragmentsOf[piece], spaceless[whole]));
+                            int followed = continuations[piece].FindIndex(next => owner.TryGetValue(next, out int whole) && ContainsInOrder(fragmentsOf[piece], spaceless[whole]));
                             if (followed < 0)
                                 continue;
                             owner[piece] = owner[continuations[piece][followed]];
@@ -635,9 +610,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     // tempo entro la tolleranza delle lettere
                     foreach (int piece in pieces.Where(p => !owner.ContainsKey(p)))
                     {
-                        Func<int, long> gap = w => Math.Max(0, Math.Max(events[w].Line.StartMs - events[piece].Line.EndMs, events[piece].Line.StartMs - events[w].Line.EndMs));
-                        int source = candidates.Where(w => events[w].Comment && gap(w) <= LETTER_EFFECT_TOLERANCE_MS && spaceless[w].Length > shownOf[piece].Length
-                            && contains(fragmentsOf[piece], spaceless[w])).OrderBy(gap).ThenBy(w => w).DefaultIfEmpty(-1).First();
+                        int source = candidates.Where(w => events[w].Comment && Gap(events, w, piece) <= LETTER_EFFECT_TOLERANCE_MS && spaceless[w].Length > shownOf[piece].Length
+                            && ContainsInOrder(fragmentsOf[piece], spaceless[w])).OrderBy(w => Gap(events, w, piece)).ThenBy(w => w).DefaultIfEmpty(-1).First();
                         if (source >= 0)
                             owner[piece] = source;
                     }
@@ -649,16 +623,14 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     HashSet<int> composed = new HashSet<int>();
                     foreach (int whole in unitLines.Where(w => !owner.ContainsKey(w) && spaceless[w].Length > 1))
                     {
-                        Func<int, bool> free = p => p != whole && (!owner.TryGetValue(p, out int current) || current == whole) && s_position.IsMatch(events[p].Raw)
-                            && events[p].Line.StartMs < events[whole].Line.StartMs && events[p].Line.EndMs <= events[whole].Line.StartMs && spaceless[p] != spaceless[whole];
                         List<int> chain = new List<int>();
                         long edge = events[whole].Line.StartMs;
-                        List<int> reaching = pieces.FindAll(p => free(p) && events[p].Line.EndMs >= edge);
+                        List<int> reaching = pieces.FindAll(p => IsFreePiece(events, spaceless, owner, p, whole) && events[p].Line.EndMs >= edge);
                         while (reaching.Count > 0)
                         {
                             chain.AddRange(reaching);
                             edge = Math.Min(edge, reaching.Min(p => events[p].Line.StartMs));
-                            reaching = pieces.FindAll(p => !chain.Contains(p) && free(p) && events[p].Line.EndMs >= edge);
+                            reaching = pieces.FindAll(p => !chain.Contains(p) && IsFreePiece(events, spaceless, owner, p, whole) && events[p].Line.EndMs >= edge);
                         }
                         List<string> texts = chain.OrderBy(p => events[p].Line.StartMs).ThenBy(p => p).Select(p => spaceless[p]).Distinct(StringComparer.Ordinal).ToList();
                         if (chain.Count == 0 || string.Concat(texts) != spaceless[whole] || texts.TrueForAll(text => new StringInfo(text).LengthInTextElements == 1))
@@ -670,28 +642,21 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 
                     // Gruppi: i pezzi con la loro riga intera, e le copie della riga intera
                     Dictionary<int, int> parent = new Dictionary<int, int>();
-                    Func<int, int> find = n =>
-                    {
-                        parent.TryAdd(n, n);
-                        while (parent[n] != n)
-                            n = parent[n] = parent[parent[n]];
-                        return n;
-                    };
                     foreach (KeyValuePair<int, int> link in owner)
-                        parent[find(link.Key)] = find(link.Value);
+                        parent[FindGroup(parent, link.Key)] = FindGroup(parent, link.Value);
                     HashSet<int> used = new HashSet<int>(owner.Values);
                     foreach (int whole in candidates.Where(w => used.Contains(w) && !events[w].Comment))
                     {
-                        foreach (int copy in unitLines.Where(c => c != whole && spaceless[c] == spaceless[whole] && touch(c, whole) && sameRow(c, whole)))
-                            parent[find(copy)] = find(whole);
+                        foreach (int copy in unitLines.Where(c => c != whole && spaceless[c] == spaceless[whole] && Touch(events, c, whole) && SameRow(boxesOf, c, whole)))
+                            parent[FindGroup(parent, copy)] = FindGroup(parent, whole);
                     }
 
-                    foreach (List<int> members in parent.Keys.ToList().GroupBy(find).Select(g => g.OrderBy(m => events[m].Line.StartMs).ThenBy(m => m).ToList()).ToList())
+                    foreach (List<int> members in parent.Keys.ToList().GroupBy(n => FindGroup(parent, n)).Select(g => g.OrderBy(m => events[m].Line.StartMs).ThenBy(m => m).ToList()).ToList())
                     {
-                        List<int> phraseLines = members.FindAll(w => members.TrueForAll(m => contains(fragmentsOf[m], spaceless[w])));
+                        List<int> phraseLines = members.FindAll(w => members.TrueForAll(m => ContainsInOrder(fragmentsOf[m], spaceless[w])));
                         List<int> drawn = members.FindAll(m => !events[m].Comment);
                         if (phraseLines.Count == 0 || !drawn.Exists(m => shownOf[m] != spaceless[phraseLines[0]])
-                            || (!members.Exists(composed.Contains) && !drawn.Exists(a => drawn.Exists(b => shared(a, b) > 0 && shownOf[a] != shownOf[b])))
+                            || (!members.Exists(composed.Contains) && !drawn.Exists(a => drawn.Exists(b => SharedTime(events, a, b) > 0 && shownOf[a] != shownOf[b])))
                             || members.Exists(ambiguous.Contains))
                             continue;
 
@@ -1110,6 +1075,118 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         {
             return new SubtitleTranslationDocument(format, "", new byte[0], null, new List<SubtitleCue>(), new List<SubtitleStyleUsage>(), new Dictionary<int, LetterEffect>(),
                 new Dictionary<int, List<SourceLine>>(), new HashSet<int>(), reason);
+        }
+
+        /// <summary>
+        /// Indica se due righe stanno sulla stessa riga di testo a schermo: riquadri sovrapposti in verticale
+        /// </summary>
+        /// <param name="boxesOf">Riquadri di ogni riga, null se lo stile manca</param>
+        /// <param name="a">Prima riga</param>
+        /// <param name="b">Seconda riga</param>
+        /// <returns>True sulla stessa riga a schermo</returns>
+        private static bool SameRow(List<AssScreenBox>[] boxesOf, int a, int b)
+        {
+            return boxesOf[a] != null && boxesOf[b] != null
+                && boxesOf[a].Exists(boxA => boxesOf[b].Exists(boxB => Math.Min(boxA.Bottom, boxB.Bottom) - Math.Max(boxA.Top, boxB.Top) > 0));
+        }
+
+        /// <summary>
+        /// Indica se i tempi di due righe si toccano o si sovrappongono
+        /// </summary>
+        /// <param name="events">Righe di [Events]</param>
+        /// <param name="a">Prima riga</param>
+        /// <param name="b">Seconda riga</param>
+        /// <returns>True se i tempi si toccano</returns>
+        private static bool Touch(List<AssEvent> events, int a, int b)
+        {
+            return events[a].Line.StartMs <= events[b].Line.EndMs && events[b].Line.StartMs <= events[a].Line.EndMs;
+        }
+
+        /// <summary>
+        /// Tempo in comune di due righe
+        /// </summary>
+        /// <param name="events">Righe di [Events]</param>
+        /// <param name="a">Prima riga</param>
+        /// <param name="b">Seconda riga</param>
+        /// <returns>Millisecondi in comune, 0 se non si sovrappongono</returns>
+        private static long SharedTime(List<AssEvent> events, int a, int b)
+        {
+            return Math.Max(0, Math.Min(events[a].Line.EndMs, events[b].Line.EndMs) - Math.Max(events[a].Line.StartMs, events[b].Line.StartMs));
+        }
+
+        /// <summary>
+        /// Indica se un testo contiene i tratti nell'ordine
+        /// </summary>
+        /// <param name="fragments">Tratti</param>
+        /// <param name="whole">Testo</param>
+        /// <returns>True se ogni tratto segue il precedente</returns>
+        private static bool ContainsInOrder(List<string> fragments, string whole)
+        {
+            int at = 0;
+            foreach (string fragment in fragments)
+            {
+                int found = whole.IndexOf(fragment, at, StringComparison.Ordinal);
+                if (found < 0)
+                    return false;
+                at = found + fragment.Length;
+            }
+            return true;
+        }
+
+        /// <summary>
+        /// Riga intera a cui arriva un candidato seguendo i pezzi già assegnati
+        /// </summary>
+        /// <param name="firm">Riga intera di ogni pezzo assegnato senza pareggio</param>
+        /// <param name="w">Candidato</param>
+        /// <returns>Riga intera in fondo alla catena</returns>
+        private static int RootOf(Dictionary<int, int> firm, int w)
+        {
+            HashSet<int> seen = new HashSet<int>();
+            while (firm.TryGetValue(w, out int next) && seen.Add(w))
+                w = next;
+            return w;
+        }
+
+        /// <summary>
+        /// Distanza nel tempo fra una riga Comment e un pezzo
+        /// </summary>
+        /// <param name="events">Righe di [Events]</param>
+        /// <param name="w">Riga Comment</param>
+        /// <param name="piece">Pezzo</param>
+        /// <returns>Millisecondi fra le due righe, 0 se si toccano</returns>
+        private static long Gap(List<AssEvent> events, int w, int piece)
+        {
+            return Math.Max(0, Math.Max(events[w].Line.StartMs - events[piece].Line.EndMs, events[piece].Line.StartMs - events[w].Line.EndMs));
+        }
+
+        /// <summary>
+        /// Indica se un pezzo posizionato può comporre una riga: senza un'altra riga intera, finito prima che la riga cominci e con
+        /// un testo diverso
+        /// </summary>
+        /// <param name="events">Righe di [Events]</param>
+        /// <param name="spaceless">Testo senza spazi di ogni riga</param>
+        /// <param name="owner">Riga intera di ogni pezzo assegnato</param>
+        /// <param name="p">Pezzo</param>
+        /// <param name="whole">Riga da comporre</param>
+        /// <returns>True se il pezzo è libero per la riga</returns>
+        private static bool IsFreePiece(List<AssEvent> events, string[] spaceless, Dictionary<int, int> owner, int p, int whole)
+        {
+            return p != whole && (!owner.TryGetValue(p, out int current) || current == whole) && s_position.IsMatch(events[p].Raw)
+                && events[p].Line.StartMs < events[whole].Line.StartMs && events[p].Line.EndMs <= events[whole].Line.StartMs && spaceless[p] != spaceless[whole];
+        }
+
+        /// <summary>
+        /// Gruppo di una riga, con la compressione dei cammini
+        /// </summary>
+        /// <param name="parent">Riga di riferimento di ogni riga, aggiornata</param>
+        /// <param name="n">Riga</param>
+        /// <returns>Riga che rappresenta il gruppo</returns>
+        private static int FindGroup(Dictionary<int, int> parent, int n)
+        {
+            parent.TryAdd(n, n);
+            while (parent[n] != n)
+                n = parent[n] = parent[parent[n]];
+            return n;
         }
 
         /// <summary>

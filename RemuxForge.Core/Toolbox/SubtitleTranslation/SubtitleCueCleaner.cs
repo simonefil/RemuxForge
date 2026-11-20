@@ -1347,27 +1347,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     new string[] { "BackColour", "4c", "4a" }
                 });
             }
-            // Intero di un campo di stile come parse_int_header di libass: esadecimale dopo &H o 0x, altrimenti decimale, con spazi
-            // e segno davanti, ridotto modulo 2^32; senza cifre vale 0
-            Func<string, uint> readInteger = field =>
-            {
-                bool hex = field.StartsWith("&H", StringComparison.OrdinalIgnoreCase) || field.StartsWith("0x", StringComparison.OrdinalIgnoreCase);
-                string digits = (hex ? field.Substring(2) : field).TrimStart();
-                bool negative = digits.StartsWith("-", StringComparison.Ordinal);
-                if (negative || digits.StartsWith("+", StringComparison.Ordinal))
-                    digits = digits.Substring(1);
-                if (hex && digits.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
-                    digits = digits.Substring(2);
-                uint number = 0;
-                foreach (char digit in digits)
-                {
-                    int value = Uri.IsHexDigit(digit) ? Convert.ToInt32(digit.ToString(), 16) : 99;
-                    if (value >= (hex ? 16 : 10))
-                        break;
-                    number = unchecked(number * (hex ? 16u : 10u) + (uint)value);
-                }
-                return negative ? unchecked(0u - number) : number;
-            };
             foreach (string[] column in columns)
             {
                 int index = AssSubtitleUtils.ResolveFieldIndex(format, column[0]);
@@ -1384,8 +1363,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     }
                     else if (column[0].EndsWith("Colour", StringComparison.Ordinal))
                     {
-                        value = column[c][1] == 'c' ? (readInteger(field) & 0xFFFFFF).ToString("X6", CultureInfo.InvariantCulture)
-                            : (readInteger(field) >> 24).ToString("X2", CultureInfo.InvariantCulture);
+                        value = column[c][1] == 'c' ? (ReadStyleInteger(field) & 0xFFFFFF).ToString("X6", CultureInfo.InvariantCulture)
+                            : (ReadStyleInteger(field) >> 24).ToString("X2", CultureInfo.InvariantCulture);
                     }
                     else
                     {
@@ -1398,7 +1377,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             if (ssa)
             {
                 int alphaLevel = AssSubtitleUtils.ResolveFieldIndex(format, "AlphaLevel");
-                int level = alphaLevel >= 0 && alphaLevel < fields.Length ? unchecked((int)readInteger(fields[alphaLevel].Trim())) : 0;
+                int level = alphaLevel >= 0 && alphaLevel < fields.Length ? unchecked((int)ReadStyleInteger(fields[alphaLevel].Trim())) : 0;
                 foreach (string channel in new string[] { "1a", "2a", "3a" })
                     state[channel] = Math.Clamp(level, 0, 255).ToString("X2", CultureInfo.InvariantCulture);
                 state["4a"] = "80";
@@ -1448,13 +1427,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     continue;
                 List<AssTag> sequence = tags.FindAll(tag => tag.Name != ASS_TRANSFORM);
                 Dictionary<string, string> alphas = new Dictionary<string, string>(StringComparer.Ordinal);
-                Action<AssTag> trackAlpha = tag =>
-                {
-                    if (s_assStateChannels.TryGetValue(tag.Name, out string[] tagChannels))
-                        foreach (string channel in Array.FindAll(tagChannels, channel => channel.Length == 2 && channel[1] == 'a'))
-                            alphas[channel] = ChannelValue(channel, tag.Arg);
-                };
-                sequence.ForEach(trackAlpha);
+                foreach (AssTag tag in sequence)
+                    TrackAlpha(tag, alphas);
                 foreach (AssTag tag in tags.FindAll(tag => tag.Name == ASS_TRANSFORM))
                 {
                     string inner = tag.Arg.Trim().TrimStart('(');
@@ -1466,7 +1440,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     if (!fromStart && !reveals)
                         continue;
                     sequence.AddRange(innerTags);
-                    innerTags.ForEach(trackAlpha);
+                    foreach (AssTag revealed in innerTags)
+                        TrackAlpha(revealed, alphas);
                 }
                 List<AssTag> state = new List<AssTag>();
                 foreach (AssTag tag in sequence)
@@ -1543,10 +1518,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         {
             string[] channels = new string[] { "1a", "3a", "4a", "xbord", "ybord", "xshad", "yshad" };
             Dictionary<string, string> current = styleStates.GetValueOrDefault(style);
-            Func<string, string> styleValue = channel => current?.GetValueOrDefault(channel) ?? (channel[1] == 'a' ? "00" : "0");
-            Dictionary<string, List<string>> values = channels.ToDictionary(channel => channel, channel => new List<string> { styleValue(channel) }, StringComparer.Ordinal);
-            Func<string, bool> sized = channel => values[channel].Exists(value => double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out double size) && size != 0);
-            Func<string, bool> shown = channel => values[channel].Exists(value => value != "FF");
+            Dictionary<string, List<string>> values = channels.ToDictionary(channel => channel, channel => new List<string> { StyleValue(current, channel) }, StringComparer.Ordinal);
             List<bool> visible = new List<bool>();
             int copied = 0;
             int open = text.IndexOf('{');
@@ -1554,7 +1526,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             {
                 int close = open >= 0 ? text.IndexOf('}', open) : -1;
                 string piece = text.Substring(copied, (close >= 0 ? open : text.Length) - copied).Replace("\\N", " ").Replace("\\n", " ").Replace("\\h", " ");
-                bool seen = shown("1a") || ((sized("xbord") || sized("ybord")) && shown("3a")) || ((sized("xshad") || sized("yshad")) && shown("4a"));
+                bool seen = IsShown(values, "1a") || ((IsSized(values, "xbord") || IsSized(values, "ybord")) && IsShown(values, "3a"))
+                    || ((IsSized(values, "xshad") || IsSized(values, "yshad")) && IsShown(values, "4a"));
                 visible.AddRange(piece.Where(c => !char.IsWhiteSpace(c)).Select(c => seen));
                 if (close < 0)
                     break;
@@ -1564,7 +1537,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     {
                         current = styleStates.GetValueOrDefault(tag.Arg.Trim()) ?? styleStates.GetValueOrDefault(style);
                         foreach (string channel in channels)
-                            values[channel] = new List<string> { styleValue(channel) };
+                            values[channel] = new List<string> { StyleValue(current, channel) };
                     }
                     else if (tag.Name == ASS_TRANSFORM)
                     {
@@ -1583,7 +1556,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     {
                         foreach (string channel in tagChannels.Where(values.ContainsKey))
                         {
-                            string value = tag.Arg.Trim().Length == 0 ? styleValue(channel) : ChannelValue(channel, tag.Arg);
+                            string value = tag.Arg.Trim().Length == 0 ? StyleValue(current, channel) : ChannelValue(channel, tag.Arg);
                             if (value != null)
                                 values[channel] = new List<string> { value };
                         }
@@ -1706,12 +1679,10 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 open = text.IndexOf('{', copied);
             }
 
-            Func<string, double, double> styleNumber = (channel, fallback) => styleState != null && styleState.TryGetValue(channel, out string value)
-                && double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out double number) ? number : fallback;
             int anchor = alignment >= 1 && alignment <= 9 ? alignment.Value : layout.Alignment >= 1 && layout.Alignment <= 9 ? layout.Alignment : 2;
             int column = (anchor - 1) % 3;
             int row = (anchor - 1) / 3;
-            double height = rows * (size ?? styleNumber("fs", 20)) * (scaleY ?? styleNumber("fscy", 100)) / 100;
+            double height = rows * (size ?? StyleNumber(styleState, "fs", 20)) * (scaleY ?? StyleNumber(styleState, "fscy", 100)) / 100;
             if (points.Count == 0)
             {
                 int left = margins.Left != 0 ? margins.Left : layout.MarginL;
@@ -1770,6 +1741,92 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         #endregion
 
         #region Metodi privati
+
+        /// <summary>
+        /// Intero di un campo di stile come parse_int_header di libass: esadecimale dopo &amp;H o 0x, altrimenti decimale, con spazi e
+        /// segno davanti, ridotto modulo 2^32; senza cifre vale 0
+        /// </summary>
+        /// <param name="field">Campo dello stile</param>
+        /// <returns>Valore letto</returns>
+        private static uint ReadStyleInteger(string field)
+        {
+            bool hex = field.StartsWith("&H", StringComparison.OrdinalIgnoreCase) || field.StartsWith("0x", StringComparison.OrdinalIgnoreCase);
+            string digits = (hex ? field.Substring(2) : field).TrimStart();
+            bool negative = digits.StartsWith("-", StringComparison.Ordinal);
+            if (negative || digits.StartsWith("+", StringComparison.Ordinal))
+                digits = digits.Substring(1);
+            if (hex && digits.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+                digits = digits.Substring(2);
+            uint number = 0;
+            foreach (char digit in digits)
+            {
+                int value = Uri.IsHexDigit(digit) ? Convert.ToInt32(digit.ToString(), 16) : 99;
+                if (value >= (hex ? 16 : 10))
+                    break;
+                number = unchecked(number * (hex ? 16u : 10u) + (uint)value);
+            }
+            return negative ? unchecked(0u - number) : number;
+        }
+
+        /// <summary>
+        /// Annota le alpha che un tag porta, per canale
+        /// </summary>
+        /// <param name="tag">Tag della riga</param>
+        /// <param name="alphas">Ultima alpha per canale, aggiornata</param>
+        private static void TrackAlpha(AssTag tag, Dictionary<string, string> alphas)
+        {
+            if (s_assStateChannels.TryGetValue(tag.Name, out string[] tagChannels))
+            {
+                foreach (string channel in Array.FindAll(tagChannels, channel => channel.Length == 2 && channel[1] == 'a'))
+                    alphas[channel] = ChannelValue(channel, tag.Arg);
+            }
+        }
+
+        /// <summary>
+        /// Valore di un canale nello stato di uno stile: alpha 00 e misure 0 se lo stile non lo dà
+        /// </summary>
+        /// <param name="state">Stato dello stile per canale, null se lo stile manca</param>
+        /// <param name="channel">Canale</param>
+        /// <returns>Valore del canale</returns>
+        private static string StyleValue(Dictionary<string, string> state, string channel)
+        {
+            return state?.GetValueOrDefault(channel) ?? (channel[1] == 'a' ? "00" : "0");
+        }
+
+        /// <summary>
+        /// Indica se uno dei valori di una misura (bordo, ombra) è diverso da 0
+        /// </summary>
+        /// <param name="values">Valori fissi e d'arrivo per canale</param>
+        /// <param name="channel">Canale della misura</param>
+        /// <returns>True se la misura può essere diversa da 0</returns>
+        private static bool IsSized(Dictionary<string, List<string>> values, string channel)
+        {
+            return values[channel].Exists(value => double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out double size) && size != 0);
+        }
+
+        /// <summary>
+        /// Indica se uno dei valori di un'alpha non è invisibile (FF)
+        /// </summary>
+        /// <param name="values">Valori fissi e d'arrivo per canale</param>
+        /// <param name="channel">Canale dell'alpha</param>
+        /// <returns>True se il canale può essere visibile</returns>
+        private static bool IsShown(Dictionary<string, List<string>> values, string channel)
+        {
+            return values[channel].Exists(value => value != "FF");
+        }
+
+        /// <summary>
+        /// Numero di un canale nello stato di uno stile
+        /// </summary>
+        /// <param name="styleState">Stato dello stile per canale, null se lo stile manca</param>
+        /// <param name="channel">Canale</param>
+        /// <param name="fallback">Valore se lo stile non lo dà o non è un numero</param>
+        /// <returns>Numero del canale</returns>
+        private static double StyleNumber(IReadOnlyDictionary<string, string> styleState, string channel, double fallback)
+        {
+            return styleState != null && styleState.TryGetValue(channel, out string value) && double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out double number)
+                ? number : fallback;
+        }
 
         /// <summary>
         /// Chiave dello stato SRT: i tag aperti della pila, nell'ordine
