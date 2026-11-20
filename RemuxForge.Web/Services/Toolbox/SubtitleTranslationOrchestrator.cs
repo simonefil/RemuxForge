@@ -404,7 +404,7 @@ namespace RemuxForge.Web.Services.Toolbox
                     return;
 
                 record.File.Encoding = string.IsNullOrEmpty(encoding) ? SubtitleTranslationDocument.DEFAULT_ENCODING : encoding;
-                this.PrepareFile(record.File, false);
+                this.PrepareFile(record.File);
                 this.SyncStyles();
                 this._store.Save(this._project);
             }
@@ -723,6 +723,7 @@ namespace RemuxForge.Web.Services.Toolbox
         public void StartJob()
         {
             TranslationJob blocked = null;
+            TranslationProject project;
             TranslationJob job;
             IReadOnlyList<TranslationProjectStyle> styles;
             IReadOnlyList<TranslationProjectStretch> stretches;
@@ -732,6 +733,7 @@ namespace RemuxForge.Web.Services.Toolbox
                 if (!this.CanStartJob)
                     return;
 
+                project = this._project;
                 job = this._job;
                 styles = this._project.Styles;
                 stretches = this._project.Stretches;
@@ -753,7 +755,7 @@ namespace RemuxForge.Web.Services.Toolbox
             lock (this.StateLock)
             {
                 // Fra le due prese del lock un'altra scheda può aver avviato o cambiato il giro
-                if (!this.CanStartJob || !ReferenceEquals(this._job, job))
+                if (!this.CanStartJob || !ReferenceEquals(this._project, project) || !ReferenceEquals(this._job, job))
                     return;
 
                 if (this._job == null)
@@ -766,10 +768,13 @@ namespace RemuxForge.Web.Services.Toolbox
                     {
                         TranslationProjectFile copy;
                         SubtitleTranslationDocument document;
-                        if (!copies.TryGetValue(fileId, out copy))
+                        TranslationProjectFile file = this._project.Files.Find(f => f.Id == fileId);
+
+                        // Un file ricominciato nel frattempo ha già il documento del sorgente nuovo
+                        if (!copies.TryGetValue(fileId, out copy) || file.SourceSha256 != copy.SourceSha256)
                             continue;
 
-                        this._project.Files.Find(f => f.Id == fileId).RejectedReason = copy.RejectedReason;
+                        file.RejectedReason = copy.RejectedReason;
                         if (documents.TryGetValue(fileId, out document))
                         {
                             this._documents[fileId] = document;
@@ -1380,7 +1385,7 @@ namespace RemuxForge.Web.Services.Toolbox
             foreach (TranslationFileRecord record in this.Records)
             {
                 if (!this._documents.ContainsKey(record.File.Id))
-                    this.PrepareFile(record.File, false);
+                    this.PrepareFile(record.File);
             }
 
             this.SyncStyles();
@@ -1674,7 +1679,7 @@ namespace RemuxForge.Web.Services.Toolbox
             {
                 this._project.Stretches = plan.Apply(this._project.Styles);
                 foreach (TranslationProjectFile file in this._project.Files)
-                    this.PrepareFile(file, false);
+                    this.PrepareFile(file);
                 if (this._project.Glossary != null)
                     new GlossaryBuilder(this._project.SourceLanguage, this._project.TargetLanguage).SetEpisodes(this._project.Glossary, this.GetEpisodes(), true);
                 this._store.Save(this._project);
@@ -2207,13 +2212,12 @@ namespace RemuxForge.Web.Services.Toolbox
         }
 
         /// <summary>
-        /// Prepara un file del progetto coi tipi riconosciuti e ne tiene il documento; un file bloccato tiene le impronte salvate
+        /// Prepara un file del progetto prima dell'analisi, coi tipi riconosciuti e le impronte aggiornate, e ne tiene il documento
         /// </summary>
         /// <param name="file">File del progetto</param>
-        /// <param name="locked">True con l'analisi partita e i tipi già riconosciuti</param>
-        private void PrepareFile(TranslationProjectFile file, bool locked)
+        private void PrepareFile(TranslationProjectFile file)
         {
-            SubtitleTranslationDocument document = TranslationFilePreparer.Prepare(file, this._project.Styles, this._project.Stretches, locked);
+            SubtitleTranslationDocument document = TranslationFilePreparer.Prepare(file, this._project.Styles, this._project.Stretches, false);
             if (document != null)
             {
                 this._documents[file.Id] = document;
