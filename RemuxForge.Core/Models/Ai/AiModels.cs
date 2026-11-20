@@ -558,8 +558,6 @@ namespace RemuxForge.Core.Models
             this.Tools = new JsonArray();
             this.SessionId = "";
             this.ToolChoice = null;
-            this.Temperature = null;
-            this.MaxOutputTokens = null;
             this.PromptCacheKey = "";
             this.ReasoningEffort = "";
             this.Progress = null;
@@ -598,16 +596,6 @@ namespace RemuxForge.Core.Models
         /// Valore di tool_choice
         /// </summary>
         public JsonNode ToolChoice { get; set; }
-
-        /// <summary>
-        /// Temperatura, mandata solo con la API key
-        /// </summary>
-        public double? Temperature { get; set; }
-
-        /// <summary>
-        /// Tetto dei token in output, mandato solo con la API key
-        /// </summary>
-        public int? MaxOutputTokens { get; set; }
 
         /// <summary>
         /// Chiave di cache nel body, mandata solo con la API key

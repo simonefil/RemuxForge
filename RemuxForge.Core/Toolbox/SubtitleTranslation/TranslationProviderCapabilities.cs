@@ -20,16 +20,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public const string WEB_SEARCH = "web_search";
 
         /// <summary>
-        /// Parametro temperature
-        /// </summary>
-        public const string TEMPERATURE = "temperature";
-
-        /// <summary>
-        /// Parametro max_output_tokens
-        /// </summary>
-        public const string MAX_OUTPUT_TOKENS = "max_output_tokens";
-
-        /// <summary>
         /// Parametro prompt_cache_key
         /// </summary>
         public const string PROMPT_CACHE_KEY = "prompt_cache_key";
@@ -42,7 +32,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <summary>
         /// Capacità facoltative nell'ordine in cui si tolgono quando il servizio non dice quale ha rifiutato
         /// </summary>
-        private static readonly string[] REMOVAL_ORDER = new string[] { WEB_SEARCH, TEMPERATURE, MAX_OUTPUT_TOKENS, PROMPT_CACHE_KEY, REASONING };
+        private static readonly string[] REMOVAL_ORDER = new string[] { WEB_SEARCH, PROMPT_CACHE_KEY, REASONING };
 
         #endregion
 
@@ -112,8 +102,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             prepared.Input = source.Input;
             prepared.ToolChoice = source.ToolChoice;
             prepared.SessionId = TranslationSessionKey.Create(request.ProjectId, request.FileId, source.Model, request.Kind.GetSessionKind());
-            prepared.Temperature = this.Temperature ? source.Temperature : null;
-            prepared.MaxOutputTokens = this.MaxOutputTokens ? source.MaxOutputTokens : null;
             prepared.PromptCacheKey = this.PromptCacheKey ? prepared.SessionId : "";
             prepared.ReasoningEffort = this.Reasoning ? source.ReasoningEffort : "";
 
@@ -204,10 +192,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 return false;
             }
 
-            if (capability == TEMPERATURE)
-                return sent.Temperature.HasValue;
-            if (capability == MAX_OUTPUT_TOKENS)
-                return sent.MaxOutputTokens.HasValue;
             if (capability == PROMPT_CACHE_KEY)
                 return !string.IsNullOrEmpty(sent.PromptCacheKey);
             if (capability == REASONING)
@@ -240,16 +224,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// Ricerca web disponibile
         /// </summary>
         public bool WebSearch { get { return this.IsEnabled(WEB_SEARCH, true); } }
-
-        /// <summary>
-        /// Temperatura disponibile: solo con la API key
-        /// </summary>
-        public bool Temperature { get { return this.IsEnabled(TEMPERATURE, this.AccessMode == AiConnectionMode.ApiKey); } }
-
-        /// <summary>
-        /// Tetto dei token in output disponibile: solo con la API key
-        /// </summary>
-        public bool MaxOutputTokens { get { return this.IsEnabled(MAX_OUTPUT_TOKENS, this.AccessMode == AiConnectionMode.ApiKey); } }
 
         /// <summary>
         /// Chiave di cache nel body, uguale all'header session_id: col piano senza la chiave nel body la cache vale solo fra

@@ -121,8 +121,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 fixedPart.Tools = prepared.Tools;
                 fixedPart.ToolChoice = prepared.ToolChoice;
                 fixedPart.SessionId = session;
-                fixedPart.Temperature = prepared.Temperature;
-                fixedPart.MaxOutputTokens = prepared.MaxOutputTokens;
                 fixedPart.PromptCacheKey = prepared.PromptCacheKey;
                 fixedPart.ReasoningEffort = prepared.ReasoningEffort;
                 try
