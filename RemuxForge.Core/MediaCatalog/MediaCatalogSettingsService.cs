@@ -5,7 +5,6 @@ using RemuxForge.Core.Models;
 using System;
 using System.IO;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 
 namespace RemuxForge.Core.MediaCatalog
 {
@@ -31,9 +30,9 @@ namespace RemuxForge.Core.MediaCatalog
         #region Variabili di classe
 
         /// <summary>
-        /// Percorso completo del file
+        /// File delle impostazioni
         /// </summary>
-        private readonly string _filePath;
+        private readonly PrivateJsonFile<MediaCatalogSettings> _file;
 
         /// <summary>
         /// Serializza lettura e scrittura
@@ -55,7 +54,7 @@ namespace RemuxForge.Core.MediaCatalog
         /// <param name="configFolder">Cartella configurazione RemuxForge</param>
         public MediaCatalogSettingsService(string configFolder)
         {
-            this._filePath = Path.Combine(configFolder != null ? configFolder : "", FILE_NAME);
+            this._file = new PrivateJsonFile<MediaCatalogSettings>(configFolder, FILE_NAME);
             this._fileLock = new object();
         }
 
@@ -76,8 +75,7 @@ namespace RemuxForge.Core.MediaCatalog
                     MediaCatalogSettings read = null;
                     try
                     {
-                        if (File.Exists(this._filePath))
-                            read = JsonSerializer.Deserialize<MediaCatalogSettings>(File.ReadAllText(this._filePath), CreateSerializerOptions());
+                        read = this._file.Read();
                     }
                     catch (Exception ex) when (ex is JsonException || ex is IOException || ex is UnauthorizedAccessException)
                     {
@@ -101,11 +99,10 @@ namespace RemuxForge.Core.MediaCatalog
                 throw new ArgumentNullException(nameof(settings));
 
             MediaCatalogSettings normalized = Normalize(settings.Clone());
-            string json = JsonSerializer.Serialize(normalized, CreateSerializerOptions());
 
             lock (this._fileLock)
             {
-                PrivateFileWriter.WriteAtomic(this._filePath, json);
+                this._file.Write(normalized);
                 this._current = normalized;
             }
         }
@@ -113,19 +110,6 @@ namespace RemuxForge.Core.MediaCatalog
         #endregion
 
         #region Metodi privati
-
-        /// <summary>
-        /// Crea le opzioni JSON del file
-        /// </summary>
-        /// <returns>Opzioni serializzatore</returns>
-        private static JsonSerializerOptions CreateSerializerOptions()
-        {
-            JsonSerializerOptions options = new JsonSerializerOptions();
-            options.WriteIndented = true;
-            options.PropertyNameCaseInsensitive = true;
-            options.Converters.Add(new JsonStringEnumConverter(null, false));
-            return options;
-        }
 
         /// <summary>
         /// Ripulisce le credenziali e completa la lingua di default

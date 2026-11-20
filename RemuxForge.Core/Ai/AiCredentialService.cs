@@ -3,9 +3,6 @@ using RemuxForge.Core.Localization;
 using RemuxForge.Core.Models;
 using System;
 using System.Collections.Generic;
-using System.IO;
-using System.Text.Json;
-using System.Text.Json.Serialization;
 
 namespace RemuxForge.Core.Ai
 {
@@ -26,9 +23,9 @@ namespace RemuxForge.Core.Ai
         #region Variabili di classe
 
         /// <summary>
-        /// Percorso completo del file
+        /// File di configurazione AI
         /// </summary>
-        private readonly string _filePath;
+        private readonly PrivateJsonFile<AiCredentials> _file;
 
         /// <summary>
         /// Serializza lettura e scrittura del file
@@ -45,8 +42,7 @@ namespace RemuxForge.Core.Ai
         /// <param name="configFolder">Cartella configurazione RemuxForge</param>
         public AiCredentialService(string configFolder)
         {
-            string root = configFolder != null ? configFolder : "";
-            this._filePath = Path.Combine(root, FILE_NAME);
+            this._file = new PrivateJsonFile<AiCredentials>(configFolder, FILE_NAME);
             this._fileLock = new object();
         }
 
@@ -64,10 +60,7 @@ namespace RemuxForge.Core.Ai
 
             lock (this._fileLock)
             {
-                if (!File.Exists(this._filePath))
-                    return new AiCredentials();
-
-                result = JsonSerializer.Deserialize<AiCredentials>(File.ReadAllText(this._filePath), CreateSerializerOptions());
+                result = this._file.Read();
             }
 
             if (result == null)
@@ -87,11 +80,10 @@ namespace RemuxForge.Core.Ai
                 throw new ArgumentNullException(nameof(credentials));
 
             Normalize(credentials);
-            string json = JsonSerializer.Serialize(credentials, CreateSerializerOptions());
 
             lock (this._fileLock)
             {
-                PrivateFileWriter.WriteAtomic(this._filePath, json);
+                this._file.Write(credentials);
             }
         }
 
@@ -227,19 +219,6 @@ namespace RemuxForge.Core.Ai
         #endregion
 
         #region Metodi privati
-
-        /// <summary>
-        /// Crea le opzioni JSON del file di configurazione AI
-        /// </summary>
-        /// <returns>Opzioni serializzatore</returns>
-        private static JsonSerializerOptions CreateSerializerOptions()
-        {
-            JsonSerializerOptions options = new JsonSerializerOptions();
-            options.WriteIndented = true;
-            options.PropertyNameCaseInsensitive = true;
-            options.Converters.Add(new JsonStringEnumConverter(null, false));
-            return options;
-        }
 
         /// <summary>
         /// Sostituisce i valori null letti dal file con i default
