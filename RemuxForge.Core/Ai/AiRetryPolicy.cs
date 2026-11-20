@@ -116,7 +116,7 @@ namespace RemuxForge.Core.Ai
                 }
                 catch (AiServiceException ex)
                 {
-                    bool rateLimit = IsRateLimit(ex);
+                    bool rateLimit = ex.IsRateLimit;
                     if (rateLimit)
                     {
                         // Il limite di frequenza vale per l'accesso, anche all'ultimo tentativo: si fermano tutte le richieste che
@@ -129,7 +129,7 @@ namespace RemuxForge.Core.Ai
                         }
                     }
 
-                    if (number >= this._maxAttempts || !IsTransient(ex))
+                    if (number >= this._maxAttempts || !ex.IsTransient)
                         throw;
 
                     if (!rateLimit)
@@ -151,33 +151,6 @@ namespace RemuxForge.Core.Ai
         private TimeSpan GetDelay(int attempt, AiServiceException error)
         {
             return HttpRetryDelay.Compute(attempt - 1, error.RetryAfter, this._baseDelay, this._maxDelay, this._maxRetryAfter, JITTER_FRACTION);
-        }
-
-        /// <summary>
-        /// Indica se un errore è transitorio e la richiesta va ripetuta intera
-        /// </summary>
-        /// <param name="error">Errore della richiesta</param>
-        /// <returns>True per limite di frequenza, 503 e 5xx, errori di rete e stream finito senza evento finale</returns>
-        private static bool IsTransient(AiServiceException error)
-        {
-            if (IsRateLimit(error))
-                return true;
-
-            if (error.ServiceCode == "subscription_sharing_usage_unavailable" || error.HttpStatus >= 500)
-                return true;
-
-            // Nelle risposte della Responses API InvalidResponse nasce solo dallo stream interrotto prima dell'evento finale
-            return error.Kind == AiErrorKind.Network || error.Kind == AiErrorKind.InvalidResponse;
-        }
-
-        /// <summary>
-        /// Indica se un errore è un limite di frequenza: rate_limit_exceeded o 429 senza codice
-        /// </summary>
-        /// <param name="error">Errore della richiesta</param>
-        /// <returns>True per il limite di frequenza; quota e limite del piano hanno un codice proprio e restano fuori</returns>
-        private static bool IsRateLimit(AiServiceException error)
-        {
-            return error.ServiceCode == "rate_limit_exceeded" || (error.HttpStatus == 429 && string.IsNullOrEmpty(error.ServiceCode));
         }
 
         /// <summary>

@@ -353,6 +353,25 @@ namespace RemuxForge.Core.Models
         /// </summary>
         public AiUsage Usage { get; set; }
 
+        /// <summary>
+        /// Limite di frequenza: rate_limit_exceeded o 429 senza codice; quota e limite del piano hanno un codice proprio e restano
+        /// fuori
+        /// </summary>
+        public bool IsRateLimit { get { return this.ServiceCode == "rate_limit_exceeded" || (this.HttpStatus == 429 && this.ServiceCode.Length == 0); } }
+
+        /// <summary>
+        /// Errore transitorio, da ripetere con la richiesta intera: limite di frequenza, servizio non disponibile, 5xx, errore di rete
+        /// e stream finito senza evento finale, l'unica origine di InvalidResponse nelle risposte della Responses API
+        /// </summary>
+        public bool IsTransient
+        {
+            get
+            {
+                return this.IsRateLimit || this.ServiceCode == "subscription_sharing_usage_unavailable" || this.HttpStatus >= 500 ||
+                    this.Kind == AiErrorKind.Network || this.Kind == AiErrorKind.InvalidResponse;
+            }
+        }
+
         #endregion
     }
 

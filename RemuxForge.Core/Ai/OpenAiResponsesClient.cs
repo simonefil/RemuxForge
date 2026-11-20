@@ -131,8 +131,9 @@ namespace RemuxForge.Core.Ai
                         status = (int)response.StatusCode;
                     }
                 }
-                catch (HttpRequestException ex)
+                catch (Exception ex) when (ex is HttpRequestException || ex is IOException || (ex is OperationCanceledException && !cancellationToken.IsCancellationRequested))
                 {
+                    // Il timeout del client arriva come annullamento senza che l'operazione sia ferma
                     throw new AiServiceException(AiErrorKind.Network, AppText.F("ai.error.network", ex.Message), ex);
                 }
             }
@@ -258,12 +259,9 @@ namespace RemuxForge.Core.Ai
                         }
                     }
                 }
-                catch (HttpRequestException ex)
+                catch (Exception ex) when (ex is HttpRequestException || ex is IOException || (ex is OperationCanceledException && !cancellationToken.IsCancellationRequested))
                 {
-                    throw new AiServiceException(AiErrorKind.Network, AppText.F("ai.error.network", ex.Message), ex);
-                }
-                catch (IOException ex)
-                {
+                    // Il timeout del client e lo stream fermo arrivano come annullamento senza che l'operazione sia ferma
                     throw new AiServiceException(AiErrorKind.Network, AppText.F("ai.error.network", ex.Message), ex);
                 }
             }
@@ -338,21 +336,13 @@ namespace RemuxForge.Core.Ai
             string searchQuery = "";
             int written = 0;
 
-            // HttpClient.Timeout copre solo l'attesa degli header: uno stream fermo senza chiudersi diventa un errore di rete come
-            // una connessione caduta, e ogni riga ricevuta riapre l'attesa
+            // HttpClient.Timeout copre solo l'attesa degli header: uno stream fermo senza chiudersi si annulla e il chiamante lo
+            // converte in errore di rete come una connessione caduta; ogni riga ricevuta riapre l'attesa
             using CancellationTokenSource idle = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             while (true)
             {
-                string line;
                 idle.CancelAfter(STREAM_IDLE_TIMEOUT);
-                try
-                {
-                    line = await reader.ReadLineAsync(idle.Token);
-                }
-                catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested)
-                {
-                    throw new AiServiceException(AiErrorKind.Network, AppText.F("ai.error.network", ex.Message), ex);
-                }
+                string line = await reader.ReadLineAsync(idle.Token);
                 if (line == null)
                     break;
 
