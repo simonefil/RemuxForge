@@ -16,7 +16,7 @@ namespace RemuxForge.Core.Ai
         /// <summary>
         /// Tentativi massimi per richiesta della politica predefinita
         /// </summary>
-        public const int DEFAULT_MAX_ATTEMPTS = 5;
+        private const int DEFAULT_MAX_ATTEMPTS = 5;
 
         /// <summary>
         /// Variazione casuale massima del backoff, in frazione dell'attesa
@@ -26,6 +26,26 @@ namespace RemuxForge.Core.Ai
         #endregion
 
         #region Variabili di classe
+
+        /// <summary>
+        /// Tentativi massimi per richiesta
+        /// </summary>
+        private readonly int _maxAttempts;
+
+        /// <summary>
+        /// Attesa del primo ritentativo
+        /// </summary>
+        private readonly TimeSpan _baseDelay;
+
+        /// <summary>
+        /// Tetto dell'attesa calcolata col backoff
+        /// </summary>
+        private readonly TimeSpan _maxDelay;
+
+        /// <summary>
+        /// Tetto dell'attesa chiesta con Retry-After
+        /// </summary>
+        private readonly TimeSpan _maxRetryAfter;
 
         /// <summary>
         /// Protegge l'istante della pausa condivisa
@@ -48,12 +68,12 @@ namespace RemuxForge.Core.Ai
         /// <param name="baseDelay">Attesa del primo ritentativo</param>
         /// <param name="maxDelay">Tetto dell'attesa calcolata col backoff</param>
         /// <param name="maxRetryAfter">Tetto dell'attesa chiesta dal servizio con Retry-After</param>
-        public AiRetryPolicy(int maxAttempts, TimeSpan baseDelay, TimeSpan maxDelay, TimeSpan maxRetryAfter)
+        private AiRetryPolicy(int maxAttempts, TimeSpan baseDelay, TimeSpan maxDelay, TimeSpan maxRetryAfter)
         {
-            this.MaxAttempts = Math.Max(1, maxAttempts);
-            this.BaseDelay = baseDelay;
-            this.MaxDelay = maxDelay;
-            this.MaxRetryAfter = maxRetryAfter;
+            this._maxAttempts = Math.Max(1, maxAttempts);
+            this._baseDelay = baseDelay;
+            this._maxDelay = maxDelay;
+            this._maxRetryAfter = maxRetryAfter;
             this._pauseLock = new object();
             this._notBeforeUtc = DateTime.MinValue;
         }
@@ -109,7 +129,7 @@ namespace RemuxForge.Core.Ai
                         }
                     }
 
-                    if (number >= this.MaxAttempts || !IsTransient(ex))
+                    if (number >= this._maxAttempts || !IsTransient(ex))
                         throw;
 
                     if (!rateLimit)
@@ -118,18 +138,22 @@ namespace RemuxForge.Core.Ai
             }
         }
 
+        #endregion
+
+        #region Metodi privati
+
         /// <summary>
         /// Calcola l'attesa prima del ritentativo: Retry-After positivo entro il suo tetto, altrimenti il backoff con variazione casuale
         /// </summary>
         /// <param name="attempt">Tentativo fallito, da 1</param>
         /// <param name="error">Errore del tentativo</param>
         /// <returns>Attesa</returns>
-        public TimeSpan GetDelay(int attempt, AiServiceException error)
+        private TimeSpan GetDelay(int attempt, AiServiceException error)
         {
             if (error.RetryAfter.HasValue && error.RetryAfter.Value > TimeSpan.Zero)
-                return error.RetryAfter.Value < this.MaxRetryAfter ? error.RetryAfter.Value : this.MaxRetryAfter;
+                return error.RetryAfter.Value < this._maxRetryAfter ? error.RetryAfter.Value : this._maxRetryAfter;
 
-            double backoffMs = Math.Min(this.MaxDelay.TotalMilliseconds, this.BaseDelay.TotalMilliseconds * Math.Pow(2, attempt - 1));
+            double backoffMs = Math.Min(this._maxDelay.TotalMilliseconds, this._baseDelay.TotalMilliseconds * Math.Pow(2, attempt - 1));
             double factor = 1.0 - JITTER_FRACTION + Random.Shared.NextDouble() * 2.0 * JITTER_FRACTION;
             return TimeSpan.FromMilliseconds(backoffMs * factor);
         }
@@ -139,7 +163,7 @@ namespace RemuxForge.Core.Ai
         /// </summary>
         /// <param name="error">Errore della richiesta</param>
         /// <returns>True per limite di frequenza, 503 e 5xx, errori di rete e stream finito senza evento finale</returns>
-        public static bool IsTransient(AiServiceException error)
+        private static bool IsTransient(AiServiceException error)
         {
             if (IsRateLimit(error))
                 return true;
@@ -156,14 +180,10 @@ namespace RemuxForge.Core.Ai
         /// </summary>
         /// <param name="error">Errore della richiesta</param>
         /// <returns>True per il limite di frequenza; quota e limite del piano hanno un codice proprio e restano fuori</returns>
-        public static bool IsRateLimit(AiServiceException error)
+        private static bool IsRateLimit(AiServiceException error)
         {
             return error.ServiceCode == "rate_limit_exceeded" || (error.HttpStatus == 429 && string.IsNullOrEmpty(error.ServiceCode));
         }
-
-        #endregion
-
-        #region Metodi privati
 
         /// <summary>
         /// Restituisce il tempo che manca alla fine della pausa condivisa
@@ -176,30 +196,6 @@ namespace RemuxForge.Core.Ai
                 return this._notBeforeUtc - DateTime.UtcNow;
             }
         }
-
-        #endregion
-
-        #region Proprietà
-
-        /// <summary>
-        /// Tentativi massimi per richiesta
-        /// </summary>
-        public int MaxAttempts { get; private set; }
-
-        /// <summary>
-        /// Attesa del primo ritentativo
-        /// </summary>
-        public TimeSpan BaseDelay { get; private set; }
-
-        /// <summary>
-        /// Tetto dell'attesa calcolata col backoff
-        /// </summary>
-        public TimeSpan MaxDelay { get; private set; }
-
-        /// <summary>
-        /// Tetto dell'attesa chiesta con Retry-After
-        /// </summary>
-        public TimeSpan MaxRetryAfter { get; private set; }
 
         #endregion
     }
