@@ -131,10 +131,15 @@
                                                  })"
                                                  BadgeStyle="@(file.Outcome switch
                                                  {
-                                                     TrackExtractionFileOutcome.Reading or TrackExtractionFileOutcome.Running => BadgeStyle.Info,
+                                                     TrackExtractionFileOutcome.Reading => BadgeStyle.Info,
+                                                     TrackExtractionFileOutcome.Running => BadgeStyle.Info,
                                                      TrackExtractionFileOutcome.Extracted => BadgeStyle.Success,
-                                                     TrackExtractionFileOutcome.Unreadable or TrackExtractionFileOutcome.Failed => BadgeStyle.Danger,
-                                                     TrackExtractionFileOutcome.ExtractedWithWarnings or TrackExtractionFileOutcome.Partial or TrackExtractionFileOutcome.Stopped or TrackExtractionFileOutcome.NotRead => BadgeStyle.Warning,
+                                                     TrackExtractionFileOutcome.Unreadable => BadgeStyle.Danger,
+                                                     TrackExtractionFileOutcome.Failed => BadgeStyle.Danger,
+                                                     TrackExtractionFileOutcome.ExtractedWithWarnings => BadgeStyle.Warning,
+                                                     TrackExtractionFileOutcome.Partial => BadgeStyle.Warning,
+                                                     TrackExtractionFileOutcome.Stopped => BadgeStyle.Warning,
+                                                     TrackExtractionFileOutcome.NotRead => BadgeStyle.Warning,
                                                      _ => BadgeStyle.Base
                                                  })" />
                                 </Template>
@@ -169,7 +174,7 @@
                         <div class="rf-tool-field">
                             <RadzenLabel class="rf-tool-label" Text="@AppText.T("web.toolbox.trackExtraction.kind")" Component="TrackExtractionKinds" />
                             <RadzenDropDown TValue="IEnumerable<TrackExtractionKind>" Name="TrackExtractionKinds" class="rf-tool-filter"
-                                            Data="@(new List<KeyValuePair<TrackExtractionKind, string>> { new(TrackExtractionKind.Audio, AppText.T("web.toolbox.trackExtraction.kindAudio")), new(TrackExtractionKind.Subtitles, AppText.T("web.toolbox.trackExtraction.kindSubtitles")) })"
+                                            Data="@(new List<KeyValuePair<TrackExtractionKind, string>> { new KeyValuePair<TrackExtractionKind, string>(TrackExtractionKind.Audio, AppText.T("web.toolbox.trackExtraction.kindAudio")), new KeyValuePair<TrackExtractionKind, string>(TrackExtractionKind.Subtitles, AppText.T("web.toolbox.trackExtraction.kindSubtitles")) })"
                                             TextProperty="Value" ValueProperty="Key" Multiple="true" AllowSelectAll="false" AllowClear="true" Disabled="@busy"
                                             Placeholder="@AppText.T("web.toolbox.trackExtraction.allKinds")"
                                             Value="@Orchestrator.Kinds"
@@ -303,7 +308,8 @@
                                  TrackExtractionStatus.Running => BadgeStyle.Info,
                                  TrackExtractionStatus.Extracted => BadgeStyle.Success,
                                  TrackExtractionStatus.Failed => BadgeStyle.Danger,
-                                 TrackExtractionStatus.ExtractedWithWarnings or TrackExtractionStatus.Stopped => BadgeStyle.Warning,
+                                 TrackExtractionStatus.ExtractedWithWarnings => BadgeStyle.Warning,
+                                 TrackExtractionStatus.Stopped => BadgeStyle.Warning,
                                  _ => BadgeStyle.Base
                              })" />
             }

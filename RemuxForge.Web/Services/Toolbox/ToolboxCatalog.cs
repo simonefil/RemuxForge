@@ -46,15 +46,6 @@ namespace RemuxForge.Web.Services.Toolbox
 
         #endregion
 
-        #region Proprietà
-
-        /// <summary>
-        /// Card nell'ordine della home
-        /// </summary>
-        public IReadOnlyList<ToolboxCard> Cards { get; }
-
-        #endregion
-
         #region Metodi pubblici
 
         /// <summary>
@@ -97,6 +88,15 @@ namespace RemuxForge.Web.Services.Toolbox
 
             return false;
         }
+
+        #endregion
+
+        #region Proprietà
+
+        /// <summary>
+        /// Card nell'ordine della home
+        /// </summary>
+        public IReadOnlyList<ToolboxCard> Cards { get; }
 
         #endregion
     }

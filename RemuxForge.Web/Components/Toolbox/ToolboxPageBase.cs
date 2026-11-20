@@ -39,7 +39,7 @@ namespace RemuxForge.Web.Components.Toolbox
         #region Metodi pubblici
 
         /// <summary>
-        /// Comandi della pagina per menu, toolbar, status bar e tastiera
+        /// Comandi della pagina per menu, toolbar e tastiera
         /// </summary>
         /// <param name="busy">True se una card sta eseguendo un'operazione</param>
         /// <returns>Comandi del tool, senza quelli comuni della dashboard</returns>

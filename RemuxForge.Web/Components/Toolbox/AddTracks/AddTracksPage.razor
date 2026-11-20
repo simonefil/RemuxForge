@@ -127,7 +127,8 @@
                                                  AddTracksStatus.Running => BadgeStyle.Info,
                                                  AddTracksStatus.Added => BadgeStyle.Success,
                                                  AddTracksStatus.Failed => BadgeStyle.Danger,
-                                                 AddTracksStatus.AddedWithWarnings or AddTracksStatus.Stopped => BadgeStyle.Warning,
+                                                 AddTracksStatus.AddedWithWarnings => BadgeStyle.Warning,
+                                                 AddTracksStatus.Stopped => BadgeStyle.Warning,
                                                  _ => BadgeStyle.Base
                                              })" />
                             </Template>

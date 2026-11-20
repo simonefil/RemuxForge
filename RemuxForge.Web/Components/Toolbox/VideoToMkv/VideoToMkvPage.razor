@@ -53,7 +53,8 @@
                                          VideoToMkvStatus.Running => BadgeStyle.Info,
                                          VideoToMkvStatus.Converted => BadgeStyle.Success,
                                          VideoToMkvStatus.Failed => BadgeStyle.Danger,
-                                         VideoToMkvStatus.ConvertedWithWarnings or VideoToMkvStatus.Stopped => BadgeStyle.Warning,
+                                         VideoToMkvStatus.ConvertedWithWarnings => BadgeStyle.Warning,
+                                         VideoToMkvStatus.Stopped => BadgeStyle.Warning,
                                          _ => BadgeStyle.Base
                                      })" />
                     </Template>

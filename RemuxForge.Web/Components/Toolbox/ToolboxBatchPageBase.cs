@@ -21,7 +21,7 @@ namespace RemuxForge.Web.Components.Toolbox
         where TOrchestrator : ToolboxOrchestratorBase<TRecord>
         where TRecord : ToolboxRecord
     {
-        #region Servizi
+        #region Servizi iniettati
 
         /// <summary>
         /// Orchestratore della card, singleton che sopravvive alla pagina

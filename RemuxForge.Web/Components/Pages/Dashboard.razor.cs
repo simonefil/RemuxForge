@@ -2115,7 +2115,7 @@ namespace RemuxForge.Web.Components.Pages
         /// <summary>
         /// Costruisce la definizione condivisa dei comandi della card corrente o della home
         /// </summary>
-        /// <returns>Comandi per menu, toolbar e status bar</returns>
+        /// <returns>Comandi per menu, toolbar e tastiera</returns>
         private IReadOnlyList<UiCommandDefinition> BuildUiCommands()
         {
             bool busy = this.ToolboxCatalog.IsAnyBusy();
