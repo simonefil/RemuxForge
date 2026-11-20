@@ -167,7 +167,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         if (usage.Continued[i])
                             unit.Continued.Add(unit.Texts.Count);
                         unit.Texts.Add(usage.Texts[i]);
-                        unit.Lines.Add(new KeyValuePair<string, int>(file.Key, usage.Positions[i]));
+                        unit.TextFileIds.Add(file.Key);
                         SubtitleCue cue;
                         if (!byPosition.TryGetValue(usage.Positions[i], out cue) || !cue.Id.HasValue)
                             continue;
@@ -190,19 +190,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 unit.RepeatedLines = stretch.Lines.Count;
                 HashSet<string> covered = new HashSet<string>(StringComparer.Ordinal);
                 foreach (SharedStretchOccurrence occurrence in stretch.Occurrences)
-                {
                     covered.Add(occurrence.FileId);
-                    foreach (KeyValuePair<string, SubtitleTranslationDocument> file in files)
-                    {
-                        if (file.Key != occurrence.FileId)
-                            continue;
-                        foreach (SubtitleCue cue in file.Value.Cues)
-                        {
-                            if (cue.Id.HasValue && occurrence.Ids.Contains(cue.Id.Value))
-                                unit.Lines.Add(new KeyValuePair<string, int>(file.Key, cue.Position));
-                        }
-                    }
-                }
                 unit.Files = covered.Count;
                 plan.Units.Add(unit);
             }
@@ -265,7 +253,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 {
                     if (!unit.Continued.Contains(t))
                         lengths.Add(new StringInfo(unit.Texts[t]).LengthInTextElements);
-                    string fileId = t < unit.Lines.Count ? unit.Lines[t].Key : "";
+                    string fileId = t < unit.TextFileIds.Count ? unit.TextFileIds[t] : "";
                     if (fileId != lastFile || distinct.Count == 0)
                     {
                         distinct.Add(new List<string>());
@@ -691,7 +679,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             this.IsStretch = isStretch;
             this.Texts = new List<string>();
             this.Continued = new HashSet<int>();
-            this.Lines = new List<KeyValuePair<string, int>>();
+            this.TextFileIds = new List<string>();
             this.Kind = null;
             this.LineKinds = null;
         }
@@ -736,9 +724,9 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public HashSet<int> Continued { get; }
 
         /// <summary>
-        /// File e posizione delle battute dell'unità: della combinazione nell'ordine di Texts, della tratta in ogni occorrenza
+        /// File di ogni riga di Texts per una combinazione, vuoto per una tratta
         /// </summary>
-        public List<KeyValuePair<string, int>> Lines { get; }
+        public List<string> TextFileIds { get; }
 
         /// <summary>
         /// Righe con karaoke o Effect del templater

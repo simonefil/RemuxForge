@@ -16,12 +16,12 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <summary>
         /// Occorrenze minime nel progetto di un candidato presente in un solo file
         /// </summary>
-        public const int MIN_COUNT = 2;
+        private const int MIN_COUNT = 2;
 
         /// <summary>
         /// Candidati massimi, per conteggio decrescente
         /// </summary>
-        public const int MAX_CANDIDATES = 80;
+        private const int MAX_CANDIDATES = 80;
 
         /// <summary>
         /// Vocativi minimi di una parola che compare solo a inizio frase
