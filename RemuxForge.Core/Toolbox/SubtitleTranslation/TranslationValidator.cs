@@ -89,11 +89,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         };
 
         /// <summary>
-        /// Sintassi dei segni ben formati
-        /// </summary>
-        private static readonly Regex s_markSyntax = new Regex("⟦[0-9]+ |⟧", RegexOptions.Compiled | RegexOptions.CultureInvariant);
-
-        /// <summary>
         /// Controlli invisibili di a capo e di legatura: spazio a larghezza zero, ZWNJ, ZWJ, word joiner, ZWNBSP
         /// </summary>
         private static readonly HashSet<char> s_lineControls = new HashSet<char> { '\u200B', '\u200C', '\u200D', '\u2060', '\uFEFF' };
@@ -401,7 +396,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 {
                     texts = new List<string>();
                     foreach (string text in sourceTexts)
-                        texts.Add(s_markSyntax.Replace(text, "").Replace('’', '\''));
+                        texts.Add(SubtitleCueCleaner.RemoveMarks(text).Replace('’', '\''));
                 }
 
                 // Il termine con le sue maiuscole, preceduto da una parola senza un fine frase in mezzo
@@ -468,7 +463,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <returns>Testo per il confronto</returns>
         internal static string GlossaryPlain(string text)
         {
-            return s_markSyntax.Replace(text, "").Replace('\n', ' ').Replace('’', '\'');
+            return SubtitleCueCleaner.RemoveMarks(text).Replace('\n', ' ').Replace('’', '\'');
         }
 
         #endregion
