@@ -65,6 +65,16 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public const int TAIL_PAIRS = 15;
 
         /// <summary>
+        /// Richieste con risposta al massimo per una sequenza del riconoscimento dei tipi, dell'analisi o della fusione
+        /// </summary>
+        public const int MAX_ROUNDS = 3;
+
+        /// <summary>
+        /// Caratteri per token nella stima dell'ingresso
+        /// </summary>
+        public const int CHARS_PER_TOKEN = 4;
+
+        /// <summary>
         /// Passo dell'analisi sulle forme di cortesia per le lingue senza forme grammaticali
         /// </summary>
         private const string GENERIC_ADDRESS_PROCEDURE = "Describe in register_rules how formal each recurring character is with the others.";
@@ -241,6 +251,29 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         #region Metodi pubblici
 
         /// <summary>
+        /// Stima i token di un testo mandato al modello
+        /// </summary>
+        /// <param name="text">Testo</param>
+        /// <returns>Token stimati</returns>
+        public static int EstimateTokens(string text)
+        {
+            return (text.Length + CHARS_PER_TOKEN - 1) / CHARS_PER_TOKEN;
+        }
+
+        /// <summary>
+        /// Crea un elenco JSON di stringhe
+        /// </summary>
+        /// <param name="values">Valori</param>
+        /// <returns>Elenco JSON</returns>
+        public static JsonArray CreateArray(IEnumerable<string> values)
+        {
+            JsonArray array = new JsonArray();
+            foreach (string value in values)
+                array.Add(value);
+            return array;
+        }
+
+        /// <summary>
         /// Scrive gli id come intervalli, per esempio 39-98 o 44,61-63
         /// </summary>
         /// <param name="ids">Id, in qualunque ordine</param>
@@ -378,8 +411,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         {
             JsonNode tool = JsonNode.Parse(SUBMIT_DIAGNOSIS_JSON);
             JsonNode issue = tool["parameters"]["properties"]["issues"]["items"]["properties"];
-            issue["category"]["enum"] = GlossaryBuilder.CreateArray(DIAGNOSIS_CATEGORIES);
-            issue["severity"]["enum"] = GlossaryBuilder.CreateArray(DIAGNOSIS_SEVERITIES);
+            issue["category"]["enum"] = CreateArray(DIAGNOSIS_CATEGORIES);
+            issue["severity"]["enum"] = CreateArray(DIAGNOSIS_SEVERITIES);
             return new JsonArray(tool);
         }
 

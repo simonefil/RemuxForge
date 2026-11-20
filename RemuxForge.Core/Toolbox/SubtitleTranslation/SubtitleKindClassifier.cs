@@ -360,10 +360,10 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         ["type"] = "object",
                         ["properties"] = new JsonObject
                         {
-                            ["unit"] = new JsonObject { ["type"] = "string", ["enum"] = GlossaryBuilder.CreateArray(styleIds) },
-                            ["kind"] = new JsonObject { ["type"] = "string", ["enum"] = GlossaryBuilder.CreateArray(s_kinds) }
+                            ["unit"] = new JsonObject { ["type"] = "string", ["enum"] = TranslationRequestBuilder.CreateArray(styleIds) },
+                            ["kind"] = new JsonObject { ["type"] = "string", ["enum"] = TranslationRequestBuilder.CreateArray(s_kinds) }
                         },
-                        ["required"] = GlossaryBuilder.CreateArray(new string[] { "unit", "kind" }),
+                        ["required"] = TranslationRequestBuilder.CreateArray(new string[] { "unit", "kind" }),
                         ["additionalProperties"] = false
                     }
                 };
@@ -379,7 +379,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         ["type"] = "object",
                         ["properties"] = new JsonObject
                         {
-                            ["unit"] = new JsonObject { ["type"] = "string", ["enum"] = GlossaryBuilder.CreateArray(plan.AskedStretchIds) },
+                            ["unit"] = new JsonObject { ["type"] = "string", ["enum"] = TranslationRequestBuilder.CreateArray(plan.AskedStretchIds) },
                             ["segments"] = new JsonObject
                             {
                                 ["type"] = "array",
@@ -389,14 +389,14 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                                     ["properties"] = new JsonObject
                                     {
                                         ["first_line"] = new JsonObject { ["type"] = "integer" },
-                                        ["kind"] = new JsonObject { ["type"] = "string", ["enum"] = GlossaryBuilder.CreateArray(s_kinds) }
+                                        ["kind"] = new JsonObject { ["type"] = "string", ["enum"] = TranslationRequestBuilder.CreateArray(s_kinds) }
                                     },
-                                    ["required"] = GlossaryBuilder.CreateArray(new string[] { "first_line", "kind" }),
+                                    ["required"] = TranslationRequestBuilder.CreateArray(new string[] { "first_line", "kind" }),
                                     ["additionalProperties"] = false
                                 }
                             }
                         },
-                        ["required"] = GlossaryBuilder.CreateArray(new string[] { "unit", "segments" }),
+                        ["required"] = TranslationRequestBuilder.CreateArray(new string[] { "unit", "segments" }),
                         ["additionalProperties"] = false
                     }
                 };
@@ -548,7 +548,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 }
 
                 outputs.Add(new KeyValuePair<string, string>(AiJson.GetString(call, "call_id"),
-                    new JsonObject { ["valid"] = errors.Count == 0, ["errors"] = GlossaryBuilder.CreateArray(errors) }.ToJsonString()));
+                    new JsonObject { ["valid"] = errors.Count == 0, ["errors"] = TranslationRequestBuilder.CreateArray(errors) }.ToJsonString()));
             }
 
             if (accepted != null)

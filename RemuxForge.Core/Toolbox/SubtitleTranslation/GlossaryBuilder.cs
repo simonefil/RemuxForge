@@ -55,19 +55,9 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public const string SUBMIT_TOOL = "submit_glossary";
 
         /// <summary>
-        /// Richieste con risposta al massimo per una sequenza del riconoscimento dei tipi, dell'analisi o della fusione
-        /// </summary>
-        public const int MAX_ROUNDS = 3;
-
-        /// <summary>
         /// Token stimati sotto cui tutti i file vanno in una sola analisi
         /// </summary>
         public const int SINGLE_ANALYSIS_TOKENS = 30000;
-
-        /// <summary>
-        /// Caratteri per token nella stima dell'ingresso
-        /// </summary>
-        public const int CHARS_PER_TOKEN = 4;
 
         /// <summary>
         /// Messaggio di consegna mancante
@@ -205,11 +195,11 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         {
                             ["source"] = new JsonObject { ["type"] = "string", ["description"] = "Term as it appears in the source, without a leading article." },
                             ["target"] = new JsonObject { ["type"] = "string", ["description"] = "Rendering in the target language, without a leading article; identical to source if it stays untranslated." },
-                            ["kind"] = new JsonObject { ["type"] = "string", ["enum"] = CreateArray(s_termKinds) },
+                            ["kind"] = new JsonObject { ["type"] = "string", ["enum"] = TranslationRequestBuilder.CreateArray(s_termKinds) },
                             ["invariable"] = new JsonObject { ["type"] = "boolean", ["description"] = "True for proper names that never inflect and must appear verbatim." },
-                            ["note"] = new JsonObject { ["type"] = CreateArray(new string[] { "string", "null" }), ["description"] = "Usage hints, inflection, alternatives considered; null if none." }
+                            ["note"] = new JsonObject { ["type"] = TranslationRequestBuilder.CreateArray(new string[] { "string", "null" }), ["description"] = "Usage hints, inflection, alternatives considered; null if none." }
                         },
-                        ["required"] = CreateArray(new string[] { "source", "target", "kind", "invariable", "note" }),
+                        ["required"] = TranslationRequestBuilder.CreateArray(new string[] { "source", "target", "kind", "invariable", "note" }),
                         ["additionalProperties"] = false
                     }
                 },
@@ -222,11 +212,11 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         ["properties"] = new JsonObject
                         {
                             ["name"] = new JsonObject { ["type"] = "string" },
-                            ["gender"] = new JsonObject { ["type"] = "string", ["enum"] = CreateArray(s_genders) },
+                            ["gender"] = new JsonObject { ["type"] = "string", ["enum"] = TranslationRequestBuilder.CreateArray(s_genders) },
                             ["role"] = new JsonObject { ["type"] = "string" },
                             ["relationships"] = new JsonObject { ["type"] = "string" }
                         },
-                        ["required"] = CreateArray(new string[] { "name", "gender", "role", "relationships" }),
+                        ["required"] = TranslationRequestBuilder.CreateArray(new string[] { "name", "gender", "role", "relationships" }),
                         ["additionalProperties"] = false
                     }
                 }
@@ -235,7 +225,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 
             if (this._addressForms != null)
             {
-                JsonObject form = new JsonObject { ["type"] = "string", ["enum"] = CreateArray(this._addressForms) };
+                JsonObject form = new JsonObject { ["type"] = "string", ["enum"] = TranslationRequestBuilder.CreateArray(this._addressForms) };
                 if (!string.IsNullOrEmpty(formDescription))
                     form["description"] = formDescription;
 
@@ -250,9 +240,9 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                             ["speaker"] = new JsonObject { ["type"] = "string" },
                             ["addressee"] = new JsonObject { ["type"] = "string" },
                             ["form"] = form,
-                            ["note"] = new JsonObject { ["type"] = CreateArray(new string[] { "string", "null" }) }
+                            ["note"] = new JsonObject { ["type"] = TranslationRequestBuilder.CreateArray(new string[] { "string", "null" }) }
                         },
-                        ["required"] = CreateArray(new string[] { "speaker", "addressee", "form", "note" }),
+                        ["required"] = TranslationRequestBuilder.CreateArray(new string[] { "speaker", "addressee", "form", "note" }),
                         ["additionalProperties"] = false
                     }
                 };
@@ -269,7 +259,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 {
                     ["type"] = "object",
                     ["properties"] = properties,
-                    ["required"] = CreateArray(required),
+                    ["required"] = TranslationRequestBuilder.CreateArray(required),
                     ["additionalProperties"] = false
                 }
             };
@@ -413,7 +403,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     }
                 }
 
-                outputs.Add(new KeyValuePair<string, string>(AiJson.GetString(call, "call_id"), new JsonObject { ["valid"] = errors.Count == 0, ["errors"] = CreateArray(errors) }.ToJsonString()));
+                outputs.Add(new KeyValuePair<string, string>(AiJson.GetString(call, "call_id"), new JsonObject { ["valid"] = errors.Count == 0, ["errors"] = TranslationRequestBuilder.CreateArray(errors) }.ToJsonString()));
             }
 
             // Con una consegna valida la sequenza è finita: gli esiti servono solo al giro successivo
@@ -604,7 +594,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     string note = JoinNotes(variant.Value, t => t.Note);
                     if (!string.IsNullOrEmpty(note))
                         entry["note"] = note;
-                    entry["episodes"] = CreateArray(GetLabels(variant.Value, episodes));
+                    entry["episodes"] = TranslationRequestBuilder.CreateArray(GetLabels(variant.Value, episodes));
                     list.Add(entry);
                 }
 
@@ -648,7 +638,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         ["gender"] = character.Gender.ToString().ToLowerInvariant(),
                         ["role"] = character.Role,
                         ["relationships"] = character.Relationships,
-                        ["episodes"] = CreateArray(GetLabels(variant.Value, episodes))
+                        ["episodes"] = TranslationRequestBuilder.CreateArray(GetLabels(variant.Value, episodes))
                     });
                 }
 
@@ -684,7 +674,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     string note = JoinNotes(variant.Value, a => a.Note);
                     if (!string.IsNullOrEmpty(note))
                         entry["note"] = note;
-                    entry["episodes"] = CreateArray(GetLabels(variant.Value, episodes));
+                    entry["episodes"] = TranslationRequestBuilder.CreateArray(GetLabels(variant.Value, episodes));
                     list.Add(entry);
                 }
 
@@ -992,16 +982,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             return CharacterKey(speaker) + "\u0001" + CharacterKey(addressee);
         }
 
-        /// <summary>
-        /// Stima i token di un testo mandato al modello
-        /// </summary>
-        /// <param name="text">Testo</param>
-        /// <returns>Token stimati</returns>
-        public static int EstimateTokens(string text)
-        {
-            return (text.Length + CHARS_PER_TOKEN - 1) / CHARS_PER_TOKEN;
-        }
-
         #endregion
 
         #region Metodi privati
@@ -1266,19 +1246,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             }
 
             return null;
-        }
-
-        /// <summary>
-        /// Crea un elenco JSON di stringhe
-        /// </summary>
-        /// <param name="values">Valori</param>
-        /// <returns>Elenco JSON</returns>
-        internal static JsonArray CreateArray(IEnumerable<string> values)
-        {
-            JsonArray array = new JsonArray();
-            foreach (string value in values)
-                array.Add(value);
-            return array;
         }
 
         #endregion

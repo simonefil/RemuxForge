@@ -1598,7 +1598,7 @@ namespace RemuxForge.Web.Services.Toolbox
                     string tools = builder.CreateTools(webSearch).ToJsonString();
                     long tokens = 0;
                     for (int i = 0; i < plan.Units.Count; i++)
-                        tokens += GlossaryBuilder.EstimateTokens(builder.AnalysisInstructions + tools + plan.Messages[i]);
+                        tokens += TranslationRequestBuilder.EstimateTokens(builder.AnalysisInstructions + tools + plan.Messages[i]);
                     this.AppendLog(AppText.F(TEXT_PREFIX + ".analysisEstimateAfterKinds", plan.Units.Count, tokens.ToString("N0", CultureInfo.CurrentCulture)));
                 }
 
@@ -2200,7 +2200,7 @@ namespace RemuxForge.Web.Services.Toolbox
             }
 
             string allMessage = builder.CreateAnalysisMessage(project.Context, plan.Loaded, plan.Candidates, episodes, episodes);
-            if (episodes.Count == 1 || GlossaryBuilder.EstimateTokens(builder.AnalysisInstructions + allMessage) < GlossaryBuilder.SINGLE_ANALYSIS_TOKENS)
+            if (episodes.Count == 1 || TranslationRequestBuilder.EstimateTokens(builder.AnalysisInstructions + allMessage) < GlossaryBuilder.SINGLE_ANALYSIS_TOKENS)
             {
                 plan.Units.Add(episodes);
                 plan.Messages.Add(allMessage);
@@ -2345,7 +2345,7 @@ namespace RemuxForge.Web.Services.Toolbox
             JsonArray input = new JsonArray(TranslationRequestBuilder.CreateUserMessage(message));
             List<string> errors = new List<string>();
 
-            for (int round = 1; round <= GlossaryBuilder.MAX_ROUNDS; round++)
+            for (int round = 1; round <= TranslationRequestBuilder.MAX_ROUNDS; round++)
             {
                 TranslationTransportAttempt delivered = null;
                 int currentRound = round;
@@ -2415,7 +2415,7 @@ namespace RemuxForge.Web.Services.Toolbox
                     string.Join(", ", TranslationValidationIssue.ReadCodes(errors).ConvertAll(c => AppText.T(TranslationValidationIssue.REASON_KEY_PREFIX + c)))));
             }
 
-            throw new AiServiceException(AiErrorKind.InvalidResponse, AppText.F(TEXT_PREFIX + ".deliveryInvalid", GlossaryBuilder.MAX_ROUNDS,
+            throw new AiServiceException(AiErrorKind.InvalidResponse, AppText.F(TEXT_PREFIX + ".deliveryInvalid", TranslationRequestBuilder.MAX_ROUNDS,
                 string.Join(", ", TranslationValidationIssue.ReadCodes(errors).ConvertAll(c => AppText.T(TranslationValidationIssue.REASON_KEY_PREFIX + c)))));
         }
 

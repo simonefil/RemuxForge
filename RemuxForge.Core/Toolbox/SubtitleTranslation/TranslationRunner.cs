@@ -137,8 +137,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 TranslationJobFileState state = file.State;
                 HashSet<int> copies = SharedStretch.MovingSignCopies(stretches, state.FileId);
                 string prefix = TranslationRequestBuilder.CreateTranslationPrefix(context, glossary, file.FileName, state.Cues.FindAll(c => !copies.Contains(c.Id)));
-                int prefixTokens = GlossaryBuilder.EstimateTokens(instructions + tools + prefix);
-                int diagnosisTokens = GlossaryBuilder.EstimateTokens(diagnosis + prefix);
+                int prefixTokens = TranslationRequestBuilder.EstimateTokens(instructions + tools + prefix);
+                int diagnosisTokens = TranslationRequestBuilder.EstimateTokens(diagnosis + prefix);
 
                 // Consegne del file: i blocchi senza le battute delle tratte, poi le tratte di cui il file ha la prima occorrenza
                 Dictionary<int, SharedStretch> shared = SharedStretch.MapFile(stretches, state.FileId);
@@ -167,7 +167,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     List<KeyValuePair<FrozenCue, string>> pairs = new List<KeyValuePair<FrozenCue, string>>();
                     for (int i = Math.Max(0, start - TranslationRequestBuilder.TAIL_PAIRS); i < start; i++)
                         pairs.Add(new KeyValuePair<FrozenCue, string>(state.Cues[i], state.Cues[i].Text));
-                    int unitTokens = prefixTokens + GlossaryBuilder.EstimateTokens(TranslationRequestBuilder.CreateTranslationTail(pairs, requested, new string[0]));
+                    int unitTokens = prefixTokens + TranslationRequestBuilder.EstimateTokens(TranslationRequestBuilder.CreateTranslationTail(pairs, requested, new string[0]));
 
                     int outputChars = 0;
                     Dictionary<int, string> translated = new Dictionary<int, string>();
@@ -176,7 +176,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         outputChars += cue.Text.Length + ESTIMATE_ENTRY_CHARS;
                         translated[cue.Id] = cue.Text;
                     }
-                    int outputTokens = (outputChars + GlossaryBuilder.CHARS_PER_TOKEN - 1) / GlossaryBuilder.CHARS_PER_TOKEN;
+                    int outputTokens = (outputChars + TranslationRequestBuilder.CHARS_PER_TOKEN - 1) / TranslationRequestBuilder.CHARS_PER_TOKEN;
 
                     estimate.Cues += requested.Count;
                     estimate.Blocks++;
@@ -187,7 +187,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         estimate.CachedTokens += (long)(unitTokens * ESTIMATE_CACHED_SHARE);
 
                     // Revisione completa, al massimo: D1 sulla consegna con le traduzioni e un suggerimento per battuta
-                    int diagnosisUnit = diagnosisTokens + GlossaryBuilder.EstimateTokens(TranslationRequestBuilder.CreateDiagnosisTail(requested, translated, new Dictionary<int, List<string>>()));
+                    int diagnosisUnit = diagnosisTokens + TranslationRequestBuilder.EstimateTokens(TranslationRequestBuilder.CreateDiagnosisTail(requested, translated, new Dictionary<int, List<string>>()));
                     reviewInput += diagnosisUnit;
                     reviewOutput += outputTokens;
                     if (cached)
