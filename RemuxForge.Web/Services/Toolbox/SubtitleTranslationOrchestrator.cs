@@ -500,6 +500,7 @@ namespace RemuxForge.Web.Services.Toolbox
             GlossaryImportResult result;
             string name = Path.GetFileName(path);
             byte[] bytes;
+            int discarded = 0;
 
             lock (this.StateLock)
             {
@@ -548,16 +549,16 @@ namespace RemuxForge.Web.Services.Toolbox
                     delivered.Addressing.AddRange(current.Addressing.FindAll(a => a.Origin == GlossaryOrigin.Analysis));
                     this._project.Analysis.DiscardedForImport = new List<GlossaryDiscard>();
                     next = builder.MergeWithImported(delivered, basis, this._project.Analysis.DiscardedForImport);
-                    int discarded = this._project.Analysis.DiscardedForImport.FindAll(d => d.Kind == GlossaryEntryKind.Term || d.Kind == GlossaryEntryKind.Character ||
+                    discarded = this._project.Analysis.DiscardedForImport.FindAll(d => d.Kind == GlossaryEntryKind.Term || d.Kind == GlossaryEntryKind.Character ||
                         d.Kind == GlossaryEntryKind.Addressing).Count;
-                    if (discarded > 0)
-                        this.AppendLog(AppText.Count(TEXT_PREFIX + ".discardedForImport", discarded));
                 }
 
                 next.SourceLanguage = this._project.SourceLanguage;
                 next.TargetLanguage = this._project.TargetLanguage;
                 next.Revision = this._project.Glossary != null ? this._project.Glossary.Revision : 0;
                 next.Status = GlossaryStatus.Draft;
+            if (discarded > 0)
+                this.AppendLog(AppText.Count(TEXT_PREFIX + ".discardedForImport", discarded));
                 builder.SetEpisodes(next, this.GetEpisodes(), this.KindsSettled);
                 this._project.Glossary = next;
                 this._project.ImportedGlossary = new ImportedGlossaryInfo
@@ -2389,7 +2390,12 @@ namespace RemuxForge.Web.Services.Toolbox
                 this.RecordCall(record);
 
                 if (delivery.WebSearchCalls > 0)
-                    this._project.Analysis.WebSearchUsed = true;
+                {
+                    lock (this.StateLock)
+                    {
+                        this._project.Analysis.WebSearchUsed = true;
+                    }
+                }
                 if (delivery.Errors.Count == 0)
                     return delivery;
 

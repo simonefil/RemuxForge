@@ -1715,9 +1715,19 @@
         }
 
         // Il termine nuovo o modificato riprende le maiuscole esatte dalle battute, che ora possono dire altro
-        if (entry is GlossaryTerm changedTerm)
-            changedTerm.ExactCase = null;
-        this.Orchestrator.ChangeGlossary(adding ? add : g => change(entry));
+        this.Orchestrator.ChangeGlossary(g =>
+        {
+            if (entry is GlossaryTerm changedTerm)
+                changedTerm.ExactCase = null;
+            if (adding)
+            {
+                add(g);
+            }
+            else
+            {
+                change(entry);
+            }
+        });
         if (adding)
             this._pending = null;
     }
