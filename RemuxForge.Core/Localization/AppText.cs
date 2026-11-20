@@ -88,6 +88,20 @@ namespace RemuxForge.Core.Localization
         }
 
         /// <summary>
+        /// Restituisce un testo localizzato se la chiave esiste
+        /// </summary>
+        /// <param name="key">Chiave testo</param>
+        /// <param name="text">Testo localizzato, null se la chiave manca</param>
+        /// <returns>True se la chiave esiste</returns>
+        public static bool TryT(string key, out string text)
+        {
+            EnsureInitialized();
+
+            text = null;
+            return key != null && s_texts.TryGetValue(key, out text);
+        }
+
+        /// <summary>
         /// Restituisce un testo localizzato formattato con placeholder posizionali
         /// </summary>
         /// <param name="key">Chiave testo</param>

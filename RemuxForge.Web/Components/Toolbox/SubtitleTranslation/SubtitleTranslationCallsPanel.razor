@@ -31,9 +31,8 @@
                     }
                     @if (!string.IsNullOrEmpty(call.IncompleteReason))
                     {
-                        string incompleteKey = "web.toolbox.subtitleTranslation.calls.incomplete." + call.IncompleteReason;
-                        string incomplete = AppText.T(incompleteKey);
-                        <div>@(incomplete == "[" + incompleteKey + "]" ? AppText.F("web.toolbox.subtitleTranslation.calls.incompleteOther", call.IncompleteReason) : incomplete)</div>
+                        string incomplete;
+                        <div>@(AppText.TryT("web.toolbox.subtitleTranslation.calls.incomplete." + call.IncompleteReason, out incomplete) ? incomplete : AppText.F("web.toolbox.subtitleTranslation.calls.incompleteOther", call.IncompleteReason))</div>
                     }
                     @foreach (TranslationCallRejection rejection in call.Rejections)
                     {

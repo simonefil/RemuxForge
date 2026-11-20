@@ -728,11 +728,7 @@ namespace RemuxForge.Core.Metadata
             if (string.IsNullOrEmpty(key))
                 return "";
 
-            text = AppText.T(key);
-            if (text == "[" + key + "]")
-                return "";
-
-            return text;
+            return AppText.TryT(key, out text) ? text : "";
         }
 
         /// <summary>

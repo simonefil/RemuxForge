@@ -293,11 +293,10 @@ namespace RemuxForge.Core.Metadata
         private static MetadataFieldDefinition LocalizeField(MetadataFieldDefinition source)
         {
             MetadataFieldDefinition result = new MetadataFieldDefinition();
-            string labelKey = "metadata.field." + source.Key;
-            string localizedLabel = AppText.T(labelKey);
+            string localizedLabel;
 
             result.Key = source.Key;
-            result.Label = localizedLabel == "[" + labelKey + "]" ? source.Label : localizedLabel;
+            result.Label = AppText.TryT("metadata.field." + source.Key, out localizedLabel) ? localizedLabel : source.Label;
             result.Description = source.Description;
             result.Sector = source.Sector;
             result.TargetScopes = new List<MkvMetadataTargetScope>(source.TargetScopes);

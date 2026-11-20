@@ -61,9 +61,8 @@ else
     /// <returns>Nome, null se la lingua non ha nome</returns>
     public static string LocalizedName(string code)
     {
-        string key = "web.remux.language." + code;
-        string name = AppText.T(key);
-        return name == "[" + key + "]" ? null : name;
+        string name;
+        return AppText.TryT("web.remux.language." + code, out name) ? name : null;
     }
     private static string Presentation(string code)
     {
