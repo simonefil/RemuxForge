@@ -45,6 +45,16 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public const string SUBMIT_DIAGNOSIS_TOOL = "submit_diagnosis";
 
         /// <summary>
+        /// Elenco di submit_translation coi dialoghi e le canzoni
+        /// </summary>
+        public const string TRANSLATIONS_LIST = "translations";
+
+        /// <summary>
+        /// Elenco di submit_translation coi cartelli
+        /// </summary>
+        public const string SIGNS_LIST = "signs";
+
+        /// <summary>
         /// Categoria della diagnosi per genere e numero di chi parla o di chi ascolta: si corregge solo col parlante indicato
         /// </summary>
         public const string GENDER_NUMBER_CATEGORY = "gender_number";
@@ -132,14 +142,14 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             "{record_format}";
 
         /// <summary>
-        /// Definizione del tool submit_diagnosis
+        /// Definizione del tool submit_diagnosis, con gli enum di categoria e gravità riempiti dagli elenchi ammessi
         /// </summary>
-        private const string SUBMIT_DIAGNOSIS_JSON = "{\"type\":\"function\",\"name\":\"submit_diagnosis\",\"strict\":true," +
+        private const string SUBMIT_DIAGNOSIS_JSON = "{\"type\":\"function\",\"name\":\"" + SUBMIT_DIAGNOSIS_TOOL + "\",\"strict\":true," +
             "\"description\":\"Report the problems found in the translation of the block. Empty list if there are none.\"," +
             "\"parameters\":{\"type\":\"object\",\"properties\":{" +
             "\"issues\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"integer\"}," +
-            "\"category\":{\"type\":\"string\",\"enum\":[\"accuracy\",\"omission\",\"untranslated\",\"gender_number\",\"address_form\",\"terminology\",\"weakened_swearing\",\"fluency\",\"register\",\"consistency\",\"split_sentence\",\"formatting\"]}," +
-            "\"severity\":{\"type\":\"string\",\"enum\":[\"minor\",\"major\",\"critical\"]}," +
+            "\"category\":{\"type\":\"string\",\"enum\":[]}," +
+            "\"severity\":{\"type\":\"string\",\"enum\":[]}," +
             "\"source_says\":{\"type\":\"string\",\"description\":\"What the source cue says on this point.\"}," +
             "\"translation_says\":{\"type\":\"string\",\"description\":\"What the current translation says on this point.\"}," +
             "\"speaker\":{\"type\":[\"string\",\"null\"],\"description\":\"Who speaks the cue and to whom, as the context shows it; required for gender_number, null otherwise.\"}," +
@@ -159,12 +169,12 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// Definizione del tool submit_translation: dialoghi e canzoni in translations, cartelli in signs. Una frase che continua sulla
         /// battuta dopo resta nel suo elenco e non può finire su un cartello che sta in mezzo nell'ordine di lettura
         /// </summary>
-        private const string SUBMIT_TRANSLATION_JSON = "{\"type\":\"function\",\"name\":\"submit_translation\",\"strict\":true," +
+        private const string SUBMIT_TRANSLATION_JSON = "{\"type\":\"function\",\"name\":\"" + SUBMIT_TRANSLATION_TOOL + "\",\"strict\":true," +
             "\"description\":\"Deliver the translation of the requested cue ids: one entry per requested id, in ascending order, the dialogue and song cues in translations and the [sign] cues in signs. The code validates every cue and asks again only for the rejected ones.\"," +
             "\"parameters\":{\"type\":\"object\",\"properties\":{" +
-            "\"translations\":{\"type\":\"array\",\"description\":\"The requested dialogue and song cues; never a [sign] cue.\",\"items\":" + TRANSLATION_ENTRY_JSON + "}," +
-            "\"signs\":{\"type\":\"array\",\"description\":\"The requested [sign] cues; empty when none is requested.\",\"items\":" + TRANSLATION_ENTRY_JSON + "}}," +
-            "\"required\":[\"translations\",\"signs\"],\"additionalProperties\":false}}";
+            "\"" + TRANSLATIONS_LIST + "\":{\"type\":\"array\",\"description\":\"The requested dialogue and song cues; never a [sign] cue.\",\"items\":" + TRANSLATION_ENTRY_JSON + "}," +
+            "\"" + SIGNS_LIST + "\":{\"type\":\"array\",\"description\":\"The requested [sign] cues; empty when none is requested.\",\"items\":" + TRANSLATION_ENTRY_JSON + "}}," +
+            "\"required\":[\"" + TRANSLATIONS_LIST + "\",\"" + SIGNS_LIST + "\"],\"additionalProperties\":false}}";
 
         #endregion
 
@@ -366,7 +376,11 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <returns>Array nuovo con submit_diagnosis</returns>
         public static JsonArray CreateDiagnosisTools()
         {
-            return new JsonArray(JsonNode.Parse(SUBMIT_DIAGNOSIS_JSON));
+            JsonNode tool = JsonNode.Parse(SUBMIT_DIAGNOSIS_JSON);
+            JsonNode issue = tool["parameters"]["properties"]["issues"]["items"]["properties"];
+            issue["category"]["enum"] = GlossaryBuilder.CreateArray(DIAGNOSIS_CATEGORIES);
+            issue["severity"]["enum"] = GlossaryBuilder.CreateArray(DIAGNOSIS_SEVERITIES);
+            return new JsonArray(tool);
         }
 
         /// <summary>

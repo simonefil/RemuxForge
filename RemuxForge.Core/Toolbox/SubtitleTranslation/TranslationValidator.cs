@@ -71,21 +71,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// </summary>
         private const string UI_KEY_PREFIX = "toolbox.subtitleTranslation.validation.";
 
-        /// <summary>
-        /// Nome del tool di consegna
-        /// </summary>
-        private const string SUBMIT_TOOL = "submit_translation";
-
-        /// <summary>
-        /// Elenco della consegna con dialoghi e canzoni
-        /// </summary>
-        private const string CUES_LIST = "translations";
-
-        /// <summary>
-        /// Elenco della consegna con i cartelli
-        /// </summary>
-        private const string SIGNS_LIST = "signs";
-
         #endregion
 
         #region Variabili statiche
@@ -228,19 +213,19 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             List<int> requestedSigns = requested.FindAll(id => byId[id].Kind == SubtitleCueKind.Sign);
             Dictionary<string, HashSet<int>> requestedSets = new Dictionary<string, HashSet<int>>(StringComparer.Ordinal)
             {
-                { CUES_LIST, new HashSet<int>(requested.FindAll(id => byId[id].Kind != SubtitleCueKind.Sign)) },
-                { SIGNS_LIST, new HashSet<int>(requestedSigns) }
+                { TranslationRequestBuilder.TRANSLATIONS_LIST, new HashSet<int>(requested.FindAll(id => byId[id].Kind != SubtitleCueKind.Sign)) },
+                { TranslationRequestBuilder.SIGNS_LIST, new HashSet<int>(requestedSigns) }
             };
 
             // Consegna: la prima chiamata con un oggetto JSON e i due array
             string deliveryCode = NO_SUBMISSION;
-            string deliveryMessage = "no " + SUBMIT_TOOL + " call was received.";
+            string deliveryMessage = "no " + TranslationRequestBuilder.SUBMIT_TRANSLATION_TOOL + " call was received.";
             List<TranslationValidationIssue> entryIssues = new List<TranslationValidationIssue>();
             Dictionary<int, List<string>> delivered = new Dictionary<int, List<string>>();
             if (submissions != null && submissions.Count > 0)
             {
                 deliveryCode = ARGS_INVALID;
-                deliveryMessage = "arguments are not a JSON object with a " + CUES_LIST + " array and a " + SIGNS_LIST + " array.";
+                deliveryMessage = "arguments are not a JSON object with a " + TranslationRequestBuilder.TRANSLATIONS_LIST + " array and a " + TranslationRequestBuilder.SIGNS_LIST + " array.";
             }
             for (int s = 0; submissions != null && s < submissions.Count && !string.IsNullOrEmpty(deliveryCode); s++)
             {
@@ -250,12 +235,12 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     {
                         JsonElement translations;
                         JsonElement signs;
-                        if (document.RootElement.ValueKind != JsonValueKind.Object || !document.RootElement.TryGetProperty(CUES_LIST, out translations)
-                            || translations.ValueKind != JsonValueKind.Array || !document.RootElement.TryGetProperty(SIGNS_LIST, out signs) || signs.ValueKind != JsonValueKind.Array)
+                        if (document.RootElement.ValueKind != JsonValueKind.Object || !document.RootElement.TryGetProperty(TranslationRequestBuilder.TRANSLATIONS_LIST, out translations)
+                            || translations.ValueKind != JsonValueKind.Array || !document.RootElement.TryGetProperty(TranslationRequestBuilder.SIGNS_LIST, out signs) || signs.ValueKind != JsonValueKind.Array)
                             continue;
 
                         deliveryCode = "";
-                        foreach (KeyValuePair<string, JsonElement> list in new KeyValuePair<string, JsonElement>[] { new KeyValuePair<string, JsonElement>(CUES_LIST, translations), new KeyValuePair<string, JsonElement>(SIGNS_LIST, signs) })
+                        foreach (KeyValuePair<string, JsonElement> list in new KeyValuePair<string, JsonElement>[] { new KeyValuePair<string, JsonElement>(TranslationRequestBuilder.TRANSLATIONS_LIST, translations), new KeyValuePair<string, JsonElement>(TranslationRequestBuilder.SIGNS_LIST, signs) })
                         {
                             HashSet<int> listIds = requestedSets[list.Key];
                             int index = 0;
