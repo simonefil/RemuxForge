@@ -479,8 +479,9 @@
             return;
         }
 
+        // Il livello vuoto resta vuoto: si manda solo se scelto
         AiModelInfo model = this._models.Find(m => m.Id == this._credentials.Model);
-        string effort = AiModelChoice.EffortFor(model, this._credentials.ReasoningEffort);
+        string effort = string.IsNullOrEmpty(this._credentials.ReasoningEffort) ? "" : AiModelChoice.EffortFor(model, this._credentials.ReasoningEffort);
         if (effort != this._credentials.ReasoningEffort)
         {
             this.CredentialService.SetModel(this._credentials.Model, effort);
@@ -499,7 +500,7 @@
         string effort = this._credentials.ReasoningEffort;
 
         // Il livello si manda solo se scelto: con la API key un modello senza ragionamento rifiuta il parametro
-        effort = string.IsNullOrEmpty(modelId) ? "" : AiModelChoice.EffortFor(model, effort);
+        effort = string.IsNullOrEmpty(modelId) || string.IsNullOrEmpty(effort) ? "" : AiModelChoice.EffortFor(model, effort);
 
         this.CredentialService.SetModel(modelId, effort);
         this._credentials = this.LoadCredentials();
