@@ -253,6 +253,15 @@ namespace RemuxForge.Web.Services.Toolbox
                 jobCalls = this._jobStore.ReadCalls(job.Id);
             }
 
+            // I file si leggono prima del lock: il progetto letto non è ancora quello della card
+            Dictionary<string, SubtitleTranslationDocument> documents = new Dictionary<string, SubtitleTranslationDocument>(StringComparer.Ordinal);
+            foreach (TranslationProjectFile file in project.Files)
+            {
+                SubtitleTranslationDocument document = TranslationFilePreparer.Prepare(file, project.Styles, project.Stretches, project.Analysis != null);
+                if (document != null)
+                    documents[file.Id] = document;
+            }
+
             lock (this.StateLock)
             {
                 if (this.IsBusy)
@@ -271,10 +280,9 @@ namespace RemuxForge.Web.Services.Toolbox
                 this._jobCalls.AddRange(jobCalls);
 
                 foreach (TranslationProjectFile file in project.Files)
-                {
                     this.Records.Add(new TranslationFileRecord(file));
-                    this.PrepareFile(file, project.Analysis != null);
-                }
+                foreach (KeyValuePair<string, SubtitleTranslationDocument> document in documents)
+                    this._documents[document.Key] = document.Value;
                 if (this.SyncStyles())
                     this._store.Save(project);
                 if (job != null)
@@ -285,7 +293,7 @@ namespace RemuxForge.Web.Services.Toolbox
                         this._jobStore.Save(job);
                         this._store.Save(project);
                     }
-                    this.CheckJobSources();
+                    this.BlockChangedSources();
                 }
             }
 
@@ -735,7 +743,9 @@ namespace RemuxForge.Web.Services.Toolbox
                 }
                 else
                 {
-                    this.CheckJobSources();
+                    foreach (string fileId in this._job.FileIds)
+                        this.PrepareFile(this._project.Files.Find(f => f.Id == fileId), true);
+                    this.BlockChangedSources();
                     if (this._job.Phase == TranslationJobPhase.Translation && !this._job.FileIds.Exists(id =>
                         this._jobFiles[id].TranslationStatus != TranslationFileStatus.Completed && this._jobFiles[id].TranslationStatus != TranslationFileStatus.Blocked))
                         blocked = this._job;
@@ -1096,8 +1106,8 @@ namespace RemuxForge.Web.Services.Toolbox
         }
 
         /// <summary>
-        /// True se il progetto si può esportare: fermato da riprendere o nella revisione dell'utente, con la card libera e senza
-        /// file bloccati, perché l'archivio porta tutti i sorgenti. Gli stati dei file vengono dal job aperto o dal disco; uno stato
+        /// True se il progetto si può esportare: fermato da riprendere o nella revisione dell'utente e senza file bloccati, perché
+        /// l'archivio porta tutti i sorgenti; la card libera la controlla chi esporta. Gli stati dei file vengono dal job aperto o dal disco; uno stato
         /// illeggibile non si esporta
         /// </summary>
         /// <param name="project">Progetto aperto o dell'elenco</param>
@@ -1105,7 +1115,7 @@ namespace RemuxForge.Web.Services.Toolbox
         /// <returns>True se «Esporta progetto» è attivo</returns>
         public bool CanExportProject(TranslationProject project, TranslationJob job)
         {
-            if (project == null || job == null || this.IsBusy ||
+            if (project == null || job == null ||
                 !((job.Status == TranslationJobStatus.Paused) || (job.Phase == TranslationJobPhase.UserReview && job.Status == TranslationJobStatus.Idle)))
                 return false;
 
@@ -1137,7 +1147,7 @@ namespace RemuxForge.Web.Services.Toolbox
         {
             lock (this.StateLock)
             {
-                if (!this.CanExportProject(project, this.LoadJob(project)))
+                if (this.IsBusy || !this.CanExportProject(project, this.LoadJob(project)))
                     return "";
                 this.BusyState = true;
             }
@@ -1956,17 +1966,16 @@ namespace RemuxForge.Web.Services.Toolbox
         }
 
         /// <summary>
-        /// Rilegge i sorgenti di tutti i file del job, conclusi compresi: un file mancante o cambiato diventa bloccato col motivo,
-        /// in ogni fase, e il giro non va oltre finché resta; uno che torna con l'hash del job riparte nella traduzione, o torna
-        /// concluso dopo la traduzione; chiamato sotto StateLock
+        /// Allinea gli stati dei file del job ai sorgenti appena preparati, conclusi compresi: un file mancante o cambiato diventa
+        /// bloccato col motivo, in ogni fase, e il giro non va oltre finché resta; uno che torna con l'hash del job riparte nella
+        /// traduzione, o torna concluso dopo la traduzione; chiamato sotto StateLock
         /// </summary>
-        private void CheckJobSources()
+        private void BlockChangedSources()
         {
             foreach (string fileId in this._job.FileIds)
             {
                 TranslationJobFileState state = this._jobFiles[fileId];
                 TranslationProjectFile file = this._project.Files.Find(f => f.Id == fileId);
-                this.PrepareFile(file, true);
                 if (!this._documents.ContainsKey(fileId))
                 {
                     if (state.TranslationStatus == TranslationFileStatus.Blocked && state.BlockedReason == file.RejectedReason)
