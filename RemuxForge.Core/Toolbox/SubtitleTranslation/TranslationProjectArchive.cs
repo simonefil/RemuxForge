@@ -1,3 +1,4 @@
+using RemuxForge.Core.Infrastructure;
 using RemuxForge.Core.Localization;
 using RemuxForge.Core.Toolbox.Common;
 using System;
@@ -373,17 +374,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 if (!completed)
                 {
                     foreach (string folder in installed)
-                    {
-                        try
-                        {
-                            Directory.Delete(folder, true);
-                        }
-                        catch (Exception ex)
-                        {
-                            if (!(ex is IOException || ex is UnauthorizedAccessException))
-                                throw;
-                        }
-                    }
+                        FileHelper.DeleteTempDirectory(folder);
 
                     for (int i = parked.Count - 1; i >= 0; i--)
                     {
@@ -400,33 +391,12 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     }
 
                     foreach (string path in written)
-                    {
-                        try
-                        {
-                            File.Delete(path);
-                        }
-                        catch (Exception ex)
-                        {
-                            if (!(ex is IOException || ex is UnauthorizedAccessException))
-                                throw;
-                        }
-                    }
+                        FileHelper.DeleteTempFile(path);
                 }
 
                 // Il temporaneo resta se tiene ancora una parte del progetto presente che non è tornata al suo posto
                 if (restored)
-                {
-                    try
-                    {
-                        if (Directory.Exists(temp))
-                            Directory.Delete(temp, true);
-                    }
-                    catch (Exception ex)
-                    {
-                        if (!(ex is IOException || ex is UnauthorizedAccessException))
-                            throw;
-                    }
-                }
+                    FileHelper.DeleteTempDirectory(temp);
             }
         }
 
