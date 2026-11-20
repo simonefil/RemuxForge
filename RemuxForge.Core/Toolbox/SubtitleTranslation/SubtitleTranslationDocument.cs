@@ -461,6 +461,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 // tutti i caratteri della frase. La frase è la riga più lunga fra quelle che contengono tutti i tratti, una Dialogue prima
                 // di un Comment; la riga principale è la Dialogue con la frase, la più lunga nel tempo e poi sul layer più basso, o il
                 // Comment
+
                 // PlayRes mancanti come in libass quando lo script non li dichiara
                 int screenWidth = assDocument.TryGetScriptInfoInt("PlayResX", out int scriptWidth) ? scriptWidth : 0;
                 int screenHeight = assDocument.TryGetScriptInfoInt("PlayResY", out int scriptHeight) ? scriptHeight : 0;
@@ -561,9 +562,13 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         List<int> best = wholes.FindAll(w => SharedTime(events, piece, w) == SharedTime(events, piece, wholes[0])
                             && Math.Abs(events[w].Line.StartMs - events[piece].Line.StartMs) == Math.Abs(events[wholes[0]].Line.StartMs - events[piece].Line.StartMs));
                         if (best.Select(w => spaceless[w]).Distinct(StringComparer.Ordinal).Count() > 1)
+                        {
                             tied.Add(new KeyValuePair<int, List<int>>(piece, best));
+                        }
                         else
+                        {
                             owner[piece] = wholes[0];
+                        }
                     }
 
                     // Pareggi fra righe intere di testo diverso: un candidato che è a sua volta un pezzo conta come la sua riga intera
@@ -574,11 +579,17 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         List<int> roots = tie.Value.Select(w => RootOf(firm, w)).Distinct().ToList();
                         List<int> hits = roots.FindAll(root => pieces.Exists(other => firm.TryGetValue(other, out int whole) && RootOf(firm, whole) == root && SameRow(boxesOf, tie.Key, other)));
                         if (roots.Count == 1)
+                        {
                             owner[tie.Key] = tie.Value[0];
+                        }
                         else if (hits.Count == 1)
+                        {
                             owner[tie.Key] = hits[0];
+                        }
                         else
+                        {
                             ambiguous.UnionWith(roots);
+                        }
                     }
 
                     // Continuazioni: fotogrammi e fasi della stessa scritta, che comincia dove l'altra finisce
