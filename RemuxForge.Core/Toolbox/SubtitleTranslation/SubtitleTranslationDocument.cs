@@ -75,11 +75,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         private static readonly Regex s_animation = new Regex(@"\{[^}]*\\(?:pos|move|org|t|fad|i?clip|k|K)", RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
         /// <summary>
-        /// Sintassi dei segni ⟦n testo⟧ del testo pulito
-        /// </summary>
-        private static readonly Regex s_markSyntax = new Regex("⟦[0-9]+ |⟧", RegexOptions.Compiled | RegexOptions.CultureInvariant);
-
-        /// <summary>
         /// Disegno in un blocco: \p con scala positiva
         /// </summary>
         private static readonly Regex s_drawing = new Regex(@"\{[^}]*\\p\s*0*[1-9]", RegexOptions.Compiled | RegexOptions.CultureInvariant);
@@ -756,7 +751,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                                 continue;
                             Dictionary<int, string> cleanTexts = wholeLines.ToDictionary(w => w, w => cleaner.Clean(wholeTexts[w], "").CleanText);
                             int primary = wholeLines.OrderByDescending(w => cleanTexts[w].Count(m => m == SubtitleCueCleaner.MARK_OPEN)).ThenBy(w => w).First();
-                            string unmarked = s_markSyntax.Replace(cleanTexts[primary], "");
+                            string unmarked = SubtitleCueCleaner.RemoveMarks(cleanTexts[primary]);
                             if (!wholeLines.TrueForAll(w => cleanTexts[w] == cleanTexts[primary] || cleanTexts[w] == unmarked))
                                 continue;
                             foreach (int w in wholeLines)
@@ -1067,7 +1062,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 // li ha ne prende la traduzione senza segni
                 bool unchanged = SharedStretchDetector.Key(this.Format, translation ?? "") == SharedStretchDetector.Key(this.Format, sourceTexts[source.Value]);
                 if (translation != null && cue.DuplicateOf.HasValue && cue.CleanText.IndexOf(SubtitleCueCleaner.MARK_OPEN) < 0)
-                    translation = s_markSyntax.Replace(translation, "");
+                    translation = SubtitleCueCleaner.RemoveMarks(translation);
                 if (!this._letterEffects.TryGetValue(cue.Position, out LetterEffect letterEffect))
                 {
                     // Una riga sotto letta coi tratti già visibili resta com'è se invariata, e tradotta si scrive coi tratti visibili

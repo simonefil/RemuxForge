@@ -72,6 +72,11 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         #region Variabili statiche
 
         /// <summary>
+        /// Sintassi dei segni ⟦n testo⟧ del testo pulito
+        /// </summary>
+        private static readonly Regex s_markSyntax = new Regex("⟦[0-9]+ |⟧", RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+        /// <summary>
         /// Tag HTML che gli SRT interpretano, ancorato alla posizione di ricerca
         /// </summary>
         private static readonly Regex s_srtTag = new Regex(@"\G<(?<close>/?)(?<name>i|b|u|font)(?:\s[^>]*)?>", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
@@ -137,6 +142,16 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         #endregion
 
         #region Metodi pubblici
+
+        /// <summary>
+        /// Toglie i segni dei tratti formattati da un testo pulito, lasciando il testo dei tratti
+        /// </summary>
+        /// <param name="text">Testo con segni ⟦n testo⟧</param>
+        /// <returns>Testo senza segni</returns>
+        public static string RemoveMarks(string text)
+        {
+            return s_markSyntax.Replace(text, "");
+        }
 
         /// <summary>
         /// Pulisce il campo Text di una battuta

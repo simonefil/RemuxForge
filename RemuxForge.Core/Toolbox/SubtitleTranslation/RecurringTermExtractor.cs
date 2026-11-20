@@ -67,11 +67,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// </summary>
         private static readonly Regex s_word = new Regex(@"\p{L}[\p{L}\p{M}'\-]*", RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
-        /// <summary>
-        /// Sintassi dei segni dei tratti formattati
-        /// </summary>
-        private static readonly Regex s_markSyntax = new Regex("⟦[0-9]+ |⟧", RegexOptions.Compiled | RegexOptions.CultureInvariant);
-
         #endregion
 
         #region Metodi pubblici
@@ -95,7 +90,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     if (!cue.Id.HasValue)
                         continue;
 
-                    string[] lines = s_markSyntax.Replace(cue.CleanText, "").Replace('’', '\'').Split('\n');
+                    string[] lines = SubtitleCueCleaner.RemoveMarks(cue.CleanText).Replace('’', '\'').Split('\n');
 
                     // Una riga di continuazione apre una frase se la riga prima ne chiude una
                     for (int i = 0; i < lines.Length; i++)
