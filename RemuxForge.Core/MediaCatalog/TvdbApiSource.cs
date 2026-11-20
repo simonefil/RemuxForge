@@ -27,7 +27,7 @@ namespace RemuxForge.Core.MediaCatalog
         /// <summary>
         /// Indirizzo base delle immagini quando l'API restituisce un percorso relativo
         /// </summary>
-        private const string ARTWORK_BASE_URL = "https://artworks.thetvdb.com";
+        public const string ARTWORK_BASE_URL = "https://artworks.thetvdb.com";
 
         /// <summary>
         /// Lingua di ripiego dei testi

@@ -28,7 +28,7 @@ namespace RemuxForge.Core.MediaCatalog
         /// <summary>
         /// Indirizzo base dei poster alla dimensione originale
         /// </summary>
-        private const string IMAGE_BASE_URL = "https://image.tmdb.org/t/p/original";
+        public const string IMAGE_BASE_URL = "https://image.tmdb.org/t/p/original";
 
         /// <summary>
         /// Lingua di ripiego dei testi

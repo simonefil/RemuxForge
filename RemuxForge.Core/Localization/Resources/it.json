@@ -4110,6 +4110,8 @@
   "web.info.tvdbAttribution": "Dati TV e film forniti da",
   "metadata.catalog.ruleDescription": "TVDB / TMDB: {0}",
   "mediaCatalog.error.coverDownload": "Copertina non scaricata: {0}",
+  "mediaCatalog.error.coverAddress": "Copertina non scaricata: indirizzo non ammesso {0}",
+  "mediaCatalog.error.coverTooLarge": "Copertina non scaricata: più grande di {0} MB",
   "web.metadata.progress.catalog": "Scrittura dei dati di TVDB / TMDB",
   "web.metadata.catalog.fileWritten": "Dati di TVDB / TMDB scritti: {0}",
   "rename.method.catalogDisplay": "TVDB / TMDB: {0}",

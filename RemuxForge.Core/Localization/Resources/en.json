@@ -4110,6 +4110,8 @@
   "web.info.tvdbAttribution": "TV and movie data provided by",
   "metadata.catalog.ruleDescription": "TVDB / TMDB: {0}",
   "mediaCatalog.error.coverDownload": "Cover not downloaded: {0}",
+  "mediaCatalog.error.coverAddress": "Cover not downloaded: address not allowed {0}",
+  "mediaCatalog.error.coverTooLarge": "Cover not downloaded: larger than {0} MB",
   "web.metadata.progress.catalog": "Writing TVDB / TMDB data",
   "web.metadata.catalog.fileWritten": "TVDB / TMDB data written: {0}",
   "rename.method.catalogDisplay": "TVDB / TMDB: {0}",
