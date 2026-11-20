@@ -22,7 +22,7 @@
     else
     {
         @* Durante il lotto la vista estratta resta aperta: l'altra scheda non si apre *@
-        <RadzenTabs class="rf-tool-tabs" RenderMode="TabRenderMode.Client" SelectedIndex="@((int)view)" Change="@((int index) => Orchestrator.SetView((TrackExtractionView)index))">
+        <RadzenTabs class="rf-tool-tabs" SelectedIndex="@((int)view)" Change="@((int index) => Orchestrator.SetView((TrackExtractionView)index))">
             <Tabs>
                 <RadzenTabsItem Text="@AppText.T("web.toolbox.trackExtraction.viewByFile")" Disabled="@(busy && view != TrackExtractionView.ByFile)">
                     @* Una riga per video; espandendola si spuntano le sue tracce. Le tracce video si vedono ma non si spuntano *@
