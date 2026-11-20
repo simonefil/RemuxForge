@@ -184,7 +184,7 @@ namespace RemuxForge.Web.Services.Toolbox
         public Dictionary<TrackExtractionTrack, string> PlanOutputs()
         {
             return this.GetPlan(this.SelectTracks, t => t.Result,
-                (track, outputFolder, allocator) => allocator.Reserve(TrackExtractionService.GetDesiredPath(track.File.InputPath, outputFolder, track.Track)));
+                (track, outputFolder, allocator) => allocator.Reserve(TrackExtractionService.GetDesiredPath(track.File.InputPath, outputFolder, track.Track), true));
         }
 
         #endregion
