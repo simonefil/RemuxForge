@@ -8,9 +8,7 @@
     bool busy = Orchestrator.IsBusy;
     TrackExtractionView view = Orchestrator.View;
 
-    // Durante il lotto i nomi previsti restano quelli calcolati all'avvio: le tracce in corso li mostrano fino all'esito
-    if (!busy)
-        _plan = Orchestrator.PlanOutputs();
+    _plan = Orchestrator.PlanOutputs();
 }
 <div class="rf-panel rf-tool-page">
     <ToolboxOutputOptions Orchestrator="@Orchestrator" JsModule="@JsModule" Id="track-extraction" />
@@ -257,7 +255,7 @@
     private static readonly List<string> s_extensions = new List<string>(MediaContainerFormats.Extensions);
 
     /// <summary>
-    /// Nome previsto di ogni traccia scelta e non ancora estratta, preso dall'orchestratore a ogni disegno fuori dal lotto
+    /// Nome previsto di ogni traccia scelta e non ancora estratta, preso dall'orchestratore a ogni disegno
     /// </summary>
     private Dictionary<TrackExtractionTrack, string> _plan = new Dictionary<TrackExtractionTrack, string>();
 

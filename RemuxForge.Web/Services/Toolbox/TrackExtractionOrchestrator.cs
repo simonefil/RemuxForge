@@ -49,10 +49,6 @@ namespace RemuxForge.Web.Services.Toolbox
         /// </summary>
         private TrackExtractionView _view;
 
-        /// <summary>
-        /// Nomi previsti delle tracce scelte, calcolati al primo disegno dopo un cambio di elenco, scelte, uscita o esiti; null fino ad allora
-        /// </summary>
-        private Dictionary<TrackExtractionTrack, string> _plan;
 
         #endregion
 
@@ -67,15 +63,6 @@ namespace RemuxForge.Web.Services.Toolbox
             this._languages = new List<string>();
             this._formats = new List<string>();
             this._view = TrackExtractionView.ByFile;
-
-            // Ogni cambio di elenco, scelte, uscita o esiti passa da qui: i nomi previsti si ricalcolano al prossimo disegno
-            this.OnRecordsChanged += () =>
-            {
-                lock (this.StateLock)
-                {
-                    this._plan = null;
-                }
-            };
         }
 
         #endregion
@@ -191,33 +178,11 @@ namespace RemuxForge.Web.Services.Toolbox
         /// Nome che avrà ogni traccia scelta e non ancora estratta, calcolato con la stessa regola e lo stesso ordine dell'estrazione
         /// sui file presenti adesso
         /// </summary>
-        /// <returns>Percorso previsto per traccia; si ricalcola solo dopo un cambio di elenco, scelte, uscita o esiti</returns>
+        /// <returns>Percorso previsto per traccia; durante il lotto resta quello calcolato prima dell'avvio</returns>
         public Dictionary<TrackExtractionTrack, string> PlanOutputs()
         {
-            lock (this.StateLock)
-            {
-                if (this._plan != null)
-                    return this._plan;
-
-                List<string> inputs = new List<string>();
-                string outputFolder = this.GetBatchOutputFolder();
-
-                this._plan = new Dictionary<TrackExtractionTrack, string>();
-                if (this.GetOutputFolderError().Length > 0)
-                    return this._plan;
-
-                foreach (TrackExtractionFile file in this.Records)
-                    inputs.Add(file.InputPath);
-
-                OutputPathAllocator allocator = new OutputPathAllocator(inputs);
-                foreach (TrackExtractionTrack track in this.SelectTracks())
-                {
-                    if (!track.Result.IsDone)
-                        this._plan[track] = allocator.Reserve(TrackExtractionService.GetDesiredPath(track.File.InputPath, outputFolder, track.Track));
-                }
-
-                return this._plan;
-            }
+            return this.GetPlan(this.SelectTracks, t => t.Result,
+                (track, outputFolder, allocator) => allocator.Reserve(TrackExtractionService.GetDesiredPath(track.File.InputPath, outputFolder, track.Track)));
         }
 
         #endregion

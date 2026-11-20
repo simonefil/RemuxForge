@@ -88,10 +88,6 @@ namespace RemuxForge.Web.Services.Toolbox
         /// </summary>
         private string _charset;
 
-        /// <summary>
-        /// Uscita prevista dei video da elaborare, calcolata al primo disegno dopo un cambio; null fino ad allora
-        /// </summary>
-        private Dictionary<AddTracksVideo, string> _plan;
 
         /// <summary>
         /// Video sostituiti in questo processo, con i file di tracce già aggiunti e l'ultimo esito: un video sostituito contiene già
@@ -116,15 +112,6 @@ namespace RemuxForge.Web.Services.Toolbox
 
             // La sovrascrittura distrugge l'originale: si parte dalla cartella, scelta di proposito
             this.SetOutput(true, "");
-
-            // Ogni cambio di elenchi, uscita o esiti passa da qui: le uscite previste si ricalcolano al prossimo disegno
-            this.OnRecordsChanged += () =>
-            {
-                lock (this.StateLock)
-                {
-                    this._plan = null;
-                }
-            };
         }
 
         #endregion
@@ -345,29 +332,11 @@ namespace RemuxForge.Web.Services.Toolbox
         /// Uscita che avrà ogni video ancora da elaborare: il file nella cartella, il .mkv accanto a un altro contenitore oppure il
         /// video stesso, sostituito. Stessa regola e stesso ordine del lotto, sui file presenti adesso
         /// </summary>
-        /// <returns>Percorso previsto per video; si ricalcola solo dopo un cambio di elenchi, uscita o esiti</returns>
+        /// <returns>Percorso previsto per video; durante il lotto resta quello calcolato prima dell'avvio</returns>
         public Dictionary<AddTracksVideo, string> PlanOutputs()
         {
-            lock (this.StateLock)
-            {
-                if (this._plan != null)
-                    return this._plan;
-
-                string outputFolder = this.GetBatchOutputFolder();
-
-                this._plan = new Dictionary<AddTracksVideo, string>();
-                if (this.GetOutputFolderError().Length > 0)
-                    return this._plan;
-
-                OutputPathAllocator allocator = new OutputPathAllocator(this.CollectInputs());
-                foreach (AddTracksVideo video in this.Records)
-                {
-                    if (!video.Result.IsDone)
-                        this._plan[video] = outputFolder.Length == 0 && MediaContainerFormats.IsMatroska(video.InputPath) ? video.InputPath : allocator.Reserve(AddTracksService.GetDesiredPath(video.InputPath, outputFolder));
-                }
-
-                return this._plan;
-            }
+            return this.GetPlan(() => this.Records, v => v.Result,
+                (video, outputFolder, allocator) => outputFolder.Length == 0 && MediaContainerFormats.IsMatroska(video.InputPath) ? video.InputPath : allocator.Reserve(AddTracksService.GetDesiredPath(video.InputPath, outputFolder)));
         }
 
         #endregion

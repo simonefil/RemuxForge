@@ -9,9 +9,7 @@
     int delayMs = Orchestrator.DelayMs;
     int pending = videos.FindAll(v => !v.Result.IsDone).Count;
 
-    // Durante il lotto le uscite previste restano quelle calcolate all'avvio: le coppie in corso le mostrano fino all'esito
-    if (!busy)
-        _plan = Orchestrator.PlanOutputs();
+    _plan = Orchestrator.PlanOutputs();
 }
 <div class="rf-panel rf-tool-page">
     <ToolboxOutputOptions Orchestrator="@Orchestrator" JsModule="@JsModule" Id="add-tracks" SourceOptionText="@AppText.T("web.toolbox.addTracks.overwrite")" />
@@ -227,7 +225,7 @@
     private static readonly List<string> s_trackExtensions = new List<string>(AddTracksService.SubtitleExtensions.Concat(AddTracksService.AudioExtensions));
 
     /// <summary>
-    /// Uscita prevista di ogni video da elaborare, presa dall'orchestratore a ogni disegno fuori dal lotto
+    /// Uscita prevista di ogni video da elaborare, presa dall'orchestratore a ogni disegno
     /// </summary>
     private Dictionary<AddTracksVideo, string> _plan = new Dictionary<AddTracksVideo, string>();
 

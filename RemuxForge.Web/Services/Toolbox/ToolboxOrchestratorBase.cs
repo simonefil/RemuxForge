@@ -265,6 +265,16 @@ namespace RemuxForge.Web.Services.Toolbox
         /// </summary>
         private readonly List<TRecord> _records;
 
+        /// <summary>
+        /// Uscita prevista degli elementi ancora da elaborare, calcolata da GetPlan; null finché la card non la chiede
+        /// </summary>
+        private object _plan;
+
+        /// <summary>
+        /// True se dopo il calcolo del piano sono cambiati elenco, scelte, uscita o esiti
+        /// </summary>
+        private bool _planStale;
+
         #endregion
 
         #region Costruttore
@@ -276,6 +286,15 @@ namespace RemuxForge.Web.Services.Toolbox
         protected ToolboxOrchestratorBase(string textPrefix) : base(textPrefix)
         {
             this._records = new List<TRecord>();
+
+            // Ogni cambio di elenco, scelte, uscita o esiti passa da qui: il piano si ricalcola alla prossima richiesta
+            this.OnRecordsChanged += () =>
+            {
+                lock (this.StateLock)
+                {
+                    this._planStale = true;
+                }
+            };
         }
 
         #endregion
@@ -470,6 +489,42 @@ namespace RemuxForge.Web.Services.Toolbox
             finally
             {
                 this.FinishBatch(summary);
+            }
+        }
+
+        /// <summary>
+        /// Uscita prevista di ogni elemento ancora da elaborare, con la stessa regola e lo stesso ordine del lotto sui file presenti
+        /// adesso. Si ricalcola solo dopo un cambio di elenco, scelte, uscita o esiti; durante il lotto resta quella calcolata prima
+        /// dell'avvio, che gli elementi in corso mostrano fino all'esito
+        /// </summary>
+        /// <typeparam name="TItem">Elemento del lotto: il file o la traccia</typeparam>
+        /// <param name="items">Elementi del lotto nell'ordine di elaborazione; chiamata sotto StateLock</param>
+        /// <param name="result">Esito dell'elemento</param>
+        /// <param name="plan">Uscita dell'elemento, dati la cartella del lotto e l'allocatore dei nomi</param>
+        /// <returns>Percorso previsto per elemento, vuoto se l'uscita scelta non è valida</returns>
+        protected Dictionary<TItem, string> GetPlan<TItem>(Func<List<TItem>> items, Func<TItem, ToolboxItemResult> result, Func<TItem, string, OutputPathAllocator, string> plan)
+        {
+            lock (this.StateLock)
+            {
+                if (this._plan is Dictionary<TItem, string> cached && (!this._planStale || this.IsBusy))
+                    return cached;
+
+                Dictionary<TItem, string> outputs = new Dictionary<TItem, string>();
+                string outputFolder = this.GetBatchOutputFolder();
+
+                this._plan = outputs;
+                this._planStale = false;
+                if (this.GetOutputFolderError().Length > 0)
+                    return outputs;
+
+                OutputPathAllocator allocator = new OutputPathAllocator(this.CollectInputs());
+                foreach (TItem item in items())
+                {
+                    if (!result(item).IsDone)
+                        outputs[item] = plan(item, outputFolder, allocator);
+                }
+
+                return outputs;
             }
         }
 
