@@ -4158,6 +4158,7 @@
   "web.mediaCatalogMatch.confirm": "Usa l'abbinamento",
   "web.mediaCatalogMatch.applyFailed": "Scrittura non avviata",
   "web.mediaCatalogMatch.noChanges": "Nessuna modifica da scrivere",
+  "web.mediaCatalogMatch.coverDiscarded": "Copertina non scritta: il catalogo non la fornisce in JPEG o PNG",
   "web.mediaCatalogMatch.orchestratorBusy": "Un'altra operazione è in corso",
   "web.rename.method.Catalog": "TVDB / TMDB",
   "web.rename.catalogMatchLabel": "Titolo:",

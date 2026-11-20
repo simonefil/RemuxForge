@@ -11,7 +11,7 @@ namespace RemuxForge.Core.MediaCatalog
 {
     /// <summary>
     /// Modifiche dirette di un file dai dati del catalogo: tag ai livelli di serie, stagione ed episodio, titolo del segmento e copertina.
-    /// Un dato vuoto non produce modifiche e un valore già uguale non si riscrive
+    /// Un dato vuoto non produce modifiche e un tag o un titolo già uguale non si riscrive; la copertina, quando c'è, si scrive sempre
     /// </summary>
     public static class MediaCatalogChangeBuilder
     {

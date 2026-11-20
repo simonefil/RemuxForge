@@ -4158,6 +4158,7 @@
   "web.mediaCatalogMatch.confirm": "Use the match",
   "web.mediaCatalogMatch.applyFailed": "Writing not started",
   "web.mediaCatalogMatch.noChanges": "No changes to write",
+  "web.mediaCatalogMatch.coverDiscarded": "Cover not written: the catalog does not provide it as JPEG or PNG",
   "web.mediaCatalogMatch.orchestratorBusy": "Another operation is running",
   "web.rename.method.Catalog": "TVDB / TMDB",
   "web.rename.catalogMatchLabel": "Title:",

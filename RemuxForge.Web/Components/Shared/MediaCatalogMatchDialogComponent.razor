@@ -865,6 +865,7 @@
         List<string> tempFiles = new List<string>();
         List<MetadataDirectEdit> edits = new List<MetadataDirectEdit>();
         bool handedOver = false;
+        bool coverDiscarded = false;
 
         this._busy = true;
         try
@@ -880,12 +881,17 @@
                     covers[url] = coverPath;
                     if (coverPath.Length > 0)
                         tempFiles.Add(coverPath);
+                    else
+                        coverDiscarded = true;
                 }
 
                 List<MkvMetadataChange> changes = this.BuildChanges(file, url.Length > 0 ? covers[url] : "");
                 if (changes.Count > 0)
                     edits.Add(new MetadataDirectEdit(file, changes));
             }
+
+            if (coverDiscarded)
+                this.NotificationService.Notify(NotificationSeverity.Warning, AppText.T("web.mediaCatalogMatch.coverDiscarded"), "", 6000);
 
             if (edits.Count == 0)
             {
