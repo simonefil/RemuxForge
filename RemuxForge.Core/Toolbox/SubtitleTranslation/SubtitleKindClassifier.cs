@@ -89,7 +89,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         #region Variabili di classe
 
         /// <summary>
-        /// Lingua d'origine del progetto
+        /// Nome inglese della lingua d'origine del progetto
         /// </summary>
         private readonly string _sourceLanguage;
 
@@ -100,10 +100,10 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <summary>
         /// Costruttore
         /// </summary>
-        /// <param name="sourceLanguage">Lingua d'origine del progetto</param>
+        /// <param name="sourceLanguage">Lingua d'origine ISO 639-2 del progetto</param>
         public SubtitleKindClassifier(string sourceLanguage)
         {
-            this._sourceLanguage = sourceLanguage ?? "";
+            this._sourceLanguage = TranslationRequestBuilder.GetEnglishName(sourceLanguage ?? "");
             this.Instructions = INSTRUCTIONS_TEMPLATE.Replace("{source_language}", this._sourceLanguage);
         }
 
