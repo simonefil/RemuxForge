@@ -468,6 +468,48 @@
     overflow-wrap: anywhere;
 }
 
+/* Layout automatico: la colonna delle etichette prende la larghezza della più lunga nella lingua scelta */
+.info-table table {
+    table-layout: auto;
+}
+
+/* Versione, indirizzi e avvisi vanno a capo nella finestra stretta invece di uscirne */
+.info-table table td:not(.info-label) .rz-cell-data {
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.info-table .info-label {
+    font-weight: bold;
+    width: 1%;
+    white-space: nowrap;
+}
+
+.info-table a {
+    color: var(--accent);
+}
+
+/* Loghi in colonna allineati a sinistra, testo centrato sul logo; il logo TheTVDB ha la scritta più bassa del riquadro, quindi è più alto per pareggiare quella di TMDB */
+.info-table .info-catalog {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 0.35em 1ch;
+}
+
+.info-table .info-tvdb-logo,
+.info-table .info-tmdb-logo {
+    justify-self: start;
+}
+
+.info-table .info-tvdb-logo {
+    height: 1.6em;
+}
+
+.info-table .info-tmdb-logo {
+    height: 1em;
+}
+
 /* Impostazioni AI: riquadro del login in corso */
 .ai-login-pending {
     padding: 0.5em;
