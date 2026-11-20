@@ -71,7 +71,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         state.ReviewBlocks = new List<TranslationReviewBlock>();
                         foreach (TranslationBlock block in state.Blocks)
                         {
-                            if (block.Status != TranslationBlockStatus.Split && job.ReviewMode == TranslationReviewMode.Full)
+                            if (block.Status != TranslationBlockStatus.Split && ReviewsBlocks(job.ReviewMode))
                                 state.ReviewBlocks.Add(new TranslationReviewBlock { BlockIndex = block.Index, FirstId = block.FirstId, LastId = block.LastId });
                         }
                     }
@@ -88,6 +88,16 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         #region Metodi pubblici
 
         /// <summary>
+        /// True se la modalità manda i blocchi alla revisione AI, cioè se il giro usa il modello della revisione
+        /// </summary>
+        /// <param name="mode">Modalità della revisione AI</param>
+        /// <returns>True con la revisione di tutti i blocchi</returns>
+        public static bool ReviewsBlocks(TranslationReviewMode mode)
+        {
+            return mode == TranslationReviewMode.Full;
+        }
+
+        /// <summary>
         /// Aggiunge al file i blocchi delle tratte di cui ha la prima occorrenza e che non hanno ancora il loro blocco: tutte nella
         /// completa, nessuna senza revisione. Una tratta passa a un altro file quando quello
         /// della prima occorrenza viene tolto; chiamato sotto il lock dello stato
@@ -102,7 +112,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             {
                 List<int> lines = stretch.Occurrences[0].Ids;
                 if (stretch.Occurrences[0].FileId == state.FileId && !state.ReviewBlocks.Exists(b => b.SharedStretch == stretch.Index)
-                    && job.ReviewMode == TranslationReviewMode.Full)
+                    && ReviewsBlocks(job.ReviewMode))
                 {
                     state.ReviewBlocks.Add(new TranslationReviewBlock { SharedStretch = stretch.Index, FirstId = lines[0], LastId = lines[lines.Count - 1] });
                     added = true;

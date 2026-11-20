@@ -1205,8 +1205,8 @@
     }
 
     /// <summary>
-    /// Approva il glossario e avvia il giro; senza i modelli della traduzione e della revisione o le credenziali dell'accesso il
-    /// glossario non si approva
+    /// Approva il glossario e avvia il giro; senza il modello della traduzione, quello della revisione se la modalità lo usa o le
+    /// credenziali dell'accesso il glossario non si approva
     /// </summary>
     private void ApproveGlossary()
     {
@@ -1403,7 +1403,7 @@
     }
 
     /// <summary>
-    /// Controlla il modello della fase che parte
+    /// Controlla il modello della fase che parte; la revisione lo chiede solo se la modalità manda i blocchi al modello
     /// </summary>
     /// <param name="phase">Fase che parte: traduzione o revisione AI</param>
     /// <returns>True se la fase può partire</returns>
@@ -1411,6 +1411,10 @@
     {
         TranslationJob job = this.Orchestrator.Job;
         TranslationPhaseModels models = job != null ? job.Models : this.Orchestrator.Project.Models;
+        TranslationReviewMode reviewMode = job != null ? job.ReviewMode : this.Orchestrator.Project.Options.ReviewMode;
+        if (phase == TranslationJobPhase.Review && !TranslationReviewer.ReviewsBlocks(reviewMode))
+            return true;
+
         string model = phase == TranslationJobPhase.Review ? models.Review : models.Translation;
         if (string.IsNullOrEmpty(model))
         {

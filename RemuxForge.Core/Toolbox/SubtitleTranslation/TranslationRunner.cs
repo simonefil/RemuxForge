@@ -217,7 +217,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 }
             }
 
-            bool full = reviewMode == TranslationReviewMode.Full;
+            bool full = TranslationReviewer.ReviewsBlocks(reviewMode);
             estimate.ReviewInputTokens = full ? reviewInput : null;
             estimate.ReviewCachedTokens = full ? reviewCached : null;
             estimate.ReviewOutputTokens = full ? reviewOutput : null;
