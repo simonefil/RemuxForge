@@ -30,8 +30,8 @@ namespace RemuxForge.Web.Services.Toolbox
         #region Variabili statiche
 
         /// <summary>
-        /// Codifiche offerte per i sottotitoli di testo che non sono UTF-8, con il nome che mkvmerge accetta e la chiave della
-        /// regione. Provate tutte con mkvmerge v100: ognuna converte in UTF-8 un testo di prova senza avvisi
+        /// Codifiche offerte per i sottotitoli di testo che non sono UTF-8, con il nome che mkvmerge accetta per --sub-charset e la
+        /// chiave della regione
         /// </summary>
         private static readonly KeyValuePair<string, string>[] s_subtitleCharsets = new KeyValuePair<string, string>[]
         {
@@ -205,7 +205,7 @@ namespace RemuxForge.Web.Services.Toolbox
         }
 
         /// <summary>
-        /// Sposta un video di qualche posizione; la posizione si legge adesso, non quella del disegno
+        /// Sposta un video di qualche posizione, contate dalla posizione che ha al momento dello spostamento
         /// </summary>
         /// <param name="video">Video da spostare</param>
         /// <param name="delta">Posizioni, negative verso l'alto</param>
@@ -227,7 +227,7 @@ namespace RemuxForge.Web.Services.Toolbox
         }
 
         /// <summary>
-        /// Sposta un file di tracce di qualche posizione; la posizione si legge adesso, non quella del disegno
+        /// Sposta un file di tracce di qualche posizione, contate dalla posizione che ha al momento dello spostamento
         /// </summary>
         /// <param name="track">File da spostare</param>
         /// <param name="delta">Posizioni, negative verso l'alto</param>
@@ -264,7 +264,7 @@ namespace RemuxForge.Web.Services.Toolbox
                     return;
 
                 this._language = language ?? "";
-                // Il nome arriva a ogni tasto: gli spazi in coda si tolgono all'avvio, non mentre si scrive
+                // Il nome arriva a ogni tasto: gli spazi in coda si tolgono all'avvio del lotto
                 this._name = name ?? "";
                 this._isDefault = isDefault;
                 this._isForced = isForced;
