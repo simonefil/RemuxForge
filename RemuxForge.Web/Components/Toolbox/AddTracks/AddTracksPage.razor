@@ -108,7 +108,7 @@
                         </RadzenDataGridColumn>
                         <RadzenDataGridColumn TItem="AddTracksVideo" Title="@AppText.T("web.dashboard.status")" Width="22%">
                             <Template Context="video">
-                                <ToolboxStatusBadge Status="@video.Result.Status" TextPrefix="web.toolbox.addTracks" />
+                                <ToolboxStatusBadge Result="@video.Result" TextPrefix="web.toolbox.addTracks" />
                             </Template>
                         </RadzenDataGridColumn>
                         <RadzenDataGridColumn TItem="AddTracksVideo" Title="@AppText.T("web.toolbox.list.result")" Width="40%">

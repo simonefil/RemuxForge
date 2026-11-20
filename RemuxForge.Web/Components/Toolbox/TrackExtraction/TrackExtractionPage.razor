@@ -290,7 +290,7 @@
         @<span>
             @if (track.Result.Status != ToolboxItemStatus.Pending || _plan.ContainsKey(track))
             {
-                <ToolboxStatusBadge Status="@track.Result.Status" TextPrefix="web.toolbox.trackExtraction" />
+                <ToolboxStatusBadge Result="@track.Result" TextPrefix="web.toolbox.trackExtraction" />
             }
         </span>;
 
