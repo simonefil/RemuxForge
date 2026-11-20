@@ -718,14 +718,42 @@ namespace RemuxForge.Web.Services.Toolbox
         /// <summary>
         /// Avvia il giro col glossario approvato congelato nel job e la modalità della revisione AI, o lo riprende nella fase in
         /// cui si è fermato: traduzione dal primo blocco da fare, revisione dai blocchi da rivedere.
-        /// La ripresa ricontrolla i sorgenti, e una traduzione coi soli file bloccati non parte
+        /// La ripresa ricontrolla i sorgenti, letti fuori dal lock su copie dei file, e una traduzione coi soli file bloccati non parte
         /// </summary>
         public void StartJob()
         {
             TranslationJob blocked = null;
+            TranslationJob job;
+            IReadOnlyList<TranslationProjectStyle> styles;
+            IReadOnlyList<TranslationProjectStretch> stretches;
+            Dictionary<string, TranslationProjectFile> copies = new Dictionary<string, TranslationProjectFile>(StringComparer.Ordinal);
             lock (this.StateLock)
             {
                 if (!this.CanStartJob)
+                    return;
+
+                job = this._job;
+                styles = this._project.Styles;
+                stretches = this._project.Stretches;
+                if (job != null)
+                {
+                    foreach (string fileId in job.FileIds)
+                        copies[fileId] = TranslationJsonFile.Clone(this._project.Files.Find(f => f.Id == fileId));
+                }
+            }
+
+            Dictionary<string, SubtitleTranslationDocument> documents = new Dictionary<string, SubtitleTranslationDocument>(StringComparer.Ordinal);
+            foreach (TranslationProjectFile copy in copies.Values)
+            {
+                SubtitleTranslationDocument document = TranslationFilePreparer.Prepare(copy, styles, stretches, true);
+                if (document != null)
+                    documents[copy.Id] = document;
+            }
+
+            lock (this.StateLock)
+            {
+                // Fra le due prese del lock un'altra scheda può aver avviato o cambiato il giro
+                if (!this.CanStartJob || !ReferenceEquals(this._job, job))
                     return;
 
                 if (this._job == null)
@@ -735,7 +763,22 @@ namespace RemuxForge.Web.Services.Toolbox
                 else
                 {
                     foreach (string fileId in this._job.FileIds)
-                        this.PrepareFile(this._project.Files.Find(f => f.Id == fileId), true);
+                    {
+                        TranslationProjectFile copy;
+                        SubtitleTranslationDocument document;
+                        if (!copies.TryGetValue(fileId, out copy))
+                            continue;
+
+                        this._project.Files.Find(f => f.Id == fileId).RejectedReason = copy.RejectedReason;
+                        if (documents.TryGetValue(fileId, out document))
+                        {
+                            this._documents[fileId] = document;
+                        }
+                        else
+                        {
+                            this._documents.Remove(fileId);
+                        }
+                    }
                     this.BlockChangedSources();
                     if (this._job.Phase == TranslationJobPhase.Translation && !this._job.FileIds.Exists(id =>
                         this._jobFiles[id].TranslationStatus != TranslationFileStatus.Completed && this._jobFiles[id].TranslationStatus != TranslationFileStatus.Blocked))
