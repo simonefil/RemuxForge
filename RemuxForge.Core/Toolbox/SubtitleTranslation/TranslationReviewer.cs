@@ -4,7 +4,7 @@ using RemuxForge.Core.Models;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
-using System.Text.Json;
+using System.Linq;
 using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
@@ -249,58 +249,18 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                             else
                             {
                                 truncated = false;
-                                bool called = false;
-                                JsonArray entries = null;
-                                foreach (JsonObject item in response.Items)
+                                string code;
+                                partIssues = TranslationValidator.ReadDiagnosis(response, partIds, out code);
+                                if (partIssues == null)
                                 {
-                                    if (AiJson.GetString(item, "type") != "function_call" || AiJson.GetString(item, "name") != TranslationRequestBuilder.SUBMIT_DIAGNOSIS_TOOL)
-                                        continue;
-                                    called = true;
-                                    try
-                                    {
-                                        entries = (JsonNode.Parse(AiJson.GetString(item, "arguments") ?? "") as JsonObject)?["issues"] as JsonArray;
-                                    }
-                                    catch (JsonException)
-                                    {
-                                        entries = null;
-                                    }
-                                    break;
-                                }
-
-                                if (entries == null)
-                                {
-                                    reason = called ? TranslationValidator.ARGS_INVALID : TranslationValidator.NO_SUBMISSION;
+                                    reason = code;
                                     record.Outcome = TranslationCallOutcome.PartiallyRejected;
-                                    record.Rejections.Add(new TranslationCallRejection { Id = null, Reasons = new List<string> { called
+                                    record.Rejections.Add(new TranslationCallRejection { Id = null, Reasons = new List<string> { code == TranslationValidator.ARGS_INVALID
                                         ? TranslationValidator.ARGS_INVALID + ": submit_diagnosis arguments are not a JSON object with an issues array."
                                         : TranslationValidator.NO_SUBMISSION + ": no submit_diagnosis call was received." } });
                                 }
                                 else
                                 {
-                                    // Problemi fuori dal blocco, fuori enum, senza spiegazione o senza cosa dicono sorgente e traduzione si scartano
-                                    partIssues = new List<TranslationReviewIssue>();
-                                    foreach (JsonNode node in entries)
-                                    {
-                                        JsonObject entry = node as JsonObject;
-                                        int id;
-                                        if (entry == null || !(entry["id"] is JsonValue idValue) || !idValue.TryGetValue(out id) || !partIds.Contains(id))
-                                            continue;
-                                        string category = AiJson.GetString(entry, "category");
-                                        string severity = AiJson.GetString(entry, "severity");
-                                        string explanation = (AiJson.GetString(entry, "explanation") ?? "").Trim();
-                                        string sourceSays = (AiJson.GetString(entry, "source_says") ?? "").Trim();
-                                        string translationSays = (AiJson.GetString(entry, "translation_says") ?? "").Trim();
-                                        if (!((IList<string>)TranslationRequestBuilder.DIAGNOSIS_CATEGORIES).Contains(category) || !((IList<string>)TranslationRequestBuilder.DIAGNOSIS_SEVERITIES).Contains(severity)
-                                            || string.IsNullOrEmpty(explanation) || string.IsNullOrEmpty(sourceSays) || string.IsNullOrEmpty(translationSays))
-                                            continue;
-                                        string speaker = (AiJson.GetString(entry, "speaker") ?? "").Trim();
-                                        string suggestion = AiJson.GetString(entry, "suggestion");
-                                        partIssues.Add(new TranslationReviewIssue
-                                        {
-                                            Id = id, Category = category, Severity = severity, SourceSays = sourceSays, TranslationSays = translationSays,
-                                            Speaker = speaker.Length > 0 ? speaker : null, Explanation = explanation, Suggestion = string.IsNullOrEmpty(suggestion) ? null : suggestion
-                                        });
-                                    }
                                     record.Outcome = TranslationCallOutcome.Accepted;
                                     record.Issues = partIssues.Count;
                                 }
@@ -314,18 +274,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         HashSet<TranslationJobFileState> marked = new HashSet<TranslationJobFileState>();
                         if (partIssues == null)
                         {
-                            List<List<int>> halves = new List<List<int>>();
-                            if (truncated)
-                            {
-                                List<SubtitleCue> live = context.GetLiveCues(partIds);
-                                foreach (IReadOnlyList<SubtitleCue> half in new SubtitleBlockPlanner(live).SplitBlock(live))
-                                {
-                                    List<int> halfIds = new List<int>();
-                                    foreach (SubtitleCue cue in half)
-                                        halfIds.Add(cue.Id.Value);
-                                    halves.Add(halfIds);
-                                }
-                            }
+                            List<List<int>> halves = truncated ? SubtitleBlockPlanner.SplitIds(context.GetLiveCues(partIds)) : new List<List<int>>();
                             if (halves.Count < 2)
                             {
                                 failure = reason;
@@ -377,7 +326,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 // segnalazione che lo dà, validato come una consegna e senza riparazioni. Un testo respinto lascia la battuta com'è, e
                 // la segnalazione resta nella diagnosi del blocco. Una battuta scritta dall'utente non si corregge; una da rivedere,
                 // senza testo, si ritraduce da sola con un ritentativo della traduzione
-                List<TranslationReviewIssue> applied = issues.FindAll(i => ((IList<string>)TranslationRequestBuilder.MEANING_CATEGORIES).Contains(i.Category)
+                List<TranslationReviewIssue> applied = issues.FindAll(i => TranslationRequestBuilder.MEANING_CATEGORIES.Contains(i.Category)
                     && (i.Category != TranslationRequestBuilder.GENDER_NUMBER_CATEGORY || i.Speaker != null));
                 Dictionary<int, string> suggestions = new Dictionary<int, string>();
                 List<int> retranslate = new List<int>();

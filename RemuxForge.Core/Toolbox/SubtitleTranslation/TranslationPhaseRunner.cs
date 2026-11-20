@@ -323,18 +323,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         return true;
 
                     // Troppo lunga: le accettate restano, le battute in attesa si dimezzano. Incompleta per altro: restano da rivedere
-                    List<List<int>> parts = new List<List<int>>();
-                    if (length)
-                    {
-                        List<SubtitleCue> live = context.GetLiveCues(pending);
-                        foreach (IReadOnlyList<SubtitleCue> half in new SubtitleBlockPlanner(live).SplitBlock(live))
-                        {
-                            List<int> halfIds = new List<int>();
-                            foreach (SubtitleCue cue in half)
-                                halfIds.Add(cue.Id.Value);
-                            parts.Add(halfIds);
-                        }
-                    }
+                    List<List<int>> parts = length ? SubtitleBlockPlanner.SplitIds(context.GetLiveCues(pending)) : new List<List<int>>();
 
                     if (parts.Count < 2)
                     {
@@ -352,11 +341,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 }
 
                 List<string> submissions = new List<string>();
-                foreach (JsonObject item in response.Items)
-                {
-                    if (AiJson.GetString(item, "type") == "function_call" && AiJson.GetString(item, "name") == TranslationRequestBuilder.SUBMIT_TRANSLATION_TOOL)
-                        submissions.Add(AiJson.GetString(item, "arguments"));
-                }
+                foreach (JsonObject call in AiToolCallReader.FindCalls(response, TranslationRequestBuilder.SUBMIT_TRANSLATION_TOOL))
+                    submissions.Add(AiJson.GetString(call, "arguments"));
 
                 // Segni, caratteri riservati e consegne doppie si riparano sulle battute che hanno già avuto un ritentativo
                 TranslationValidationResult result = context.Validator.Validate(pending, context.GetLiveCues(pending), submissions,

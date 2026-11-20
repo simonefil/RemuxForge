@@ -41,6 +41,24 @@ namespace RemuxForge.Core.Ai
         }
 
         /// <summary>
+        /// Chiamate a un tool nella risposta, senza rimandarle all'ingresso
+        /// </summary>
+        /// <param name="response">Risposta del servizio</param>
+        /// <param name="name">Nome del tool</param>
+        /// <returns>Chiamate al tool, nell'ordine</returns>
+        public static List<JsonObject> FindCalls(AiResponseResult response, string name)
+        {
+            List<JsonObject> calls = new List<JsonObject>();
+            foreach (JsonObject item in response.Items)
+            {
+                if (AiJson.GetString(item, "type") == FUNCTION_CALL && AiJson.GetString(item, "name") == name)
+                    calls.Add(item);
+            }
+
+            return calls;
+        }
+
+        /// <summary>
         /// Interpreta gli argomenti di una chiamata
         /// </summary>
         /// <param name="call">Item della chiamata</param>

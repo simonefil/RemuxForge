@@ -121,7 +121,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// </summary>
         /// <param name="block">Blocco da dividere</param>
         /// <returns>Due blocchi, o il blocco stesso se ha una battuta sola</returns>
-        public IReadOnlyList<IReadOnlyList<SubtitleCue>> SplitBlock(IReadOnlyList<SubtitleCue> block)
+        public static IReadOnlyList<IReadOnlyList<SubtitleCue>> SplitBlock(IReadOnlyList<SubtitleCue> block)
         {
             int mid = block.Count / 2;
             int bucket = Math.Max(1, block.Count / SPLIT_BANDS);
@@ -163,6 +163,25 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             halves.Add(first);
             halves.Add(second);
             return halves;
+        }
+
+        /// <summary>
+        /// Divide in due un gruppo di battute come SplitBlock e restituisce gli id delle parti
+        /// </summary>
+        /// <param name="block">Battute da dividere</param>
+        /// <returns>Id delle due parti, o di tutto il gruppo se ha una battuta sola</returns>
+        public static List<List<int>> SplitIds(IReadOnlyList<SubtitleCue> block)
+        {
+            List<List<int>> parts = new List<List<int>>();
+            foreach (IReadOnlyList<SubtitleCue> half in SplitBlock(block))
+            {
+                List<int> ids = new List<int>();
+                foreach (SubtitleCue cue in half)
+                    ids.Add(cue.Id.Value);
+                parts.Add(ids);
+            }
+
+            return parts;
         }
 
         #endregion

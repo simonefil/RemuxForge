@@ -1,10 +1,13 @@
+using RemuxForge.Core.Ai;
 using RemuxForge.Core.Configuration;
+using RemuxForge.Core.Models;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 
 namespace RemuxForge.Core.Toolbox.SubtitleTranslation
@@ -418,6 +421,58 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             }
 
             return filled;
+        }
+
+        /// <summary>
+        /// Legge la consegna della diagnosi dalla prima chiamata a submit_diagnosis. Problemi fuori dalle battute chieste, fuori
+        /// enum, senza spiegazione o senza cosa dicono sorgente e traduzione si scartano
+        /// </summary>
+        /// <param name="response">Risposta del servizio</param>
+        /// <param name="ids">Id delle battute chieste</param>
+        /// <param name="code">NO_SUBMISSION senza chiamata, ARGS_INVALID senza l'elenco issues, null con la consegna letta</param>
+        /// <returns>Problemi della consegna, null senza consegna valida</returns>
+        public static List<TranslationReviewIssue> ReadDiagnosis(AiResponseResult response, ICollection<int> ids, out string code)
+        {
+            List<JsonObject> calls = AiToolCallReader.FindCalls(response, TranslationRequestBuilder.SUBMIT_DIAGNOSIS_TOOL);
+            if (calls.Count == 0)
+            {
+                code = NO_SUBMISSION;
+                return null;
+            }
+
+            JsonArray entries = AiToolCallReader.ParseArguments(calls[0])?["issues"] as JsonArray;
+            if (entries == null)
+            {
+                code = ARGS_INVALID;
+                return null;
+            }
+
+            code = null;
+            List<TranslationReviewIssue> issues = new List<TranslationReviewIssue>();
+            foreach (JsonNode node in entries)
+            {
+                JsonObject entry = node as JsonObject;
+                int id;
+                if (entry == null || !(entry["id"] is JsonValue idValue) || !idValue.TryGetValue(out id) || !ids.Contains(id))
+                    continue;
+                string category = AiJson.GetString(entry, "category");
+                string severity = AiJson.GetString(entry, "severity");
+                string explanation = AiJson.GetString(entry, "explanation").Trim();
+                string sourceSays = AiJson.GetString(entry, "source_says").Trim();
+                string translationSays = AiJson.GetString(entry, "translation_says").Trim();
+                if (!TranslationRequestBuilder.DIAGNOSIS_CATEGORIES.Contains(category) || !TranslationRequestBuilder.DIAGNOSIS_SEVERITIES.Contains(severity)
+                    || string.IsNullOrEmpty(explanation) || string.IsNullOrEmpty(sourceSays) || string.IsNullOrEmpty(translationSays))
+                    continue;
+                string speaker = AiJson.GetString(entry, "speaker").Trim();
+                string suggestion = AiJson.GetString(entry, "suggestion");
+                issues.Add(new TranslationReviewIssue
+                {
+                    Id = id, Category = category, Severity = severity, SourceSays = sourceSays, TranslationSays = translationSays,
+                    Speaker = speaker.Length > 0 ? speaker : null, Explanation = explanation, Suggestion = string.IsNullOrEmpty(suggestion) ? null : suggestion
+                });
+            }
+
+            return issues;
         }
 
         #endregion
