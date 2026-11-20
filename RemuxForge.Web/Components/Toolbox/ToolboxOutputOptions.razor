@@ -23,7 +23,7 @@
                 <RadzenLabel class="rf-tool-label" Text="@AppText.T("web.toolbox.output.folder")" Component="@(Id + "-folder")" />
                 <RadzenTextBox Name="@(Id + "-folder")" class="@("rf-tool-path-input" + (folderError.Length > 0 ? " rf-tool-input-invalid" : ""))" Disabled="@busy" Value="@Orchestrator.OutputFolder"
                                Placeholder="@AppText.T(Orchestrator.TextPrefix + ".folderPlaceholder")"
-                               aria-describedby="@(Id + "-output-hint")" aria-invalid="@(folderError.Length > 0 ? "true" : "false")"
+                               aria-describedby="@(folderError.Length > 0 ? Id + "-output-error" : null)" aria-invalid="@(folderError.Length > 0 ? "true" : "false")"
                                Change="@((string value) => Orchestrator.SetOutput(true, value))" />
                 <RadzenButton Icon="folder_open" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Disabled="@busy"
                               title="@AppText.T("web.toolbox.output.chooseFolder")" aria-label="@AppText.T("web.toolbox.output.chooseFolder")"
@@ -31,11 +31,11 @@
             </div>
         }
     </div>
-    @* Sotto la riga: dove finiscono i file prodotti, oppure perché l'avvio è disattivato *@
-    <RadzenText id="@(Id + "-output-hint")" TextStyle="TextStyle.Caption" TagName="TagName.P" aria-live="polite"
-                class="@("rf-tool-hint" + (folderError.Length > 0 ? " rf-tool-hint-error" : ""))">
-        @(folderError.Length > 0 ? folderError : AppText.T(Orchestrator.TextPrefix + (Orchestrator.UseOutputFolder ? ".hintFolder" : ".hintNextToSource")))
-    </RadzenText>
+    @* Sotto la riga: perché la cartella scelta non permette l'avvio *@
+    @if (folderError.Length > 0)
+    {
+        <RadzenText id="@(Id + "-output-error")" TextStyle="TextStyle.Caption" TagName="TagName.P" aria-live="polite" class="rf-tool-hint rf-tool-hint-error">@folderError</RadzenText>
+    }
 </div>
 
 @code {

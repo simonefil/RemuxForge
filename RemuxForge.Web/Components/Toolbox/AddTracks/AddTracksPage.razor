@@ -36,14 +36,14 @@
             <div class="rf-tool-field">
                 <RadzenLabel class="rf-tool-label" Text="@AppText.T("web.toolbox.addTracks.delay")" Component="AddTracksDelay" />
                 <RadzenNumeric TValue="int" Name="AddTracksDelay" class="rf-addtracks-delay" Immediate="true" Disabled="@busy" Value="@delayMs" Step="100"
-                               aria-describedby="add-tracks-properties-hint"
+                               aria-describedby="@(delayMs < 0 ? "add-tracks-delay-warning" : null)"
                                Change="@((int value) => Orchestrator.SetProperties(Orchestrator.Language, Orchestrator.Name, Orchestrator.IsDefault, Orchestrator.IsForced, value))" />
                 <span class="rf-tool-label">ms</span>
             </div>
             <div class="rf-tool-field">
                 <RadzenLabel class="rf-tool-label" Text="@AppText.T("web.toolbox.addTracks.charset")" Component="AddTracksCharset" />
                 <RadzenDropDown TValue="string" Name="AddTracksCharset" class="rf-addtracks-charset" Disabled="@busy" Value="@Orchestrator.Charset"
-                                Data="@AddTracksOrchestrator.CharsetChoices" TextProperty="Value" ValueProperty="Key" aria-describedby="add-tracks-properties-hint"
+                                Data="@AddTracksOrchestrator.CharsetChoices" TextProperty="Value" ValueProperty="Key"
                                 Change="@((object value) => Orchestrator.SetCharset((string)value))" />
             </div>
             <LabeledSwitchComponent Label="@AppText.T("web.toolbox.addTracks.default")" Value="@Orchestrator.IsDefault" Disabled="@busy"
@@ -52,13 +52,13 @@
                                     ValueChanged="@((bool value) => Orchestrator.SetProperties(Orchestrator.Language, Orchestrator.Name, Orchestrator.IsDefault, value, Orchestrator.DelayMs))" />
         </div>
         @* Un ritardo negativo taglia ciò che finirebbe prima dell'inizio: lo si dice, perché mkvmerge lo fa senza avvisi *@
-        <RadzenText id="add-tracks-properties-hint" TextStyle="TextStyle.Caption" TagName="TagName.P" aria-live="polite" class="rf-tool-hint">
-            @if (delayMs < 0)
-            {
+        @if (delayMs < 0)
+        {
+            <RadzenText id="add-tracks-delay-warning" TextStyle="TextStyle.Caption" TagName="TagName.P" aria-live="polite" class="rf-tool-hint">
                 <RadzenIcon Icon="warning" IconStyle="IconStyle.Warning" class="rf-addtracks-hint-icon" aria-hidden="true" />
-            }
-            @AppText.T(delayMs < 0 ? "web.toolbox.addTracks.hintNegativeDelay" : "web.toolbox.addTracks.hintProperties")
-        </RadzenText>
+                @AppText.T("web.toolbox.addTracks.hintNegativeDelay")
+            </RadzenText>
+        }
     </div>
 
     @* Abbinamento: quante righe per parte e, se non si può avviare, perché *@
@@ -66,7 +66,7 @@
         <RadzenBadge IsPill="true" BadgeStyle="@(videos.Count == tracks.Count && videos.Count > 0 ? BadgeStyle.Success : BadgeStyle.Warning)"
                      Text="@AppText.F("web.toolbox.addTracks.pairingCount", AppText.Count("web.toolbox.addTracks.videosCount", videos.Count), AppText.Count("web.toolbox.addTracks.tracksCount", tracks.Count))" />
         <RadzenText TextStyle="TextStyle.Body2" TagName="TagName.Span" class="@(pairingError.Length > 0 ? "rf-addtracks-pairing-error" : "rf-tool-muted")">
-            @(pairingError.Length > 0 ? pairingError : pending > 0 ? AppText.Count("web.toolbox.addTracks.pairingReady", pending) : AppText.T("web.toolbox.addTracks.pairingDone"))
+            @(pairingError.Length > 0 ? pairingError : pending > 0 ? AppText.Count("web.toolbox.addTracks.pairingReady", pending) : videos.Count > 0 ? AppText.T("web.toolbox.addTracks.pairingDone") : "")
         </RadzenText>
     </div>
 
@@ -87,7 +87,6 @@
             {
                 <RadzenStack AlignItems="AlignItems.Center" JustifyContent="JustifyContent.Center" Gap="0.5rem" class="rf-tool-empty">
                     <RadzenText TextStyle="TextStyle.H6" TagName="TagName.H3">@AppText.T("web.toolbox.addTracks.videosEmptyTitle")</RadzenText>
-                    <RadzenText TextStyle="TextStyle.Body2">@AppText.T("web.toolbox.addTracks.videosEmptyDescription")</RadzenText>
                 </RadzenStack>
             }
             else
@@ -173,7 +172,6 @@
             {
                 <RadzenStack AlignItems="AlignItems.Center" JustifyContent="JustifyContent.Center" Gap="0.5rem" class="rf-tool-empty">
                     <RadzenText TextStyle="TextStyle.H6" TagName="TagName.H3">@AppText.T("web.toolbox.addTracks.tracksEmptyTitle")</RadzenText>
-                    <RadzenText TextStyle="TextStyle.Body2">@AppText.T("web.toolbox.addTracks.tracksEmptyDescription")</RadzenText>
                 </RadzenStack>
             }
             else

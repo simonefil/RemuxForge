@@ -10,7 +10,7 @@ namespace RemuxForge.Web.Services.Toolbox
     /// <summary>
     /// Base degli orchestratori delle card che elaborano un elenco di file in lotto: uscita accanto agli originali o in una cartella,
     /// avvio, stop e chiusura del lotto. I testi propri della card stanno sotto un prefisso comune (ready, start, stopRequested,
-    /// batchCompleted, batchStopped, notifyTitle, notifyStoppedTitle, hintNextToSource, hintFolder, folderPlaceholder)
+    /// batchCompleted, batchStopped, notifyTitle, notifyStoppedTitle, folderPlaceholder)
     /// </summary>
     public abstract class ToolboxOrchestratorBase : MediaOrchestratorBase
     {

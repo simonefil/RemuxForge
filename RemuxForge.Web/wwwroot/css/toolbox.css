@@ -227,14 +227,6 @@
     color: var(--rz-text-secondary-color);
 }
 
-.rf-tool-page .rf-tool-selection {
-    flex-shrink: 0;
-    margin: 0;
-    padding: calc(var(--rz-gap) * 0.5) var(--rz-gap);
-    border-top: var(--rz-border-base-600);
-    color: var(--rz-text-secondary-color);
-}
-
 /* Le tracce stanno dentro la riga del video: la loro intestazione scorre con la riga invece di restare in cima sopra quella dei video.
    Radzen rende sticky sia la testata sia le sue celle, quindi si fermano tutte e due */
 .rf-tool-page .rf-tool-track-grid.rz-data-grid .rz-grid-table > thead,

@@ -822,7 +822,7 @@ namespace RemuxForge.Web.Services.Toolbox
 
         /// <summary>
         /// Perché le coppie non si possono elaborare: conteggi diversi, file di tracce in lettura, bloccati o non letti; vuoto se
-        /// gli elenchi sono pronti. La cartella di uscita ha il suo messaggio sotto l'uscita
+        /// gli elenchi sono pronti o tutti e due vuoti. La cartella di uscita ha il suo messaggio sotto l'uscita
         /// </summary>
         public string PairingError
         {
@@ -834,8 +834,6 @@ namespace RemuxForge.Web.Services.Toolbox
                     int wrongCharset = this._tracks.FindAll(t => t.State == AddTracksTrackState.Blocked && t.Track != null && t.Track.NeedsCharset).Count;
                     int unread = this._tracks.FindAll(t => t.State == AddTracksTrackState.Reading || t.State == AddTracksTrackState.NotRead).Count;
 
-                    if (this.Records.Count == 0 && this._tracks.Count == 0)
-                        return AppText.T("web.toolbox.addTracks.pairingEmpty");
                     if (this.Records.Count != this._tracks.Count)
                         return AppText.T(this.Records.Count > this._tracks.Count ? "web.toolbox.addTracks.pairingMoreVideos" : "web.toolbox.addTracks.pairingMoreTracks");
                     if (unread > 0)
