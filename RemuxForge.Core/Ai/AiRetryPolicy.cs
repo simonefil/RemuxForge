@@ -128,14 +128,14 @@ namespace RemuxForge.Core.Ai
         }
 
         /// <summary>
-        /// Calcola l'attesa prima del ritentativo: Retry-After entro il suo tetto, altrimenti il backoff con variazione casuale
+        /// Calcola l'attesa prima del ritentativo: Retry-After positivo entro il suo tetto, altrimenti il backoff con variazione casuale
         /// </summary>
         /// <param name="attempt">Tentativo fallito, da 1</param>
         /// <param name="error">Errore del tentativo</param>
         /// <returns>Attesa</returns>
         public TimeSpan GetDelay(int attempt, AiServiceException error)
         {
-            if (error.RetryAfter.HasValue)
+            if (error.RetryAfter.HasValue && error.RetryAfter.Value > TimeSpan.Zero)
                 return error.RetryAfter.Value < this.MaxRetryAfter ? error.RetryAfter.Value : this.MaxRetryAfter;
 
             double backoffMs = Math.Min(this.MaxDelay.TotalMilliseconds, this.BaseDelay.TotalMilliseconds * Math.Pow(2, attempt - 1));
