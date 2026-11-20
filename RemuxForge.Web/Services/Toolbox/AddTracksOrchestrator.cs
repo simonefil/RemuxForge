@@ -125,43 +125,20 @@ namespace RemuxForge.Web.Services.Toolbox
         /// <param name="paths">Percorsi scelti</param>
         public void AddTrackFiles(IEnumerable<string> paths)
         {
-            int added = 0;
-            int requeued = 0;
-            int duplicates = 0;
-
-            lock (this.StateLock)
-            {
-                if (this.IsBusy)
-                    return;
-
-                foreach (string path in paths)
+            this.AddPaths(this._tracks, paths, t => t.InputPath, path => new AddTracksTrackFile(Path.GetFullPath(path)),
+                track =>
                 {
-                    AddTracksTrackFile existing = this._tracks.Find(t => PathIdentity.IsSame(t.InputPath, path));
+                    if (track.State != AddTracksTrackState.Blocked && track.State != AddTracksTrackState.NotRead)
+                        return false;
 
-                    if (existing == null)
-                    {
-                        this._tracks.Add(new AddTracksTrackFile(Path.GetFullPath(path)));
-                        added++;
-                    }
-                    else if (existing.State == AddTracksTrackState.Blocked || existing.State == AddTracksTrackState.NotRead)
-                    {
-                        existing.SetReading();
-                        requeued++;
-                    }
-                    else
-                        duplicates++;
-                }
-
-                this.RealignResults();
-                if (added + requeued > 0)
+                    track.SetReading();
+                    return true;
+                },
+                () =>
+                {
+                    this.RealignResults();
                     this.TryRunExclusive(this.ReadWorker);
-            }
-
-            if (added > 0 || duplicates > 0 || requeued == 0)
-                this.AppendLog(duplicates > 0 ? AppText.F("web.toolbox.list.filesAddedWithDuplicates", added, duplicates) : AppText.Count("web.toolbox.list.filesAdded", added));
-            if (requeued > 0)
-                this.AppendLog(AppText.Count("web.toolbox.list.filesRequeued", requeued));
-            this.NotifyRecordsChanged();
+                });
         }
 
         /// <summary>

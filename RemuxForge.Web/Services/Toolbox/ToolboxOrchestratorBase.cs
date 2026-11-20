@@ -309,54 +309,23 @@ namespace RemuxForge.Web.Services.Toolbox
         /// <param name="paths">Percorsi scelti</param>
         public void AddFiles(IEnumerable<string> paths)
         {
-            int added = 0;
-            int requeued = 0;
-            int duplicates = 0;
-
-            lock (this.StateLock)
-            {
-                Dictionary<PathIdentity, TRecord> known = new Dictionary<PathIdentity, TRecord>();
-
-                if (this.IsBusy || !this.AcceptsListChanges)
-                    return;
-
-                foreach (TRecord record in this._records)
-                    known[new PathIdentity(record.InputPath)] = record;
-
-                foreach (string path in paths)
+            this.AddPaths(this._records, paths, r => r.InputPath,
+                path =>
                 {
-                    PathIdentity identity = new PathIdentity(path);
-                    TRecord existing;
-
-                    if (known.TryGetValue(identity, out existing))
-                    {
-                        // Il file rimesso in coda può essere cambiato sul disco: la dimensione si rilegge con lui
-                        if (this.Requeue(existing))
-                        {
-                            FileInfo current = new FileInfo(existing.InputPath);
-                            existing.Size = current.Exists ? current.Length : 0;
-                            requeued++;
-                        }
-                        else
-                            duplicates++;
-                        continue;
-                    }
-
                     FileInfo info = new FileInfo(path);
-                    known[identity] = this.CreateRecord(info.FullName, info.Exists ? info.Length : 0);
-                    this._records.Add(known[identity]);
-                    added++;
-                }
+                    return this.CreateRecord(info.FullName, info.Exists ? info.Length : 0);
+                },
+                record =>
+                {
+                    if (!this.Requeue(record))
+                        return false;
 
-                if (added + requeued > 0)
-                    this.OnFilesAdded();
-            }
-
-            if (added > 0 || duplicates > 0 || requeued == 0)
-                this.AppendLog(duplicates > 0 ? AppText.F("web.toolbox.list.filesAddedWithDuplicates", added, duplicates) : AppText.Count("web.toolbox.list.filesAdded", added));
-            if (requeued > 0)
-                this.AppendLog(AppText.Count("web.toolbox.list.filesRequeued", requeued));
-            this.NotifyRecordsChanged();
+                    // Il file rimesso in coda può essere cambiato sul disco: la dimensione si rilegge con lui
+                    FileInfo current = new FileInfo(record.InputPath);
+                    record.Size = current.Exists ? current.Length : 0;
+                    return true;
+                },
+                this.OnFilesAdded);
         }
 
         /// <summary>
@@ -490,6 +459,64 @@ namespace RemuxForge.Web.Services.Toolbox
             {
                 this.FinishBatch(summary);
             }
+        }
+
+        /// <summary>
+        /// Accoda percorsi a un elenco della card; un percorso già presente non si ripete, ma l'elemento può tornare in coda. Controllo
+        /// del lotto, accodamento e avvio del lavoro sugli elementi accodati stanno sotto lo stesso lock
+        /// </summary>
+        /// <typeparam name="TItem">Elemento dell'elenco</typeparam>
+        /// <param name="list">Elenco a cui accodare</param>
+        /// <param name="paths">Percorsi scelti</param>
+        /// <param name="inputPath">Percorso dell'elemento</param>
+        /// <param name="create">Crea l'elemento di un percorso nuovo</param>
+        /// <param name="requeue">Rimette in coda un elemento già presente; false se resta com'è</param>
+        /// <param name="onQueued">Avvia il lavoro sugli elementi accodati o rimessi in coda</param>
+        protected void AddPaths<TItem>(List<TItem> list, IEnumerable<string> paths, Func<TItem, string> inputPath, Func<string, TItem> create, Func<TItem, bool> requeue,
+            Action onQueued)
+        {
+            int added = 0;
+            int requeued = 0;
+            int duplicates = 0;
+
+            lock (this.StateLock)
+            {
+                Dictionary<PathIdentity, TItem> known = new Dictionary<PathIdentity, TItem>();
+
+                if (this.IsBusy || !this.AcceptsListChanges)
+                    return;
+
+                foreach (TItem item in list)
+                    known[new PathIdentity(inputPath(item))] = item;
+
+                foreach (string path in paths)
+                {
+                    PathIdentity identity = new PathIdentity(path);
+                    TItem existing;
+
+                    if (known.TryGetValue(identity, out existing))
+                    {
+                        if (requeue(existing))
+                            requeued++;
+                        else
+                            duplicates++;
+                        continue;
+                    }
+
+                    known[identity] = create(path);
+                    list.Add(known[identity]);
+                    added++;
+                }
+
+                if (added + requeued > 0)
+                    onQueued();
+            }
+
+            if (added > 0 || duplicates > 0 || requeued == 0)
+                this.AppendLog(duplicates > 0 ? AppText.F("web.toolbox.list.filesAddedWithDuplicates", added, duplicates) : AppText.Count("web.toolbox.list.filesAdded", added));
+            if (requeued > 0)
+                this.AppendLog(AppText.Count("web.toolbox.list.filesRequeued", requeued));
+            this.NotifyRecordsChanged();
         }
 
         /// <summary>
