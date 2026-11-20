@@ -72,16 +72,18 @@ namespace RemuxForge.Web.Services.Toolbox
         /// Apre una vista; la scelta delle due viste resta com'era. Durante il lotto la vista non cambia
         /// </summary>
         /// <param name="view">Vista da aprire</param>
-        public void SetView(TrackExtractionView view)
+        /// <returns>True se la vista è aperta</returns>
+        public bool SetView(TrackExtractionView view)
         {
             lock (this.StateLock)
             {
                 if (this.IsBusy)
-                    return;
+                    return false;
                 this._view = view;
             }
 
             this.NotifyRecordsChanged();
+            return true;
         }
 
         /// <summary>

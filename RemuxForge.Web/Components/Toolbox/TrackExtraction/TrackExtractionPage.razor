@@ -21,8 +21,9 @@
     }
     else
     {
-        @* Durante il lotto la vista estratta resta aperta: l'altra scheda non si apre *@
-        <RadzenTabs class="rf-tool-tabs" SelectedIndex="@((int)view)" Change="@((int index) => Orchestrator.SetView((TrackExtractionView)index))">
+        @* La vista si apre in CanChange, prima che la scheda cambi: durante Change le schede in Client non si ridisegnano. Durante il lotto la vista estratta resta aperta *@
+        <RadzenTabs class="rf-tool-tabs" RenderMode="TabRenderMode.Client" SelectedIndex="@((int)view)"
+                    CanChange="@((TabsCanChangeEventArgs args) => { if (!Orchestrator.SetView((TrackExtractionView)args.NewIndex)) args.PreventDefault(); })">
             <Tabs>
                 <RadzenTabsItem Text="@AppText.T("web.toolbox.trackExtraction.viewByFile")" Disabled="@(busy && view != TrackExtractionView.ByFile)">
                     @* Una riga per video; espandendola si spuntano le sue tracce. Le tracce video si vedono ma non si spuntano *@
