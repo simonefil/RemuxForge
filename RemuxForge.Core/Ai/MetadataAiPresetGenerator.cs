@@ -97,7 +97,7 @@ namespace RemuxForge.Core.Ai
                 AiResponseResult response;
                 try
                 {
-                    response = await this._client.CreateResponseAsync(request, AiRetryPolicy.None, cancellationToken);
+                    response = await this._client.CreateResponseAsync(request, cancellationToken);
                 }
                 catch (AiServiceException ex) when (ex.Kind == AiErrorKind.UnsupportedCapability && effort.Length > 0 && ex.RejectedParameter.StartsWith("reasoning", StringComparison.OrdinalIgnoreCase))
                 {
@@ -105,7 +105,7 @@ namespace RemuxForge.Core.Ai
                     // il resto della generazione e il giro si ripete
                     effort = "";
                     request.ReasoningEffort = "";
-                    response = await this._client.CreateResponseAsync(request, AiRetryPolicy.None, cancellationToken);
+                    response = await this._client.CreateResponseAsync(request, cancellationToken);
                 }
                 if (response.Status == AiResponseStatus.Incomplete)
                     throw new AiServiceException(AiErrorKind.InvalidResponse, AppText.T("ai.error.incomplete"));

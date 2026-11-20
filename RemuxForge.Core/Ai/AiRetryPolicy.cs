@@ -25,15 +25,6 @@ namespace RemuxForge.Core.Ai
 
         #endregion
 
-        #region Variabili statiche
-
-        /// <summary>
-        /// Politica senza retry: un solo tentativo, nessuna pausa condivisa
-        /// </summary>
-        private static readonly AiRetryPolicy s_none = new AiRetryPolicy(1, TimeSpan.Zero, TimeSpan.Zero, TimeSpan.Zero);
-
-        #endregion
-
         #region Variabili di classe
 
         /// <summary>
@@ -189,11 +180,6 @@ namespace RemuxForge.Core.Ai
         #endregion
 
         #region Proprietà
-
-        /// <summary>
-        /// Politica senza retry, per le chiamate che gestiscono gli errori da sole
-        /// </summary>
-        public static AiRetryPolicy None { get { return s_none; } }
 
         /// <summary>
         /// Tentativi massimi per richiesta

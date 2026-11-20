@@ -127,7 +127,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 fixedPart.ReasoningEffort = prepared.ReasoningEffort;
                 try
                 {
-                    AiResponseResult primed = await this._client.CreateResponseAsync(fixedPart, AiRetryPolicy.None, cancellationToken);
+                    AiResponseResult primed = await this._client.CreateResponseAsync(fixedPart, cancellationToken);
                     lock (this._lock)
                         this._pendingUsage[session] = primed.Usage;
                 }
@@ -145,7 +145,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             }
 
             // Il retry lo fa la base, che registra ogni tentativo
-            AiResponseResult result = await this._client.CreateResponseAsync(prepared, AiRetryPolicy.None, cancellationToken);
+            AiResponseResult result = await this._client.CreateResponseAsync(prepared, cancellationToken);
 
             // Il consumo della parte fissa resta nel registro, sommato alla prima risposta riuscita della sessione
             AiUsage pending;

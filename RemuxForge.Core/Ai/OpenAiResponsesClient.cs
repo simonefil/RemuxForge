@@ -198,34 +198,16 @@ namespace RemuxForge.Core.Ai
         }
 
         /// <summary>
-        /// Esegue una richiesta Responses in streaming senza stato lato server, ripetendola intera secondo la politica di retry
+        /// Esegue una richiesta Responses in streaming senza stato lato server, con un solo tentativo: il retry spetta al chiamante
         /// </summary>
         /// <param name="request">Richiesta</param>
-        /// <param name="retry">Politica di retry; AiRetryPolicy.None per un solo tentativo</param>
         /// <param name="cancellationToken">Token di annullamento</param>
         /// <returns>Item di output, consumo ed esito, completo o troncato</returns>
-        public Task<AiResponseResult> CreateResponseAsync(AiResponseRequest request, AiRetryPolicy retry, CancellationToken cancellationToken)
+        public async Task<AiResponseResult> CreateResponseAsync(AiResponseRequest request, CancellationToken cancellationToken)
         {
             if (request == null)
                 throw new ArgumentNullException(nameof(request));
-            if (retry == null)
-                throw new ArgumentNullException(nameof(retry));
 
-            return retry.ExecuteAsync(_ => this.SendResponseRequestAsync(request, cancellationToken), cancellationToken);
-        }
-
-        #endregion
-
-        #region Metodi privati
-
-        /// <summary>
-        /// Esegue un tentativo di trasporto di una richiesta Responses
-        /// </summary>
-        /// <param name="request">Richiesta</param>
-        /// <param name="cancellationToken">Token di annullamento</param>
-        /// <returns>Risultato della risposta</returns>
-        private async Task<AiResponseResult> SendResponseRequestAsync(AiResponseRequest request, CancellationToken cancellationToken)
-        {
             AiCredentials credentials = await this.GetAuthorizedCredentialsAsync(cancellationToken);
             bool apiKey = credentials.Mode == AiConnectionMode.ApiKey;
             JsonObject body = new JsonObject();
@@ -301,6 +283,10 @@ namespace RemuxForge.Core.Ai
                 }
             }
         }
+
+        #endregion
+
+        #region Metodi privati
 
         /// <summary>
         /// Legge la configurazione e, con l'abbonamento, rinnova l'access token in scadenza
