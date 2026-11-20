@@ -371,11 +371,11 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             foreach (JsonObject item in response.Items)
             {
                 input.Add(item.DeepClone());
-                if (AiOAuthFlow.GetString(item, "type") == "function_call")
+                if (AiJson.GetString(item, "type") == "function_call")
                 {
                     calls.Add(item);
                 }
-                else if (AiOAuthFlow.GetString(item, "type") == "web_search_call")
+                else if (AiJson.GetString(item, "type") == "web_search_call")
                 {
                     delivery.WebSearchCalls++;
                 }
@@ -396,13 +396,13 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 {
                     errors.Add("DUPLICATE_SUBMISSION: only one submission is used; this one was ignored.");
                 }
-                else if (AiOAuthFlow.GetString(call, "name") != SUBMIT_TOOL)
+                else if (AiJson.GetString(call, "name") != SUBMIT_TOOL)
                 {
-                    errors.Add("ARGS_INVALID: unknown tool '" + AiOAuthFlow.GetString(call, "name") + "'.");
+                    errors.Add("ARGS_INVALID: unknown tool '" + AiJson.GetString(call, "name") + "'.");
                 }
                 else
                 {
-                    Glossary glossary = this.Validate(AiOAuthFlow.GetString(call, "arguments"), merge, errors);
+                    Glossary glossary = this.Validate(AiJson.GetString(call, "arguments"), merge, errors);
                     if (errors.Count == 0)
                     {
                         delivery.Glossary = glossary;
@@ -413,7 +413,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     }
                 }
 
-                outputs.Add(new KeyValuePair<string, string>(AiOAuthFlow.GetString(call, "call_id"), new JsonObject { ["valid"] = errors.Count == 0, ["errors"] = CreateArray(errors) }.ToJsonString()));
+                outputs.Add(new KeyValuePair<string, string>(AiJson.GetString(call, "call_id"), new JsonObject { ["valid"] = errors.Count == 0, ["errors"] = CreateArray(errors) }.ToJsonString()));
             }
 
             // Con una consegna valida la sequenza è finita: gli esiti servono solo al giro successivo
@@ -536,14 +536,14 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             {
                 foreach (JsonNode conflict in merge.Conflicts["terms"].AsArray())
                 {
-                    string source = AiOAuthFlow.GetString(conflict.AsObject(), "source");
+                    string source = AiJson.GetString(conflict.AsObject(), "source");
                     if (!glossary.Terms.Exists(t => this.TermKey(t.Source) == this.TermKey(source)))
                         errors.Add(CONFLICT_MISSING + " terms: no entry for conflict \"" + source + "\".");
                 }
 
                 foreach (JsonNode conflict in merge.Conflicts["characters"].AsArray())
                 {
-                    string name = AiOAuthFlow.GetString(conflict.AsObject(), "name");
+                    string name = AiJson.GetString(conflict.AsObject(), "name");
                     if (!glossary.Characters.Exists(c => CharacterKey(c.Name) == CharacterKey(name)))
                         errors.Add(CONFLICT_MISSING + " characters: no entry for conflict \"" + name + "\".");
                 }
@@ -551,8 +551,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 JsonArray pairs = merge.Conflicts["addressing"] as JsonArray;
                 for (int i = 0; pairs != null && i < pairs.Count; i++)
                 {
-                    string speaker = AiOAuthFlow.GetString(pairs[i].AsObject(), "speaker");
-                    string addressee = AiOAuthFlow.GetString(pairs[i].AsObject(), "addressee");
+                    string speaker = AiJson.GetString(pairs[i].AsObject(), "speaker");
+                    string addressee = AiJson.GetString(pairs[i].AsObject(), "addressee");
                     if (!glossary.Addressing.Exists(a => AddressingKey(a.Speaker, a.Addressee) == AddressingKey(speaker, addressee)))
                         errors.Add(CONFLICT_MISSING + " addressing: no entry for conflict \"" + speaker + " → " + addressee + "\".");
                 }

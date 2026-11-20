@@ -33,7 +33,7 @@ namespace RemuxForge.Core.Ai
             foreach (JsonObject item in response.Items)
             {
                 input.Add(item.DeepClone());
-                if (AiOAuthFlow.GetString(item, "type") == FUNCTION_CALL)
+                if (AiJson.GetString(item, "type") == FUNCTION_CALL)
                     calls.Add(item);
             }
 
@@ -47,7 +47,7 @@ namespace RemuxForge.Core.Ai
         /// <returns>Argomenti, null se non sono un oggetto JSON</returns>
         public static JsonObject ParseArguments(JsonObject call)
         {
-            return AiOAuthFlow.TryParseObject(AiOAuthFlow.GetString(call, "arguments"));
+            return AiJson.TryParseObject(AiJson.GetString(call, "arguments"));
         }
 
         /// <summary>
@@ -61,7 +61,7 @@ namespace RemuxForge.Core.Ai
             return new JsonObject
             {
                 ["type"] = "function_call_output",
-                ["call_id"] = AiOAuthFlow.GetString(call, "call_id"),
+                ["call_id"] = AiJson.GetString(call, "call_id"),
                 ["output"] = output
             };
         }

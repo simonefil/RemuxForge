@@ -253,12 +253,12 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                                 JsonArray entries = null;
                                 foreach (JsonObject item in response.Items)
                                 {
-                                    if (AiOAuthFlow.GetString(item, "type") != "function_call" || AiOAuthFlow.GetString(item, "name") != TranslationRequestBuilder.SUBMIT_DIAGNOSIS_TOOL)
+                                    if (AiJson.GetString(item, "type") != "function_call" || AiJson.GetString(item, "name") != TranslationRequestBuilder.SUBMIT_DIAGNOSIS_TOOL)
                                         continue;
                                     called = true;
                                     try
                                     {
-                                        entries = (JsonNode.Parse(AiOAuthFlow.GetString(item, "arguments") ?? "") as JsonObject)?["issues"] as JsonArray;
+                                        entries = (JsonNode.Parse(AiJson.GetString(item, "arguments") ?? "") as JsonObject)?["issues"] as JsonArray;
                                     }
                                     catch (JsonException)
                                     {
@@ -285,16 +285,16 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                                         int id;
                                         if (entry == null || !(entry["id"] is JsonValue idValue) || !idValue.TryGetValue(out id) || !partIds.Contains(id))
                                             continue;
-                                        string category = AiOAuthFlow.GetString(entry, "category");
-                                        string severity = AiOAuthFlow.GetString(entry, "severity");
-                                        string explanation = (AiOAuthFlow.GetString(entry, "explanation") ?? "").Trim();
-                                        string sourceSays = (AiOAuthFlow.GetString(entry, "source_says") ?? "").Trim();
-                                        string translationSays = (AiOAuthFlow.GetString(entry, "translation_says") ?? "").Trim();
+                                        string category = AiJson.GetString(entry, "category");
+                                        string severity = AiJson.GetString(entry, "severity");
+                                        string explanation = (AiJson.GetString(entry, "explanation") ?? "").Trim();
+                                        string sourceSays = (AiJson.GetString(entry, "source_says") ?? "").Trim();
+                                        string translationSays = (AiJson.GetString(entry, "translation_says") ?? "").Trim();
                                         if (!((IList<string>)TranslationRequestBuilder.DIAGNOSIS_CATEGORIES).Contains(category) || !((IList<string>)TranslationRequestBuilder.DIAGNOSIS_SEVERITIES).Contains(severity)
                                             || string.IsNullOrEmpty(explanation) || string.IsNullOrEmpty(sourceSays) || string.IsNullOrEmpty(translationSays))
                                             continue;
-                                        string speaker = (AiOAuthFlow.GetString(entry, "speaker") ?? "").Trim();
-                                        string suggestion = AiOAuthFlow.GetString(entry, "suggestion");
+                                        string speaker = (AiJson.GetString(entry, "speaker") ?? "").Trim();
+                                        string suggestion = AiJson.GetString(entry, "suggestion");
                                         partIssues.Add(new TranslationReviewIssue
                                         {
                                             Id = id, Category = category, Severity = severity, SourceSays = sourceSays, TranslationSays = translationSays,

@@ -434,7 +434,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             foreach (JsonObject item in response.Items)
             {
                 input.Add(item.DeepClone());
-                if (AiOAuthFlow.GetString(item, "type") == "function_call")
+                if (AiJson.GetString(item, "type") == "function_call")
                     calls.Add(item);
             }
 
@@ -455,16 +455,16 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 {
                     errors.Add("DUPLICATE_SUBMISSION: only one submission is used; this one was ignored.");
                 }
-                else if (AiOAuthFlow.GetString(call, "name") != SUBMIT_TOOL)
+                else if (AiJson.GetString(call, "name") != SUBMIT_TOOL)
                 {
-                    errors.Add("ARGS_INVALID: unknown tool '" + AiOAuthFlow.GetString(call, "name") + "'.");
+                    errors.Add("ARGS_INVALID: unknown tool '" + AiJson.GetString(call, "name") + "'.");
                 }
                 else
                 {
                     JsonObject arguments = null;
                     try
                     {
-                        arguments = JsonNode.Parse(AiOAuthFlow.GetString(call, "arguments") ?? "null") as JsonObject;
+                        arguments = JsonNode.Parse(AiJson.GetString(call, "arguments") ?? "null") as JsonObject;
                     }
                     catch (JsonException)
                     {
@@ -478,8 +478,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     for (int i = 0; i < styles.Count; i++)
                     {
                         JsonObject unit = styles[i] as JsonObject;
-                        string id = unit != null ? AiOAuthFlow.GetString(unit, "unit") : null;
-                        int kind = Array.IndexOf(s_kinds, unit != null ? AiOAuthFlow.GetString(unit, "kind") : null);
+                        string id = unit != null ? AiJson.GetString(unit, "unit") : null;
+                        int kind = Array.IndexOf(s_kinds, unit != null ? AiJson.GetString(unit, "kind") : null);
                         if (id == null || !plan.AskedIds.Contains(id) || plan.AskedStretchIds.Contains(id) || kind < 0)
                         {
                             errors.Add("ARGS_INVALID styles[" + i.ToString(CultureInfo.InvariantCulture) + "]: unknown unit or kind.");
@@ -492,7 +492,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     for (int i = 0; i < stretches.Count; i++)
                     {
                         JsonObject unit = stretches[i] as JsonObject;
-                        string id = unit != null ? AiOAuthFlow.GetString(unit, "unit") : null;
+                        string id = unit != null ? AiJson.GetString(unit, "unit") : null;
                         JsonArray segments = unit?["segments"] as JsonArray;
                         if (id == null || !plan.AskedStretchIds.Contains(id) || segments == null)
                         {
@@ -507,7 +507,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         for (int s = 0; s < segments.Count && invalid == null; s++)
                         {
                             JsonObject segment = segments[s] as JsonObject;
-                            int kind = Array.IndexOf(s_kinds, segment != null ? AiOAuthFlow.GetString(segment, "kind") : null);
+                            int kind = Array.IndexOf(s_kinds, segment != null ? AiJson.GetString(segment, "kind") : null);
                             int first = 0;
                             bool numbered = segment?["first_line"] is JsonValue value && value.TryGetValue(out first);
                             if (!numbered || kind < 0)
@@ -547,7 +547,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         delivery.Errors = errors;
                 }
 
-                outputs.Add(new KeyValuePair<string, string>(AiOAuthFlow.GetString(call, "call_id"),
+                outputs.Add(new KeyValuePair<string, string>(AiJson.GetString(call, "call_id"),
                     new JsonObject { ["valid"] = errors.Count == 0, ["errors"] = GlossaryBuilder.CreateArray(errors) }.ToJsonString()));
             }
 

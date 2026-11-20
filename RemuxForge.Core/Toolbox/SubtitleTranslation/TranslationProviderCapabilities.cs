@@ -208,7 +208,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         private static bool IsWebSearchTool(JsonNode tool)
         {
             JsonObject definition = tool as JsonObject;
-            return definition != null && AiOAuthFlow.GetString(definition, "type") == WEB_SEARCH;
+            return definition != null && AiJson.GetString(definition, "type") == WEB_SEARCH;
         }
 
         #endregion

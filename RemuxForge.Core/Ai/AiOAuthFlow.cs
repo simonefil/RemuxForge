@@ -207,10 +207,10 @@ namespace RemuxForge.Core.Ai
             form["resource"] = RESOURCE;
             tokens = await this.PostTokenAsync(form, cancellationToken);
 
-            idClaims = await this.ValidateIdTokenAsync(GetString(tokens, "id_token"), clientId, request.Nonce, cancellationToken);
+            idClaims = await this.ValidateIdTokenAsync(AiJson.GetString(tokens, "id_token"), clientId, request.Nonce, cancellationToken);
             credentials.ClientId = clientId;
-            credentials.Email = GetString(idClaims, "email");
-            credentials.Subject = GetString(idClaims, "sub");
+            credentials.Email = AiJson.GetString(idClaims, "email");
+            credentials.Subject = AiJson.GetString(idClaims, "sub");
             ApplyTokens(credentials, tokens);
             return credentials;
         }
@@ -250,7 +250,7 @@ namespace RemuxForge.Core.Ai
                 return;
 
             configuration = await this.GetJsonAsync(OPENID_CONFIGURATION_URL, cancellationToken);
-            revocationUrl = GetString(configuration, "revocation_endpoint");
+            revocationUrl = AiJson.GetString(configuration, "revocation_endpoint");
             if (string.IsNullOrEmpty(revocationUrl))
                 throw new AiServiceException(AiErrorKind.InvalidResponse, AppText.T("ai.error.invalidResponse"));
 
@@ -302,18 +302,18 @@ namespace RemuxForge.Core.Ai
                 throw new AiServiceException(AiErrorKind.Network, AppText.F("ai.error.network", ex.Message), ex);
             }
 
-            JsonObject json = TryParseObject(body);
-            if (status >= 200 && status < 300 && json != null && !string.IsNullOrEmpty(GetString(json, "access_token")))
+            JsonObject json = AiJson.TryParseObject(body);
+            if (status >= 200 && status < 300 && json != null && !string.IsNullOrEmpty(AiJson.GetString(json, "access_token")))
                 return json;
 
-            string error = json != null ? GetString(json, "error") : "";
+            string error = json != null ? AiJson.GetString(json, "error") : "";
             for (int i = 0; i < UNUSABLE_TOKEN_ERRORS.Length; i++)
             {
                 if (string.Equals(error, UNUSABLE_TOKEN_ERRORS[i], StringComparison.Ordinal))
                     throw new AiServiceException(AiErrorKind.SignInRequired, AppText.T("ai.error.signInRequired"));
             }
 
-            string description = json != null ? GetString(json, "error_description") : "";
+            string description = json != null ? AiJson.GetString(json, "error_description") : "";
             throw new AiServiceException(AiErrorKind.InvalidSignIn, AppText.F("ai.oauth.tokenFailed", status, string.IsNullOrEmpty(description) ? error : description));
         }
 
@@ -339,20 +339,20 @@ namespace RemuxForge.Core.Ai
             if (parts.Length != 3)
                 throw InvalidIdToken();
 
-            header = TryParseObject(Encoding.UTF8.GetString(Base64UrlDecode(parts[0])));
-            claims = TryParseObject(Encoding.UTF8.GetString(Base64UrlDecode(parts[1])));
-            if (header == null || claims == null || GetString(header, "alg") != "RS256")
+            header = AiJson.TryParseObject(Encoding.UTF8.GetString(Base64UrlDecode(parts[0])));
+            claims = AiJson.TryParseObject(Encoding.UTF8.GetString(Base64UrlDecode(parts[1])));
+            if (header == null || claims == null || AiJson.GetString(header, "alg") != "RS256")
                 throw InvalidIdToken();
 
             configuration = await this.GetJsonAsync(OPENID_CONFIGURATION_URL, cancellationToken);
-            jwks = await this.GetJsonAsync(GetString(configuration, "jwks_uri"), cancellationToken);
+            jwks = await this.GetJsonAsync(AiJson.GetString(configuration, "jwks_uri"), cancellationToken);
             keys = jwks["keys"] as JsonArray;
             if (keys != null)
             {
                 for (int i = 0; i < keys.Count && key == null; i++)
                 {
                     JsonObject candidate = keys[i] as JsonObject;
-                    if (candidate != null && GetString(candidate, "kid") == GetString(header, "kid"))
+                    if (candidate != null && AiJson.GetString(candidate, "kid") == AiJson.GetString(header, "kid"))
                         key = candidate;
                 }
             }
@@ -363,17 +363,17 @@ namespace RemuxForge.Core.Ai
             using (RSA rsa = RSA.Create())
             {
                 RSAParameters parameters = new RSAParameters();
-                parameters.Modulus = Base64UrlDecode(GetString(key, "n"));
-                parameters.Exponent = Base64UrlDecode(GetString(key, "e"));
+                parameters.Modulus = Base64UrlDecode(AiJson.GetString(key, "n"));
+                parameters.Exponent = Base64UrlDecode(AiJson.GetString(key, "e"));
                 rsa.ImportParameters(parameters);
                 if (!rsa.VerifyData(Encoding.ASCII.GetBytes(parts[0] + "." + parts[1]), Base64UrlDecode(parts[2]), HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1))
                     throw InvalidIdToken();
             }
 
-            if (GetString(claims, "iss") != ISSUER || !HasAudience(claims, clientId))
+            if (AiJson.GetString(claims, "iss") != ISSUER || !HasAudience(claims, clientId))
                 throw InvalidIdToken();
 
-            if (GetLong(claims, "exp") < now - CLOCK_SKEW_SECONDS || !FixedTimeEquals(GetString(claims, "nonce"), nonce))
+            if (GetLong(claims, "exp") < now - CLOCK_SKEW_SECONDS || !FixedTimeEquals(AiJson.GetString(claims, "nonce"), nonce))
                 throw InvalidIdToken();
 
             return claims;
@@ -401,7 +401,7 @@ namespace RemuxForge.Core.Ai
                 throw new AiServiceException(AiErrorKind.Network, AppText.F("ai.error.network", ex.Message), ex);
             }
 
-            JsonObject json = TryParseObject(body);
+            JsonObject json = AiJson.TryParseObject(body);
             if (json == null)
                 throw new AiServiceException(AiErrorKind.InvalidResponse, AppText.T("ai.error.invalidResponse"));
 
@@ -416,15 +416,15 @@ namespace RemuxForge.Core.Ai
         private static void ApplyTokens(AiCredentials credentials, JsonObject tokens)
         {
             long expiresIn = GetLong(tokens, "expires_in");
-            string scope = GetString(tokens, "scope");
+            string scope = AiJson.GetString(tokens, "scope");
 
-            credentials.AccessToken = GetString(tokens, "access_token");
+            credentials.AccessToken = AiJson.GetString(tokens, "access_token");
 
             // Il refresh token ruota a ogni rinnovo; l'ID token arriva anche nei rinnovi
-            if (!string.IsNullOrEmpty(GetString(tokens, "refresh_token")))
-                credentials.RefreshToken = GetString(tokens, "refresh_token");
-            if (!string.IsNullOrEmpty(GetString(tokens, "id_token")))
-                credentials.IdToken = GetString(tokens, "id_token");
+            if (!string.IsNullOrEmpty(AiJson.GetString(tokens, "refresh_token")))
+                credentials.RefreshToken = AiJson.GetString(tokens, "refresh_token");
+            if (!string.IsNullOrEmpty(AiJson.GetString(tokens, "id_token")))
+                credentials.IdToken = AiJson.GetString(tokens, "id_token");
             if (!string.IsNullOrEmpty(scope))
                 credentials.Scopes = new List<string>(scope.Split(' ', StringSplitOptions.RemoveEmptyEntries));
 
@@ -468,7 +468,7 @@ namespace RemuxForge.Core.Ai
             JsonArray list = audience as JsonArray;
 
             if (list == null)
-                return GetString(claims, "aud") == clientId;
+                return AiJson.GetString(claims, "aud") == clientId;
 
             for (int i = 0; i < list.Count; i++)
             {
@@ -491,22 +491,6 @@ namespace RemuxForge.Core.Ai
         }
 
         /// <summary>
-        /// Legge una proprietà stringa da un oggetto JSON
-        /// </summary>
-        /// <param name="source">Oggetto JSON</param>
-        /// <param name="name">Nome proprietà</param>
-        /// <returns>Valore o stringa vuota</returns>
-        internal static string GetString(JsonObject source, string name)
-        {
-            JsonValue value = source != null ? source[name] as JsonValue : null;
-            string result;
-            if (value != null && value.TryGetValue<string>(out result))
-                return result != null ? result : "";
-
-            return "";
-        }
-
-        /// <summary>
         /// Legge una proprietà numerica da un oggetto JSON
         /// </summary>
         /// <param name="source">Oggetto JSON</param>
@@ -520,23 +504,6 @@ namespace RemuxForge.Core.Ai
                 return result;
 
             return 0;
-        }
-
-        /// <summary>
-        /// Interpreta un testo come oggetto JSON
-        /// </summary>
-        /// <param name="text">Testo</param>
-        /// <returns>Oggetto JSON o null</returns>
-        internal static JsonObject TryParseObject(string text)
-        {
-            try
-            {
-                return JsonNode.Parse(text != null ? text : "") as JsonObject;
-            }
-            catch (JsonException)
-            {
-                return null;
-            }
         }
 
         /// <summary>

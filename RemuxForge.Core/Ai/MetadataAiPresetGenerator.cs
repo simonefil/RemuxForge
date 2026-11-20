@@ -116,7 +116,7 @@ namespace RemuxForge.Core.Ai
                     StringBuilder messageText = new StringBuilder();
                     foreach (JsonObject item in response.Items)
                     {
-                        if (AiOAuthFlow.GetString(item, "type") == "message")
+                        if (AiJson.GetString(item, "type") == "message")
                             AppendMessageText(item, messageText);
                     }
 
@@ -127,14 +127,14 @@ namespace RemuxForge.Core.Ai
 
                 for (int i = 0; i < calls.Count; i++)
                 {
-                    string name = AiOAuthFlow.GetString(calls[i], "name");
+                    string name = AiJson.GetString(calls[i], "name");
                     JsonObject arguments = AiToolCallReader.ParseArguments(calls[i]);
                     string result;
 
                     if (name == MetadataAiTools.QUERY_FILES_TOOL)
                     {
                         result = tools.QueryFiles(arguments);
-                        Report(progress, AiPresetGenerationStepKind.FilesQueried, round, AiOAuthFlow.GetString(calls[i], "arguments"), null);
+                        Report(progress, AiPresetGenerationStepKind.FilesQueried, round, AiJson.GetString(calls[i], "arguments"), null);
                     }
                     else if (name == MetadataAiTools.SUBMIT_PRESET_TOOL)
                     {
@@ -193,8 +193,8 @@ namespace RemuxForge.Core.Ai
             for (int i = 0; i < content.Count; i++)
             {
                 JsonObject part = content[i] as JsonObject;
-                if (part != null && AiOAuthFlow.GetString(part, "type") == "output_text")
-                    text.AppendLine(AiOAuthFlow.GetString(part, "text"));
+                if (part != null && AiJson.GetString(part, "type") == "output_text")
+                    text.AppendLine(AiJson.GetString(part, "text"));
             }
         }
 

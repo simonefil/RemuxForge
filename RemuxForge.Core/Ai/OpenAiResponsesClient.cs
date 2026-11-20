@@ -138,7 +138,7 @@ namespace RemuxForge.Core.Ai
                 }
             }
 
-            JsonObject root = AiOAuthFlow.TryParseObject(body);
+            JsonObject root = AiJson.TryParseObject(body);
             if (status < 200 || status >= 300)
                 throw CreateError(credentials.Mode, status, root != null ? root["error"] as JsonObject : null, null);
 
@@ -153,20 +153,20 @@ namespace RemuxForge.Core.Ai
                 for (int i = 0; i < models.Count; i++)
                 {
                     JsonObject model = models[i] as JsonObject;
-                    if (model == null || AiOAuthFlow.GetString(model, "visibility") != "list")
+                    if (model == null || AiJson.GetString(model, "visibility") != "list")
                         continue;
 
                     AiModelInfo info = new AiModelInfo();
-                    info.Id = AiOAuthFlow.GetString(model, "slug");
-                    info.DisplayName = AiOAuthFlow.GetString(model, "display_name");
+                    info.Id = AiJson.GetString(model, "slug");
+                    info.DisplayName = AiJson.GetString(model, "display_name");
                     if (string.IsNullOrEmpty(info.DisplayName))
                         info.DisplayName = info.Id;
-                    info.DefaultReasoningLevel = AiOAuthFlow.GetString(model, "default_reasoning_level");
+                    info.DefaultReasoningLevel = AiJson.GetString(model, "default_reasoning_level");
 
                     JsonArray levels = model["supported_reasoning_levels"] as JsonArray;
                     for (int j = 0; levels != null && j < levels.Count; j++)
                     {
-                        string effort = AiOAuthFlow.GetString(levels[j] as JsonObject, "effort");
+                        string effort = AiJson.GetString(levels[j] as JsonObject, "effort");
                         if (!string.IsNullOrEmpty(effort))
                             info.SupportedReasoningLevels.Add(effort);
                     }
@@ -180,7 +180,7 @@ namespace RemuxForge.Core.Ai
                 for (int i = 0; i < data.Count; i++)
                 {
                     JsonObject model = data[i] as JsonObject;
-                    string id = model != null ? AiOAuthFlow.GetString(model, "id") : "";
+                    string id = model != null ? AiJson.GetString(model, "id") : "";
                     if (string.IsNullOrEmpty(id) || IsExcludedApiKeyModel(id))
                         continue;
 
@@ -246,7 +246,7 @@ namespace RemuxForge.Core.Ai
                         if (!response.IsSuccessStatusCode)
                         {
                             string errorText = await response.Content.ReadAsStringAsync(cancellationToken);
-                            JsonObject error = AiOAuthFlow.TryParseObject(errorText);
+                            JsonObject error = AiJson.TryParseObject(errorText);
                             throw CreateError(credentials.Mode, (int)response.StatusCode, error != null ? error["error"] as JsonObject : null, HttpRetryDelay.ReadRetryAfter(response.Headers.RetryAfter));
                         }
 
@@ -353,12 +353,12 @@ namespace RemuxForge.Core.Ai
                 if (data == "[DONE]")
                     break;
 
-                JsonObject streamEvent = AiOAuthFlow.TryParseObject(data);
-                string type = streamEvent != null ? AiOAuthFlow.GetString(streamEvent, "type") : "";
+                JsonObject streamEvent = AiJson.TryParseObject(data);
+                string type = streamEvent != null ? AiJson.GetString(streamEvent, "type") : "";
 
                 if (type == "response.created")
                 {
-                    createdCacheKey = AiOAuthFlow.GetString(streamEvent["response"] as JsonObject, "prompt_cache_key");
+                    createdCacheKey = AiJson.GetString(streamEvent["response"] as JsonObject, "prompt_cache_key");
                     Report(progress, AiStreamStage.Started, "");
                 }
                 else if (type == "response.queued")
@@ -372,14 +372,14 @@ namespace RemuxForge.Core.Ai
                 else if (type == "response.output_item.added")
                 {
                     JsonObject item = streamEvent["item"] as JsonObject;
-                    string itemType = item != null ? AiOAuthFlow.GetString(item, "type") : "";
+                    string itemType = item != null ? AiJson.GetString(item, "type") : "";
                     if (itemType == "reasoning")
                     {
                         Report(progress, AiStreamStage.Reasoning, "");
                     }
                     else if (itemType == "web_search_call")
                     {
-                        searchItemId = AiOAuthFlow.GetString(item, "id");
+                        searchItemId = AiJson.GetString(item, "id");
                         searchQuery = GetSearchQuery(item);
                         Report(progress, AiStreamStage.WebSearch, searchQuery);
                     }
@@ -392,22 +392,22 @@ namespace RemuxForge.Core.Ai
                 }
                 else if (type == "response.web_search_call.in_progress" || type == "response.web_search_call.searching")
                 {
-                    Report(progress, AiStreamStage.WebSearch, AiOAuthFlow.GetString(streamEvent, "item_id") == searchItemId ? searchQuery : "");
+                    Report(progress, AiStreamStage.WebSearch, AiJson.GetString(streamEvent, "item_id") == searchItemId ? searchQuery : "");
                 }
                 else if (type == "response.output_text.annotation.added")
                 {
                     JsonObject annotation = streamEvent["annotation"] as JsonObject;
-                    if (annotation != null && AiOAuthFlow.GetString(annotation, "type") == "url_citation")
+                    if (annotation != null && AiJson.GetString(annotation, "type") == "url_citation")
                     {
-                        string title = AiOAuthFlow.GetString(annotation, "title");
-                        Report(progress, AiStreamStage.Citation, string.IsNullOrEmpty(title) ? AiOAuthFlow.GetString(annotation, "url") : title);
+                        string title = AiJson.GetString(annotation, "title");
+                        Report(progress, AiStreamStage.Citation, string.IsNullOrEmpty(title) ? AiJson.GetString(annotation, "url") : title);
                     }
                 }
                 else if (type == "response.output_text.delta" || type == "response.function_call_arguments.delta")
                 {
                     // La quantità scritta si annuncia a ogni migliaio di caratteri: abbastanza per vederla crescere senza ridisegnare a ogni pezzo
                     int before = written / WRITING_STEP_CHARS;
-                    written += AiOAuthFlow.GetString(streamEvent, "delta").Length;
+                    written += AiJson.GetString(streamEvent, "delta").Length;
                     if (written / WRITING_STEP_CHARS > before)
                         Report(progress, AiStreamStage.Writing, (written / WRITING_STEP_CHARS * WRITING_STEP_CHARS).ToString("N0", CultureInfo.CurrentCulture));
                 }
@@ -426,14 +426,14 @@ namespace RemuxForge.Core.Ai
                         doneItems.Add((JsonObject)item.DeepClone());
 
                     // L'azione della ricerca, con query o pagina, arriva completa solo nell'item finito
-                    if (item != null && AiOAuthFlow.GetString(item, "type") == "web_search_call")
+                    if (item != null && AiJson.GetString(item, "type") == "web_search_call")
                     {
                         JsonObject action = item["action"] as JsonObject;
-                        string actionType = action != null ? AiOAuthFlow.GetString(action, "type") : "";
+                        string actionType = action != null ? AiJson.GetString(action, "type") : "";
                         if (actionType == "open_page")
-                            Report(progress, AiStreamStage.WebPage, AiOAuthFlow.GetString(action, "url"));
+                            Report(progress, AiStreamStage.WebPage, AiJson.GetString(action, "url"));
                         else if (actionType == "find_in_page")
-                            Report(progress, AiStreamStage.WebFind, AiOAuthFlow.GetString(action, "pattern"));
+                            Report(progress, AiStreamStage.WebFind, AiJson.GetString(action, "pattern"));
                         else
                             Report(progress, AiStreamStage.WebSearchDone, GetSearchQuery(item));
                     }
@@ -460,7 +460,7 @@ namespace RemuxForge.Core.Ai
                     }
 
                     // La chiave applicata dal servizio sta nella risposta finale; se manca vale quella dell'evento iniziale
-                    result.PromptCacheKey = AiOAuthFlow.GetString(responseObject, "prompt_cache_key");
+                    result.PromptCacheKey = AiJson.GetString(responseObject, "prompt_cache_key");
                     if (string.IsNullOrEmpty(result.PromptCacheKey))
                         result.PromptCacheKey = createdCacheKey;
                     result.Usage = ReadUsage(responseObject);
@@ -468,7 +468,7 @@ namespace RemuxForge.Core.Ai
                     if (type == "response.incomplete")
                     {
                         result.Status = AiResponseStatus.Incomplete;
-                        result.IncompleteReason = AiOAuthFlow.GetString(responseObject != null ? responseObject["incomplete_details"] as JsonObject : null, "reason");
+                        result.IncompleteReason = AiJson.GetString(responseObject != null ? responseObject["incomplete_details"] as JsonObject : null, "reason");
                     }
 
                     return result;
@@ -503,9 +503,9 @@ namespace RemuxForge.Core.Ai
         /// <returns>Eccezione</returns>
         private static AiServiceException CreateError(AiConnectionMode mode, int status, JsonObject error, TimeSpan? retryAfter)
         {
-            string code = error != null ? AiOAuthFlow.GetString(error, "code") : "";
-            string message = error != null ? AiOAuthFlow.GetString(error, "message") : "";
-            string param = error != null ? AiOAuthFlow.GetString(error, "param") : "";
+            string code = error != null ? AiJson.GetString(error, "code") : "";
+            string message = error != null ? AiJson.GetString(error, "message") : "";
+            string param = error != null ? AiJson.GetString(error, "param") : "";
             AiErrorKind kind;
             string text;
 
@@ -608,7 +608,7 @@ namespace RemuxForge.Core.Ai
             if (action == null)
                 return "";
 
-            string query = AiOAuthFlow.GetString(action, "query");
+            string query = AiJson.GetString(action, "query");
             JsonArray queries = action["queries"] as JsonArray;
             if (!string.IsNullOrEmpty(query) || queries == null)
                 return query;

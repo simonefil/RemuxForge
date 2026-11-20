@@ -354,8 +354,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 List<string> submissions = new List<string>();
                 foreach (JsonObject item in response.Items)
                 {
-                    if (AiOAuthFlow.GetString(item, "type") == "function_call" && AiOAuthFlow.GetString(item, "name") == TranslationRequestBuilder.SUBMIT_TRANSLATION_TOOL)
-                        submissions.Add(AiOAuthFlow.GetString(item, "arguments"));
+                    if (AiJson.GetString(item, "type") == "function_call" && AiJson.GetString(item, "name") == TranslationRequestBuilder.SUBMIT_TRANSLATION_TOOL)
+                        submissions.Add(AiJson.GetString(item, "arguments"));
                 }
 
                 // Segni, caratteri riservati e consegne doppie si riparano sulle battute che hanno già avuto un ritentativo
