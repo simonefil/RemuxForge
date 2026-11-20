@@ -280,12 +280,8 @@ namespace RemuxForge.Web.Services.Toolbox
                 if (job != null)
                 {
                     // Una chiusura brusca fra il salvataggio dell'ultimo file e quello del job lascia in pausa un job già concluso
-                    if (job.Phase == TranslationJobPhase.Translation && job.Status == TranslationJobStatus.Paused &&
-                        job.FileIds.TrueForAll(fileId => this._jobFiles[fileId].TranslationStatus == TranslationFileStatus.Completed))
+                    if (job.Status == TranslationJobStatus.Paused && this.FinishCompletedTranslation())
                     {
-                        this.FinishTranslation();
-                        job.Status = TranslationJobStatus.Idle;
-                        job.Pause = null;
                         this._jobStore.Save(job);
                         this._store.Save(project);
                     }
@@ -514,8 +510,7 @@ namespace RemuxForge.Web.Services.Toolbox
                     Glossary restored = builder.RestoreProposals(this._project.Glossary, this._project.Analysis.DiscardedForImport);
                     this._project.Analysis.DiscardedForImport = new List<GlossaryDiscard>();
                     next = builder.ReplaceImported(result.Glossary, restored, this._project.Analysis.DiscardedForImport);
-                    discarded = this._project.Analysis.DiscardedForImport.FindAll(d => d.Kind == GlossaryEntryKind.Term || d.Kind == GlossaryEntryKind.Character ||
-                        d.Kind == GlossaryEntryKind.Addressing).Count;
+                    discarded = this._project.Analysis.CountDiscardedEntries();
                 }
 
                 next.SourceLanguage = this._project.SourceLanguage;
@@ -664,10 +659,7 @@ namespace RemuxForge.Web.Services.Toolbox
                 name = DisplayName(this._project);
             }
 
-            foreach (char invalid in Path.GetInvalidFileNameChars())
-                name = name.Replace(invalid, '_');
-
-            string path = new OutputPathAllocator(new string[0]).Reserve(Path.Combine(folder, name + GLOSSARY_EXTENSION));
+            string path = new OutputPathAllocator(new string[0]).Reserve(Path.Combine(folder, TranslationProjectArchive.ToFileName(name) + GLOSSARY_EXTENSION));
             using (StagedOutputFile staged = new StagedOutputFile(path))
             {
                 GlossaryFile.Export(glossary, staged.TempPath);
@@ -827,13 +819,8 @@ namespace RemuxForge.Web.Services.Toolbox
                         this._project.ReachedStep = TranslationProjectStep.Review;
                     review = true;
                 }
-                if (this._job.Phase == TranslationJobPhase.Translation && this._job.FileIds.TrueForAll(id => this._jobFiles[id].TranslationStatus == TranslationFileStatus.Completed))
-                {
-                    this.FinishTranslation();
-                    this._job.Status = TranslationJobStatus.Idle;
-                    this._job.Pause = null;
+                if (this.FinishCompletedTranslation())
                     review = true;
-                }
                 this._jobStore.Save(this._job);
                 this._store.Save(this._project);
                 this._jobStore.DeleteFile(this._job.Id, fileId);
@@ -1448,9 +1435,7 @@ namespace RemuxForge.Web.Services.Toolbox
                 this.NotifyRecordsChanged();
 
                 CancellationToken cancellation = this.OperationCancellationToken;
-                provider = this._providerFactory.Create(analysis.WebSearchRejected ? new string[] { TranslationProviderCapabilities.WEB_SEARCH } : null);
-                provider.CallProgress += this.HandleCallProgress;
-                provider.CallFinished += this.HandleCallFinished;
+                provider = this.CreateProvider(analysis.WebSearchRejected ? new string[] { TranslationProviderCapabilities.WEB_SEARCH } : null);
                 webSearch = provider.Capabilities.WebSearch;
 
                 // I tipi prima di tutto il resto: il glossario legge solo le battute da tradurre
@@ -1560,7 +1545,7 @@ namespace RemuxForge.Web.Services.Toolbox
 
                 // Tutte le chiamate fatte: la barra arriva in fondo coi conteggi veri
                 this.ReportProgress(calls, calls, "");
-                int entries = analysis.DiscardedForImport.FindAll(d => d.Kind == GlossaryEntryKind.Term || d.Kind == GlossaryEntryKind.Character || d.Kind == GlossaryEntryKind.Addressing).Count;
+                int entries = analysis.CountDiscardedEntries();
                 if (entries > 0)
                     this.AppendLog(AppText.Count(TEXT_PREFIX + ".discardedForImport", entries));
                 this.AppendLog(AppText.F(TEXT_PREFIX + ".glossaryProposed", project.Glossary.Terms.Count, project.Glossary.Characters.Count, project.Glossary.Addressing.Count));
@@ -1738,9 +1723,7 @@ namespace RemuxForge.Web.Services.Toolbox
                 this.NotifyRecordsChanged();
 
                 // Un solo provider per tutti i file e tutte le fasi: la pausa dei 429 vale per tutti
-                provider = this._providerFactory.Create(job.DisabledCapabilities);
-                provider.CallProgress += this.HandleCallProgress;
-                provider.CallFinished += this.HandleCallFinished;
+                provider = this.CreateProvider(job.DisabledCapabilities);
                 while (stop == null)
                 {
                     if (phase == TranslationJobPhase.Translation)
@@ -1893,6 +1876,19 @@ namespace RemuxForge.Web.Services.Toolbox
         }
 
         /// <summary>
+        /// Crea il provider di un'operazione, con le chiamate in corso legate all'attesa
+        /// </summary>
+        /// <param name="disabledCapabilities">Capacità già spente, null se nessuna</param>
+        /// <returns>Provider dell'operazione</returns>
+        private ITranslationModelProvider CreateProvider(IEnumerable<string> disabledCapabilities)
+        {
+            ITranslationModelProvider provider = this._providerFactory.Create(disabledCapabilities);
+            provider.CallProgress += this.HandleCallProgress;
+            provider.CallFinished += this.HandleCallFinished;
+            return provider;
+        }
+
+        /// <summary>
         /// Lega una fase al log, alla pagina e alle barre: l'operazione della fase, la Globale con le unità fatte, la File con l'unità
         /// del file, o la tratta ripetuta nel primo giro della traduzione; la revisione mostra anche blocco e modello nell'attesa
         /// </summary>
@@ -1941,6 +1937,22 @@ namespace RemuxForge.Web.Services.Toolbox
             this._job.Phase = TranslationJobPhase.Review;
             if (this._project.ReachedStep < TranslationProjectStep.Review)
                 this._project.ReachedStep = TranslationProjectStep.Review;
+        }
+
+        /// <summary>
+        /// Chiude fuori dal giro la traduzione coi file tutti conclusi: il job passa alla revisione AI, fermo e senza fermata;
+        /// chiamato sotto StateLock
+        /// </summary>
+        /// <returns>True se la traduzione è chiusa</returns>
+        private bool FinishCompletedTranslation()
+        {
+            if (this._job.Phase != TranslationJobPhase.Translation || !this._job.FileIds.TrueForAll(id => this._jobFiles[id].TranslationStatus == TranslationFileStatus.Completed))
+                return false;
+
+            this.FinishTranslation();
+            this._job.Status = TranslationJobStatus.Idle;
+            this._job.Pause = null;
+            return true;
         }
 
         /// <summary>

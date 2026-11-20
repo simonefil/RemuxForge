@@ -139,8 +139,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <returns>File scritto</returns>
         public string Export(TranslationProject project, string folder, string name)
         {
-            foreach (char invalid in Path.GetInvalidFileNameChars())
-                name = name.Replace(invalid, '_');
+            name = ToFileName(name);
 
             TranslationProjectArchiveManifest manifest = new TranslationProjectArchiveManifest();
             manifest.ProjectId = project.Id;
@@ -398,6 +397,18 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 if (restored)
                     FileHelper.DeleteTempDirectory(temp);
             }
+        }
+
+        /// <summary>
+        /// Nome di file da un nome del progetto: i caratteri non ammessi diventano trattini bassi
+        /// </summary>
+        /// <param name="name">Nome del progetto</param>
+        /// <returns>Nome di file senza estensione</returns>
+        public static string ToFileName(string name)
+        {
+            foreach (char invalid in Path.GetInvalidFileNameChars())
+                name = name.Replace(invalid, '_');
+            return name;
         }
 
         #endregion

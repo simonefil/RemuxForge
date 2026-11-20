@@ -88,6 +88,19 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 
         #endregion
 
+        #region Metodi pubblici
+
+        /// <summary>
+        /// Proposte di voci scartate per il glossario caricato, senza i testi
+        /// </summary>
+        /// <returns>Termini, personaggi e coppie scartati</returns>
+        public int CountDiscardedEntries()
+        {
+            return this.DiscardedForImport.FindAll(d => d.Kind == GlossaryEntryKind.Term || d.Kind == GlossaryEntryKind.Character || d.Kind == GlossaryEntryKind.Addressing).Count;
+        }
+
+        #endregion
+
         #region Proprietà
 
         /// <summary>
