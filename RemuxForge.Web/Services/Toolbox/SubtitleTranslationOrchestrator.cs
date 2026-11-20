@@ -28,7 +28,7 @@ namespace RemuxForge.Web.Services.Toolbox
         /// <summary>
         /// Prefisso delle chiavi di testo della card
         /// </summary>
-        public const string TEXT_PREFIX = "web.toolbox.subtitleTranslation";
+        private const string TEXT_PREFIX = "web.toolbox.subtitleTranslation";
 
         /// <summary>
         /// Estensione del file di «Esporta glossario»
@@ -2718,7 +2718,7 @@ namespace RemuxForge.Web.Services.Toolbox
         /// <summary>
         /// Modalità dell'accesso configurato
         /// </summary>
-        public AiConnectionMode AccessMode
+        private AiConnectionMode AccessMode
         {
             get { return this._credentialService.Load().Mode; }
         }
