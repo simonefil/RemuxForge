@@ -372,45 +372,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             return result;
         }
 
-        #endregion
-
-        #region Metodi interni
-
-        /// <summary>
-        /// Toglie l'articolo iniziale di un termine con l'elenco della sua lingua
-        /// </summary>
-        /// <param name="term">Termine o resa</param>
-        /// <param name="language">Lingua ISO 639-2</param>
-        /// <returns>Parola da cercare</returns>
-        internal static string StripArticle(string term, string language)
-        {
-            string word = (term ?? "").Trim().Replace('’', '\'');
-            string[] articles;
-            if (!s_articles.TryGetValue(language, out articles))
-                return word;
-
-            foreach (string article in articles)
-            {
-                string head = article.EndsWith("'", StringComparison.Ordinal) ? article : article + " ";
-                if (word.Length > head.Length && word.StartsWith(head, StringComparison.OrdinalIgnoreCase))
-                    return word.Substring(head.Length).Trim();
-            }
-
-            return word;
-        }
-
-        /// <summary>
-        /// Espressione che trova una parola intera
-        /// </summary>
-        /// <param name="word">Parola</param>
-        /// <param name="exactCase">True per le maiuscole esatte, false per non distinguerle</param>
-        /// <returns>Espressione</returns>
-        internal static Regex WordPattern(string word, bool exactCase)
-        {
-            return new Regex(@"(?<![\p{L}\p{M}\p{N}])" + Regex.Escape(word) + @"(?![\p{L}\p{M}\p{N}])",
-                exactCase ? RegexOptions.CultureInvariant : RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-        }
-
         /// <summary>
         /// Precompila «Maiuscole esatte» dei termini del glossario che non l'hanno ancora; una voce che l'ha già resta com'è, così
         /// la scelta dell'utente non si perde. Che un termine sia un nome proprio lo dicono le battute sorgenti, non le maiuscole
@@ -476,53 +437,43 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             return filled;
         }
 
+        #endregion
+
+        #region Metodi interni
+
         /// <summary>
-        /// Espressione che trova la resa di un termine nella traduzione, da usare sul testo in forma NFD. Nel dubbio la resa
-        /// conta come presente: una resa mancata la trova la revisione, mentre una resa presente data per assente segnala la
-        /// battuta a torto. Le maiuscole non contano mai, perché la resa a inizio frase la prende.
-        /// - Scritture senza spazi (ideogrammi, kana, thai...): la resa si cerca contenuta nel testo, perché lì il confine di
-        ///   parola non si vede e i nomi non si flettono.
-        /// - Forma fissa: la resa esatta. Il confine di parola vale sui lati che finiscono con una lettera o una cifra, così
-        ///   «-kun» si trova in «Light-kun».
-        /// - Resa che si flette: la corrispondenza «50% prefix» di memoQ e Phrase. Ogni parola della resa trova una parola
-        ///   intera della traduzione che comincia con la sua prima metà, arrotondata per eccesso, senza contare maiuscole e
-        ///   diacritici: «Titano» trova «Titani», «titán» trova «titanes», «Haus» trova «Häuser». Fra le parole vale qualsiasi
-        ///   separatore (dell'Anima/delle Anime) e la punteggiatura in testa e in coda alla resa non conta
+        /// Toglie l'articolo iniziale di un termine con l'elenco della sua lingua
         /// </summary>
-        /// <param name="word">Resa senza articolo</param>
-        /// <param name="invariable">True per una resa in forma fissa</param>
-        /// <returns>Espressione</returns>
-        internal static Regex RenderingPattern(string word, bool invariable)
+        /// <param name="term">Termine o resa</param>
+        /// <param name="language">Lingua ISO 639-2</param>
+        /// <returns>Parola da cercare</returns>
+        internal static string StripArticle(string term, string language)
         {
-            RegexOptions options = RegexOptions.IgnoreCase | RegexOptions.CultureInvariant;
-            string decomposed = word.Normalize(NormalizationForm.FormD);
-            if (s_unspacedScript.IsMatch(decomposed))
-                return new Regex(Regex.Escape(decomposed), options);
+            string word = (term ?? "").Trim().Replace('’', '\'');
+            string[] articles;
+            if (!s_articles.TryGetValue(language, out articles))
+                return word;
 
-            // Parole della resa senza diacritici
-            List<string> words = new List<string>();
-            foreach (Match match in s_renderingWord.Matches(decomposed))
-                words.Add(Regex.Replace(match.Value, @"\p{M}", ""));
-
-            if (invariable || words.Count == 0)
+            foreach (string article in articles)
             {
-                string composed = word.Normalize(NormalizationForm.FormC);
-                return new Regex((char.IsLetterOrDigit(composed[0]) ? @"(?<![\p{L}\p{M}\p{N}])" : "") + Regex.Escape(decomposed)
-                    + (char.IsLetterOrDigit(composed[composed.Length - 1]) ? @"(?![\p{L}\p{M}\p{N}])" : ""), options);
+                string head = article.EndsWith("'", StringComparison.Ordinal) ? article : article + " ";
+                if (word.Length > head.Length && word.StartsWith(head, StringComparison.OrdinalIgnoreCase))
+                    return word.Substring(head.Length).Trim();
             }
 
-            StringBuilder pattern = new StringBuilder(@"(?<![\p{L}\p{M}\p{N}])");
-            for (int w = 0; w < words.Count; w++)
-            {
-                if (w > 0)
-                    pattern.Append(@"[^\p{L}\p{M}\p{N}]+");
-                foreach (char letter in words[w].Substring(0, (words[w].Length + 1) / 2))
-                    pattern.Append(Regex.Escape(letter.ToString())).Append(@"\p{M}*");
-                pattern.Append(@"[\p{L}\p{M}\p{N}]*");
-            }
-            pattern.Append(@"(?![\p{L}\p{M}\p{N}])");
+            return word;
+        }
 
-            return new Regex(pattern.ToString(), options);
+        /// <summary>
+        /// Espressione che trova una parola intera
+        /// </summary>
+        /// <param name="word">Parola</param>
+        /// <param name="exactCase">True per le maiuscole esatte, false per non distinguerle</param>
+        /// <returns>Espressione</returns>
+        internal static Regex WordPattern(string word, bool exactCase)
+        {
+            return new Regex(@"(?<![\p{L}\p{M}\p{N}])" + Regex.Escape(word) + @"(?![\p{L}\p{M}\p{N}])",
+                exactCase ? RegexOptions.CultureInvariant : RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
         }
 
         /// <summary>
@@ -887,6 +838,55 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             }
 
             return list.ToString();
+        }
+
+        /// <summary>
+        /// Espressione che trova la resa di un termine nella traduzione, da usare sul testo in forma NFD. Nel dubbio la resa
+        /// conta come presente: una resa mancata la trova la revisione, mentre una resa presente data per assente segnala la
+        /// battuta a torto. Le maiuscole non contano mai, perché la resa a inizio frase la prende.
+        /// - Scritture senza spazi (ideogrammi, kana, thai...): la resa si cerca contenuta nel testo, perché lì il confine di
+        ///   parola non si vede e i nomi non si flettono.
+        /// - Forma fissa: la resa esatta. Il confine di parola vale sui lati che finiscono con una lettera o una cifra, così
+        ///   «-kun» si trova in «Yuki-kun».
+        /// - Resa che si flette: la corrispondenza «50% prefix» di memoQ e Phrase. Ogni parola della resa trova una parola
+        ///   intera della traduzione che comincia con la sua prima metà, arrotondata per eccesso, senza contare maiuscole e
+        ///   diacritici: «Titano» trova «Titani», «titán» trova «titanes», «Haus» trova «Häuser». Fra le parole vale qualsiasi
+        ///   separatore (dell'Anima/delle Anime) e la punteggiatura in testa e in coda alla resa non conta
+        /// </summary>
+        /// <param name="word">Resa senza articolo</param>
+        /// <param name="invariable">True per una resa in forma fissa</param>
+        /// <returns>Espressione</returns>
+        private static Regex RenderingPattern(string word, bool invariable)
+        {
+            RegexOptions options = RegexOptions.IgnoreCase | RegexOptions.CultureInvariant;
+            string decomposed = word.Normalize(NormalizationForm.FormD);
+            if (s_unspacedScript.IsMatch(decomposed))
+                return new Regex(Regex.Escape(decomposed), options);
+
+            // Parole della resa senza diacritici
+            List<string> words = new List<string>();
+            foreach (Match match in s_renderingWord.Matches(decomposed))
+                words.Add(Regex.Replace(match.Value, @"\p{M}", ""));
+
+            if (invariable || words.Count == 0)
+            {
+                string composed = word.Normalize(NormalizationForm.FormC);
+                return new Regex((char.IsLetterOrDigit(composed[0]) ? @"(?<![\p{L}\p{M}\p{N}])" : "") + Regex.Escape(decomposed)
+                    + (char.IsLetterOrDigit(composed[composed.Length - 1]) ? @"(?![\p{L}\p{M}\p{N}])" : ""), options);
+            }
+
+            StringBuilder pattern = new StringBuilder(@"(?<![\p{L}\p{M}\p{N}])");
+            for (int w = 0; w < words.Count; w++)
+            {
+                if (w > 0)
+                    pattern.Append(@"[^\p{L}\p{M}\p{N}]+");
+                foreach (char letter in words[w].Substring(0, (words[w].Length + 1) / 2))
+                    pattern.Append(Regex.Escape(letter.ToString())).Append(@"\p{M}*");
+                pattern.Append(@"[\p{L}\p{M}\p{N}]*");
+            }
+            pattern.Append(@"(?![\p{L}\p{M}\p{N}])");
+
+            return new Regex(pattern.ToString(), options);
         }
 
         #endregion

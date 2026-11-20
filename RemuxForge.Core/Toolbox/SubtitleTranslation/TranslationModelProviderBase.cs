@@ -98,7 +98,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 
         #endregion
 
-        #region Metodi protected
+        #region Metodi protetti
 
         /// <summary>
         /// Manda un tentativo della richiesta già preparata secondo le capacità; il retry lo fa la base

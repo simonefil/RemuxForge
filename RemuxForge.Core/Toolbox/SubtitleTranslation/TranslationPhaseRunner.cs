@@ -212,7 +212,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 
         #endregion
 
-        #region Metodi protected
+        #region Metodi protetti
 
         /// <summary>
         /// True se il file ha ancora lavoro che lo scheduler deve prendere

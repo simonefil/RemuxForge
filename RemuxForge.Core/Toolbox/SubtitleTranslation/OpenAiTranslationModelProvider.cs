@@ -87,7 +87,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 
         #endregion
 
-        #region Metodi protected
+        #region Metodi protetti
 
         /// <summary>
         /// Manda un tentativo della richiesta preparata alla Responses API, preceduto con l'account ChatGPT una volta per sessione

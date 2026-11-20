@@ -294,7 +294,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 
         #endregion
 
-        #region Metodi protected
+        #region Metodi protetti
 
         /// <inheritdoc />
         protected override bool HasWork(TranslationRunFile file)
