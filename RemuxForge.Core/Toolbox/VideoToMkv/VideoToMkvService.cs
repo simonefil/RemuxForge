@@ -48,10 +48,9 @@ namespace RemuxForge.Core.Toolbox.VideoToMkv
         #region Metodi pubblici
 
         /// <summary>
-        /// Converte un file in Matroska. Un file già Matroska o con un contenitore non gestito si salta; l'uscita ha il nome del file
-        /// con estensione .mkv, accanto all'originale o nella cartella indicata, e un nome occupato riceve il suffisso numerico
-        /// dell'allocatore. Lo stop dell'operazione corrente interrompe mkvmerge e non lascia file; un file non scritto restituisce
-        /// il nome prenotato al lotto
+        /// Converte un file in Matroska. L'uscita ha il nome del file con estensione .mkv, accanto all'originale o nella cartella
+        /// indicata, e un nome occupato riceve il suffisso numerico dell'allocatore. Lo stop dell'operazione corrente interrompe
+        /// mkvmerge e non lascia file; un file non scritto restituisce il nome prenotato al lotto
         /// </summary>
         /// <param name="inputPath">File da convertire</param>
         /// <param name="outputFolder">Cartella di uscita, vuota per scrivere accanto all'originale</param>
@@ -64,13 +63,6 @@ namespace RemuxForge.Core.Toolbox.VideoToMkv
             VideoToMkvResult result = new VideoToMkvResult();
             List<string> errors = new List<string>();
             string folderError = string.IsNullOrEmpty(outputFolder) ? "" : OutputPathAllocator.ValidateFolder(outputFolder);
-
-            if (MediaContainerFormats.IsMatroska(inputPath) || !MediaContainerFormats.IsSupported(inputPath))
-            {
-                result.Status = VideoToMkvStatus.Skipped;
-                result.Message = MediaContainerFormats.IsMatroska(inputPath) ? AppText.T("toolbox.videoToMkv.skippedMatroska") : AppText.F("toolbox.videoToMkv.skippedUnsupported", Path.GetExtension(inputPath));
-                return result;
-            }
 
             if (folderError.Length > 0 || !File.Exists(inputPath))
             {
@@ -162,9 +154,6 @@ namespace RemuxForge.Core.Toolbox.VideoToMkv
         /// <summary>Matroska scritto, con avvisi di mkvmerge</summary>
         ConvertedWithWarnings,
 
-        /// <summary>File non convertibile, lasciato com'è</summary>
-        Skipped,
-
         /// <summary>Conversione non riuscita</summary>
         Failed,
 
@@ -206,7 +195,7 @@ namespace RemuxForge.Core.Toolbox.VideoToMkv
         public string OutputPath { get; set; }
 
         /// <summary>
-        /// Motivo del salto, dell'errore o dell'interruzione, senza percorsi completi
+        /// Motivo dell'errore o dell'interruzione, senza percorsi completi
         /// </summary>
         public string Message { get; set; }
 

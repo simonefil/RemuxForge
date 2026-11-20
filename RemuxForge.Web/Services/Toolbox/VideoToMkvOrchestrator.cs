@@ -37,7 +37,7 @@ namespace RemuxForge.Web.Services.Toolbox
         #region Metodi pubblici
 
         /// <summary>
-        /// Converte i file in attesa, falliti o interrotti; quelli già convertiti, anche con avvisi, o saltati restano come sono
+        /// Converte i file in attesa, falliti o interrotti; quelli già convertiti, anche con avvisi, restano come sono
         /// </summary>
         public override void Start()
         {
@@ -156,8 +156,6 @@ namespace RemuxForge.Web.Services.Toolbox
                     summary.Add(result.Status);
                     if (result.Status == VideoToMkvStatus.Converted || result.Status == VideoToMkvStatus.ConvertedWithWarnings)
                         this.AppendLog(AppText.F("web.toolbox.videoToMkv.fileConverted", name, result.OutputPath));
-                    else if (result.Status == VideoToMkvStatus.Skipped)
-                        this.AppendLog(AppText.F("web.toolbox.videoToMkv.fileSkipped", name, result.Message));
                     else if (result.Status == VideoToMkvStatus.Failed)
                         this.AppendLog(AppText.F("web.toolbox.videoToMkv.fileFailed", name, result.Details.Length > 0 ? result.Details : result.Message));
                     else
@@ -233,7 +231,7 @@ namespace RemuxForge.Web.Services.Toolbox
         public string OutputPath { get; set; }
 
         /// <summary>
-        /// Motivo del salto, dell'errore o dell'interruzione, in forma breve
+        /// Motivo dell'errore o dell'interruzione, in forma breve
         /// </summary>
         public string Message { get; set; }
 
@@ -243,11 +241,11 @@ namespace RemuxForge.Web.Services.Toolbox
         public string Details { get; set; }
 
         /// <summary>
-        /// True se il file non va rielaborato: convertito, anche con avvisi, o saltato
+        /// True se il file non va rielaborato: convertito, anche con avvisi
         /// </summary>
         public bool IsDone
         {
-            get { return this.Status == VideoToMkvStatus.Converted || this.Status == VideoToMkvStatus.ConvertedWithWarnings || this.Status == VideoToMkvStatus.Skipped; }
+            get { return this.Status == VideoToMkvStatus.Converted || this.Status == VideoToMkvStatus.ConvertedWithWarnings; }
         }
 
         #endregion
@@ -270,8 +268,6 @@ namespace RemuxForge.Web.Services.Toolbox
                 this.Converted++;
             else if (status == VideoToMkvStatus.ConvertedWithWarnings)
                 this.ConvertedWithWarnings++;
-            else if (status == VideoToMkvStatus.Skipped)
-                this.Skipped++;
             else if (status == VideoToMkvStatus.Failed)
                 this.Failed++;
             else
@@ -279,14 +275,14 @@ namespace RemuxForge.Web.Services.Toolbox
         }
 
         /// <summary>
-        /// Descrive i conteggi diversi da zero, nell'ordine convertiti, con avvisi, errori, saltati, interrotti, non elaborati
+        /// Descrive i conteggi diversi da zero, nell'ordine convertiti, con avvisi, errori, interrotti, non elaborati
         /// </summary>
         /// <returns>Testo del riepilogo</returns>
         public override string Describe()
         {
             List<string> parts = new List<string>();
-            string[] keys = { "summaryConverted", "summaryWithWarnings", "summaryFailed", "summarySkipped", "summaryStopped", "summaryNotProcessed" };
-            int[] counts = { this.Converted, this.ConvertedWithWarnings, this.Failed, this.Skipped, this.Interrupted, this.NotProcessed };
+            string[] keys = { "summaryConverted", "summaryWithWarnings", "summaryFailed", "summaryStopped", "summaryNotProcessed" };
+            int[] counts = { this.Converted, this.ConvertedWithWarnings, this.Failed, this.Interrupted, this.NotProcessed };
 
             for (int i = 0; i < keys.Length; i++)
             {
@@ -317,11 +313,6 @@ namespace RemuxForge.Web.Services.Toolbox
         public int Failed { get; private set; }
 
         /// <summary>
-        /// File saltati
-        /// </summary>
-        public int Skipped { get; private set; }
-
-        /// <summary>
         /// File interrotti dallo stop durante la conversione
         /// </summary>
         public int Interrupted { get; private set; }
@@ -331,7 +322,7 @@ namespace RemuxForge.Web.Services.Toolbox
         /// </summary>
         public int NotProcessed
         {
-            get { return this.Total - this.Converted - this.ConvertedWithWarnings - this.Failed - this.Skipped - this.Interrupted; }
+            get { return this.Total - this.Converted - this.ConvertedWithWarnings - this.Failed - this.Interrupted; }
         }
 
         /// <summary>
@@ -339,7 +330,7 @@ namespace RemuxForge.Web.Services.Toolbox
         /// </summary>
         public override bool AllSucceeded
         {
-            get { return this.Converted > 0 && this.ConvertedWithWarnings + this.Failed + this.Skipped + this.Interrupted + this.NotProcessed == 0 && !this.Stopped; }
+            get { return this.Converted > 0 && this.ConvertedWithWarnings + this.Failed + this.Interrupted + this.NotProcessed == 0 && !this.Stopped; }
         }
 
         /// <summary>

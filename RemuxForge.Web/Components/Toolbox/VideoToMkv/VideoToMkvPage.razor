@@ -45,7 +45,6 @@
                                          VideoToMkvStatus.Running => "web.toolbox.videoToMkv.statusRunning",
                                          VideoToMkvStatus.Converted => "web.toolbox.videoToMkv.statusConverted",
                                          VideoToMkvStatus.ConvertedWithWarnings => "web.toolbox.videoToMkv.statusConvertedWithWarnings",
-                                         VideoToMkvStatus.Skipped => "web.toolbox.videoToMkv.statusSkipped",
                                          VideoToMkvStatus.Failed => "web.toolbox.videoToMkv.statusFailed",
                                          VideoToMkvStatus.Stopped => "web.toolbox.videoToMkv.statusStopped",
                                          _ => "web.toolbox.videoToMkv.statusPending"
@@ -56,7 +55,6 @@
                                          VideoToMkvStatus.Converted => BadgeStyle.Success,
                                          VideoToMkvStatus.Failed => BadgeStyle.Danger,
                                          VideoToMkvStatus.ConvertedWithWarnings or VideoToMkvStatus.Stopped => BadgeStyle.Warning,
-                                         VideoToMkvStatus.Skipped => BadgeStyle.Secondary,
                                          _ => BadgeStyle.Base
                                      })" />
                     </Template>
