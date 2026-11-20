@@ -27,15 +27,6 @@ namespace RemuxForge.Web.Services.Toolbox
     /// </summary>
     public sealed class TrackExtractionOrchestrator : ToolboxOrchestratorBase<TrackExtractionFile>
     {
-        #region Costanti
-
-        /// <summary>
-        /// Avvisi dello strumento riportati per esteso nel log e nel tooltip della traccia
-        /// </summary>
-        private const int LISTED_WARNINGS = 5;
-
-        #endregion
-
         #region Variabili di classe
 
         /// <summary>
@@ -376,7 +367,7 @@ namespace RemuxForge.Web.Services.Toolbox
 
         /// <summary>
         /// Worker dell'estrazione: un video alla volta, tutte le sue tracce scelte insieme; un errore non ferma le altre tracce né gli
-        /// altri video
+        /// altri video. Gli avvisi che non nominano una traccia riguardano il video: vanno nel log una volta e non toccano gli esiti
         /// </summary>
         /// <param name="batch">Tracce del lotto, fissate alla riserva</param>
         /// <param name="outputFolder">Cartella di uscita del lotto, vuota per accanto ai video</param>
@@ -384,149 +375,55 @@ namespace RemuxForge.Web.Services.Toolbox
         {
             List<TrackExtractionFile> files = new List<TrackExtractionFile>();
             Dictionary<TrackExtractionFile, List<TrackExtractionTrack>> tracksByFile = new Dictionary<TrackExtractionFile, List<TrackExtractionTrack>>();
-            List<string> inputs = new List<string>();
-            TrackExtractionBatchSummary summary = new TrackExtractionBatchSummary(this.TextPrefix);
-            string folderError;
+            TrackExtractionService service = this.CreateService();
+            TrackExtractionBatchSummary summary = new TrackExtractionBatchSummary(this.TextPrefix, batch.Count);
 
-            this.SetBusy(true, AppText.T("web.toolbox.trackExtraction.progress"));
-            try
+            foreach (TrackExtractionTrack track in batch)
             {
-                foreach (TrackExtractionTrack track in batch)
+                if (!tracksByFile.ContainsKey(track.File))
                 {
-                    if (!tracksByFile.ContainsKey(track.File))
-                    {
-                        files.Add(track.File);
-                        tracksByFile[track.File] = new List<TrackExtractionTrack>();
-                    }
-                    tracksByFile[track.File].Add(track);
+                    files.Add(track.File);
+                    tracksByFile[track.File] = new List<TrackExtractionTrack>();
                 }
-                summary.Total = batch.Count;
+                tracksByFile[track.File].Add(track);
+            }
 
-                // La cartella può sparire fra la scelta e l'avvio: il lotto non parte e nessuna traccia cambia stato
-                folderError = outputFolder.Length > 0 ? OutputPathAllocator.ValidateFolder(outputFolder) : "";
-                if (folderError.Length > 0)
-                    throw new InvalidOperationException(folderError);
-
-                // Le tracce del lotto perdono l'esito del lotto precedente: dopo uno stop quelle non raggiunte tornano da elaborare
-                lock (this.StateLock)
+            this.RunBatch(files, outputFolder, summary,
+                AppText.F("web.toolbox.trackExtraction.batchStarted", AppText.Count("web.toolbox.trackExtraction.tracksCount", batch.Count), AppText.Count("web.toolbox.trackExtraction.filesCount", files.Count),
+                    outputFolder.Length > 0 ? outputFolder : AppText.T("web.toolbox.output.nextToSource")),
+                () => batch.ForEach(t => t.Reset(ToolboxItemStatus.Pending)),
+                file => tracksByFile[file].ForEach(t => t.Reset(ToolboxItemStatus.Running)),
+                (file, allocator, onProgress) =>
                 {
-                    foreach (TrackExtractionFile file in this.Records)
-                        inputs.Add(file.InputPath);
-                    foreach (TrackExtractionTrack track in batch)
-                        track.Reset(ToolboxItemStatus.Pending);
-                }
-                this.NotifyRecordsChanged();
-
-                // Gli input dell'intero elenco restano vietati come uscita
-                OutputPathAllocator allocator = new OutputPathAllocator(inputs);
-                TrackExtractionService service = this.CreateService();
-                this.AppendLog(AppText.F("web.toolbox.trackExtraction.batchStarted", AppText.Count("web.toolbox.trackExtraction.tracksCount", summary.Total), AppText.Count("web.toolbox.trackExtraction.filesCount", files.Count),
-                    outputFolder.Length > 0 ? outputFolder : AppText.T("web.toolbox.output.nextToSource")));
-
-                for (int i = 0; i < files.Count; i++)
-                {
-                    TrackExtractionFile file = files[i];
                     List<TrackExtractionTrack> tracks = tracksByFile[file];
                     List<ExtractableTrack> chosen = tracks.ConvertAll(t => t.Track);
                     List<string> fileWarnings = new List<string>();
                     string name = Path.GetFileName(file.InputPath);
                     List<TrackExtractionResult> results;
 
-                    if (this.StopRequested)
-                        break;
-
-                    this.ReportProgress(i, files.Count, name);
-                    lock (this.StateLock)
-                    {
-                        foreach (TrackExtractionTrack track in tracks)
-                            track.Reset(ToolboxItemStatus.Running);
-                    }
-                    this.NotifyRecordsChanged();
-
-                    // Il try sta dentro il ciclo: un video illeggibile o una cartella non scrivibile fermano quel video soltanto
                     try
                     {
-                        results = service.Extract(file.Source, chosen, outputFolder, allocator, percent =>
-                        {
-                            lock (this.StateLock)
-                            {
-                                this.ProgressState.CurrentIndeterminate = false;
-                                this.ProgressState.CurrentPercent = percent;
-                                this.ProgressState.GlobalPercent = (i * 100 + percent) / files.Count;
-                            }
-                            this.NotifyProgressChanged();
-                        }, fileWarnings);
+                        results = service.Extract(file.Source, chosen, outputFolder, allocator, onProgress, fileWarnings);
                     }
                     catch (Exception ex)
                     {
-                        bool stopped = this.IsOperationStopped(ex);
-                        results = chosen.ConvertAll(t => new TrackExtractionResult(t)
-                        {
-                            Status = stopped ? ToolboxItemStatus.Stopped : ToolboxItemStatus.Failed,
-                            Message = ex.Message
-                        });
+                        results = chosen.ConvertAll(t => new TrackExtractionResult(t));
+                        results.ForEach(r => this.ApplyException(r, ex));
                     }
 
-                    // Gli avvisi che non nominano una traccia riguardano il video: vanno nel log una volta e non toccano gli esiti
-                    for (int w = 0; w < fileWarnings.Count && w < LISTED_WARNINGS; w++)
-                        this.AppendLog(AppText.F("web.toolbox.trackExtraction.trackWarning", name, fileWarnings[w]));
-                    if (fileWarnings.Count > LISTED_WARNINGS)
-                        this.AppendLog(AppText.Count("web.toolbox.trackExtraction.moreWarnings", fileWarnings.Count - LISTED_WARNINGS, name));
-
+                    this.LogWarnings(name, fileWarnings);
                     for (int t = 0; t < tracks.Count; t++)
                     {
                         TrackExtractionTrack track = tracks[t];
                         TrackExtractionResult result = results[t];
-                        string label = AppText.F("web.toolbox.trackExtraction.trackLabel", name, track.Track.Number, track.Track.Format.Name, track.Track.Language);
+                        bool convertsToSrt = track.Track.Format.ConvertsToSrt;
 
-                        // Lo strumento può ripetere lo stesso avviso: log e tooltip ne riportano i primi e il conteggio degli altri
-                        List<string> listed = result.Warnings.GetRange(0, Math.Min(result.Warnings.Count, LISTED_WARNINGS));
-                        if (result.Warnings.Count > LISTED_WARNINGS)
-                            listed.Add(AppText.Count("web.toolbox.trackExtraction.tooltipMoreWarnings", result.Warnings.Count - LISTED_WARNINGS));
-
-                        string failure = result.Details.Length > 0 ? result.Details : result.Message;
-                        if (result.Details.Length == 0)
-                            result.Details = string.Join(Environment.NewLine, listed);
-                        lock (this.StateLock)
-                        {
-                            track.Result = result;
-                        }
-
-                        for (int w = 0; w < result.Warnings.Count && w < LISTED_WARNINGS; w++)
-                            this.AppendLog(AppText.F("web.toolbox.trackExtraction.trackWarning", label, result.Warnings[w]));
-                        if (result.Warnings.Count > LISTED_WARNINGS)
-                            this.AppendLog(AppText.Count("web.toolbox.trackExtraction.moreWarnings", result.Warnings.Count - LISTED_WARNINGS, label));
-
-                        summary.Add(result.Status, track.Track.Format.ConvertsToSrt);
-                        if (result.IsDone)
-                            this.AppendLog(AppText.F(track.Track.Format.ConvertsToSrt ? "web.toolbox.trackExtraction.trackConverted" : "web.toolbox.trackExtraction.trackExtracted", label, result.OutputPath));
-                        else if (result.Status == ToolboxItemStatus.Failed)
-                            this.AppendLog(AppText.F("web.toolbox.trackExtraction.trackFailed", label, failure));
-                        else
-                            this.AppendLog(AppText.F("web.toolbox.trackExtraction.trackStopped", label));
+                        this.RecordResult(result, AppText.F("web.toolbox.trackExtraction.trackLabel", name, track.Track.Number, track.Track.Format.Name, track.Track.Language),
+                            convertsToSrt ? "web.toolbox.trackExtraction.trackConverted" : "web.toolbox.trackExtraction.trackExtracted", summary, () => track.Result = result);
+                        if (convertsToSrt && result.IsDone)
+                            summary.AddConvertedToSrt();
                     }
-
-                    // Il video concluso conta per intero anche quando lo strumento non ha riportato il cento per cento; quello fermato no
-                    if (!this.StopRequested)
-                    {
-                        lock (this.StateLock)
-                        {
-                            this.ProgressState.CurrentPercent = 100;
-                            this.ProgressState.GlobalPercent = (i + 1) * 100 / files.Count;
-                        }
-                        this.NotifyProgressChanged();
-                    }
-                    this.NotifyRecordsChanged();
-                }
-            }
-            catch (Exception ex)
-            {
-                this.AppendLog(AppText.F("web.toolbox.trackExtraction.batchError", ex.Message));
-            }
-            finally
-            {
-                this.FinishBatch(summary);
-            }
+                });
         }
 
         /// <summary>
@@ -970,7 +867,8 @@ namespace RemuxForge.Web.Services.Toolbox
         /// Costruttore
         /// </summary>
         /// <param name="textPrefix">Prefisso delle chiavi dei testi della card</param>
-        public TrackExtractionBatchSummary(string textPrefix) : base(textPrefix)
+        /// <param name="total">Tracce del lotto</param>
+        public TrackExtractionBatchSummary(string textPrefix, int total) : base(textPrefix, total)
         {
         }
 
@@ -979,15 +877,11 @@ namespace RemuxForge.Web.Services.Toolbox
         #region Metodi pubblici
 
         /// <summary>
-        /// Conta l'esito di una traccia elaborata
+        /// Conta una traccia estratta convertendo il Timed Text in SRT
         /// </summary>
-        /// <param name="status">Stato finale della traccia</param>
-        /// <param name="convertsToSrt">True se la traccia si converte in SRT</param>
-        public void Add(ToolboxItemStatus status, bool convertsToSrt)
+        public void AddConvertedToSrt()
         {
-            this.Add(status);
-            if (convertsToSrt && (status == ToolboxItemStatus.Done || status == ToolboxItemStatus.DoneWithWarnings))
-                this.ConvertedToSrt++;
+            this.ConvertedToSrt++;
         }
 
         /// <summary>

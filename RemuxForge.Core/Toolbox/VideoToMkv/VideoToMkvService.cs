@@ -88,7 +88,7 @@ namespace RemuxForge.Core.Toolbox.VideoToMkv
                     if (ProcessRunner.IsStopRequested())
                     {
                         result.Status = ToolboxItemStatus.Stopped;
-                        result.Message = AppText.T("toolbox.videoToMkv.stopped");
+                        result.Message = AppText.T("toolbox.output.stopped");
                     }
                     else if (run.ExitCode != 0 && run.ExitCode != MkvToolNixGuiMode.WARNING_EXIT_CODE)
                     {

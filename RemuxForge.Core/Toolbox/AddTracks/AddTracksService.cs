@@ -271,7 +271,7 @@ namespace RemuxForge.Core.Toolbox.AddTracks
                     if (ProcessRunner.IsStopRequested())
                     {
                         result.Status = ToolboxItemStatus.Stopped;
-                        result.Message = AppText.T("toolbox.addTracks.stopped");
+                        result.Message = AppText.T("toolbox.output.stopped");
                         return result;
                     }
 

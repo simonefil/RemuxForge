@@ -18,15 +18,6 @@ namespace RemuxForge.Web.Services.Toolbox
     /// </summary>
     public sealed class AddTracksOrchestrator : ToolboxOrchestratorBase<AddTracksVideo>
     {
-        #region Costanti
-
-        /// <summary>
-        /// Avvisi di mkvmerge riportati per esteso nel log e nel tooltip della riga, per ogni video
-        /// </summary>
-        private const int LISTED_WARNINGS = 5;
-
-        #endregion
-
         #region Variabili statiche
 
         /// <summary>
@@ -333,16 +324,20 @@ namespace RemuxForge.Web.Services.Toolbox
                 if (!this.CanStart)
                     return;
 
-                List<KeyValuePair<AddTracksVideo, AddTracksTrackFile>> batch = new List<KeyValuePair<AddTracksVideo, AddTracksTrackFile>>();
+                Dictionary<AddTracksVideo, AddTracksTrackFile> pairs = new Dictionary<AddTracksVideo, AddTracksTrackFile>();
+                List<AddTracksVideo> batch = new List<AddTracksVideo>();
                 AddedTrackProperties properties = new AddedTrackProperties(this._language, this._name.Trim(), this._isDefault, this._isForced, this._delayMs, this._charset);
                 string outputFolder = this.GetBatchOutputFolder();
 
                 for (int i = 0; i < this.Records.Count; i++)
                 {
                     if (!this.Records[i].Result.IsDone)
-                        batch.Add(new KeyValuePair<AddTracksVideo, AddTracksTrackFile>(this.Records[i], this._tracks[i]));
+                    {
+                        batch.Add(this.Records[i]);
+                        pairs[this.Records[i]] = this._tracks[i];
+                    }
                 }
-                this.TryRunExclusive(() => this.AddWorker(batch, properties, outputFolder));
+                this.TryRunExclusive(() => this.AddWorker(batch, pairs, properties, outputFolder));
             }
         }
 
@@ -399,6 +394,20 @@ namespace RemuxForge.Web.Services.Toolbox
         protected override void OnRecordsRemoved()
         {
             this.RealignResults();
+        }
+
+        /// <summary>
+        /// Video e file di tracce dell'elenco, mai usati come uscita; da chiamare sotto StateLock
+        /// </summary>
+        /// <returns>Percorsi degli ingressi</returns>
+        protected override List<string> CollectInputs()
+        {
+            List<string> inputs = base.CollectInputs();
+
+            foreach (AddTracksTrackFile track in this._tracks)
+                inputs.Add(track.InputPath);
+
+            return inputs;
         }
 
         #endregion
@@ -460,22 +469,6 @@ namespace RemuxForge.Web.Services.Toolbox
 
             this.NotifyRecordsChanged();
             return to;
-        }
-
-        /// <summary>
-        /// Video e file di tracce dell'elenco, mai usati come uscita; da chiamare sotto StateLock
-        /// </summary>
-        /// <returns>Percorsi degli ingressi</returns>
-        private List<string> CollectInputs()
-        {
-            List<string> inputs = new List<string>();
-
-            foreach (AddTracksVideo video in this.Records)
-                inputs.Add(video.InputPath);
-            foreach (AddTracksTrackFile track in this._tracks)
-                inputs.Add(track.InputPath);
-
-            return inputs;
         }
 
         /// <summary>
@@ -575,142 +568,56 @@ namespace RemuxForge.Web.Services.Toolbox
         }
 
         /// <summary>
-        /// Worker del lotto: una coppia alla volta, un errore non ferma le altre
+        /// Worker del lotto: una coppia alla volta, un errore non ferma le altre. Un video sostituito contiene ora la traccia: si
+        /// ricorda, per non aggiungerla una seconda volta
         /// </summary>
-        /// <param name="batch">Coppie del lotto, fissate alla riserva</param>
+        /// <param name="batch">Video del lotto, fissati alla riserva</param>
+        /// <param name="pairs">File di tracce di ogni video del lotto, fissati alla riserva</param>
         /// <param name="properties">Proprietà della traccia aggiunta, fissate alla riserva</param>
         /// <param name="outputFolder">Cartella di uscita del lotto, vuota per sovrascrivere</param>
-        private void AddWorker(List<KeyValuePair<AddTracksVideo, AddTracksTrackFile>> batch, AddedTrackProperties properties, string outputFolder)
+        private void AddWorker(List<AddTracksVideo> batch, Dictionary<AddTracksVideo, AddTracksTrackFile> pairs, AddedTrackProperties properties, string outputFolder)
         {
-            ToolboxBatchSummary summary = new ToolboxBatchSummary(this.TextPrefix);
+            AddTracksService service = new AddTracksService(AppSettingsService.Instance.Settings.Tools.MkvMergePath);
             CancellationToken cancellation = this.OperationCancellationToken;
-            string folderError;
-            List<string> inputs;
+            ToolboxBatchSummary summary = new ToolboxBatchSummary(this.TextPrefix, batch.Count);
 
-            this.SetBusy(true, AppText.T("web.toolbox.addTracks.progress"));
-            try
-            {
-                summary.Total = batch.Count;
-
-                // La cartella può sparire fra la scelta e l'avvio: il lotto non parte e nessuna coppia cambia stato
-                folderError = outputFolder.Length > 0 ? OutputPathAllocator.ValidateFolder(outputFolder) : "";
-                if (folderError.Length > 0)
-                    throw new InvalidOperationException(folderError);
-
-                // Le coppie del lotto perdono l'esito del lotto precedente: dopo uno stop quelle non raggiunte tornano in attesa
-                lock (this.StateLock)
+            this.RunBatch(batch, outputFolder, summary,
+                AppText.Count("web.toolbox.addTracks.batchStarted", batch.Count, outputFolder.Length > 0 ? outputFolder : AppText.T("web.toolbox.addTracks.overwrite")),
+                () => batch.ForEach(v => v.Reset()),
+                video => video.Result = new ToolboxItemResult(ToolboxItemStatus.Running),
+                (video, allocator, onProgress) =>
                 {
-                    inputs = this.CollectInputs();
-                    foreach (KeyValuePair<AddTracksVideo, AddTracksTrackFile> pair in batch)
-                        pair.Key.Reset();
-                }
-                this.NotifyRecordsChanged();
-
-                // Video e tracce dell'intero elenco restano vietati come uscita
-                OutputPathAllocator allocator = new OutputPathAllocator(inputs);
-                AddTracksService service = new AddTracksService(AppSettingsService.Instance.Settings.Tools.MkvMergePath);
-                this.AppendLog(AppText.Count("web.toolbox.addTracks.batchStarted", batch.Count, outputFolder.Length > 0 ? outputFolder : AppText.T("web.toolbox.addTracks.overwrite")));
-
-                for (int i = 0; i < batch.Count; i++)
-                {
-                    AddTracksVideo video = batch[i].Key;
-                    AddTracksTrackFile track = batch[i].Value;
-                    string name = Path.GetFileName(video.InputPath);
-                    string label = AppText.F("web.toolbox.addTracks.pairLabel", Path.GetFileName(track.InputPath), name);
+                    AddTracksTrackFile track = pairs[video];
                     AddTracksResult result;
 
-                    if (this.StopRequested)
-                        break;
-
-                    this.ReportProgress(i, batch.Count, name);
-                    lock (this.StateLock)
-                    {
-                        video.Result = new ToolboxItemResult(ToolboxItemStatus.Running);
-                    }
-                    this.NotifyRecordsChanged();
-
-                    // Il try sta dentro il ciclo: un video illeggibile o una cartella non scrivibile fermano quella coppia soltanto
                     try
                     {
-                        result = service.Add(video.InputPath, track.Track, properties, outputFolder, allocator, cancellation, percent =>
-                        {
-                            lock (this.StateLock)
-                            {
-                                this.ProgressState.CurrentIndeterminate = false;
-                                this.ProgressState.CurrentPercent = percent;
-                                this.ProgressState.GlobalPercent = (i * 100 + percent) / batch.Count;
-                            }
-                            this.NotifyProgressChanged();
-                        });
+                        result = service.Add(video.InputPath, track.Track, properties, outputFolder, allocator, cancellation, onProgress);
                     }
                     catch (Exception ex)
                     {
                         result = new AddTracksResult();
-                        result.Status = this.IsOperationStopped(ex) ? ToolboxItemStatus.Stopped : ToolboxItemStatus.Failed;
-                        result.Message = this.IsOperationStopped(ex) ? AppText.T("toolbox.addTracks.stopped") : ex.Message;
+                        this.ApplyException(result, ex);
                     }
 
-                    // mkvmerge può ripetere lo stesso avviso: log e tooltip ne riportano i primi e il conteggio degli altri
-                    List<string> listed = result.Warnings.GetRange(0, Math.Min(result.Warnings.Count, LISTED_WARNINGS));
-                    if (result.Warnings.Count > LISTED_WARNINGS)
-                        listed.Add(AppText.Count("web.toolbox.addTracks.tooltipMoreWarnings", result.Warnings.Count - LISTED_WARNINGS));
-
-                    string failure = result.Details.Length > 0 ? result.Details : result.Message;
-                    if (result.Details.Length == 0)
-                        result.Details = string.Join(Environment.NewLine, listed);
-                    lock (this.StateLock)
-                    {
-                        video.Result = result;
-                        video.Replaced = result.Replaced;
-                        video.PairedTrackPath = track.InputPath;
-
-                        // Il video sostituito contiene ora la traccia: si ricorda, per non aggiungerla una seconda volta
-                        if (result.Replaced)
+                    this.RecordResult(result, AppText.F("web.toolbox.addTracks.pairLabel", Path.GetFileName(track.InputPath), Path.GetFileName(video.InputPath)),
+                        result.Replaced ? "web.toolbox.addTracks.pairReplaced" : "web.toolbox.addTracks.pairAdded", summary, () =>
                         {
-                            AddTracksReplacement replacement = this._replacements.Find(r => PathIdentity.IsSame(r.VideoPath, video.InputPath));
-                            if (replacement == null)
+                            video.Result = result;
+                            video.Replaced = result.Replaced;
+                            video.PairedTrackPath = track.InputPath;
+                            if (result.Replaced)
                             {
-                                replacement = new AddTracksReplacement(video.InputPath);
-                                this._replacements.Add(replacement);
+                                AddTracksReplacement replacement = this._replacements.Find(r => PathIdentity.IsSame(r.VideoPath, video.InputPath));
+                                if (replacement == null)
+                                {
+                                    replacement = new AddTracksReplacement(video.InputPath);
+                                    this._replacements.Add(replacement);
+                                }
+                                replacement.Record(video);
                             }
-                            replacement.Record(video);
-                        }
-                    }
-
-                    for (int w = 0; w < result.Warnings.Count && w < LISTED_WARNINGS; w++)
-                        this.AppendLog(AppText.F("web.toolbox.addTracks.pairWarning", label, result.Warnings[w]));
-                    if (result.Warnings.Count > LISTED_WARNINGS)
-                        this.AppendLog(AppText.Count("web.toolbox.addTracks.moreWarnings", result.Warnings.Count - LISTED_WARNINGS, label));
-
-                    summary.Add(result.Status);
-                    if (result.IsDone)
-                        this.AppendLog(AppText.F(result.Replaced ? "web.toolbox.addTracks.pairReplaced" : "web.toolbox.addTracks.pairAdded", label, result.OutputPath));
-                    else if (result.Status == ToolboxItemStatus.Failed)
-                        this.AppendLog(AppText.F("web.toolbox.addTracks.pairFailed", label, failure));
-                    else
-                        this.AppendLog(AppText.F("web.toolbox.addTracks.pairStopped", label));
-
-                    // La coppia conclusa conta per intero anche quando mkvmerge non ha riportato il cento per cento; quella fermata no
-                    if (!this.StopRequested)
-                    {
-                        lock (this.StateLock)
-                        {
-                            this.ProgressState.CurrentPercent = 100;
-                            this.ProgressState.GlobalPercent = (i + 1) * 100 / batch.Count;
-                        }
-                        this.NotifyProgressChanged();
-                    }
-                    this.NotifyRecordsChanged();
-                }
-            }
-            catch (Exception ex)
-            {
-                this.AppendLog(AppText.F("web.toolbox.addTracks.batchError", ex.Message));
-            }
-            finally
-            {
-                this.FinishBatch(summary);
-            }
+                        });
+                });
         }
 
         #endregion

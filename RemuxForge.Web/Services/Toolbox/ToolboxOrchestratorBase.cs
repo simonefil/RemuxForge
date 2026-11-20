@@ -9,11 +9,21 @@ namespace RemuxForge.Web.Services.Toolbox
 {
     /// <summary>
     /// Base degli orchestratori delle card che elaborano un elenco di file in lotto: uscita accanto agli originali o in una cartella,
-    /// avvio, stop e chiusura del lotto. I testi propri della card stanno sotto un prefisso comune (ready, start, stopRequested,
-    /// batchCompleted, batchStopped, notifyTitle, notifyStoppedTitle, folderPlaceholder)
+    /// avvio, stop, esiti e chiusura del lotto. I testi propri della card stanno sotto un prefisso comune (ready, start, stopRequested,
+    /// progress, batchError, batchCompleted, batchStopped, notifyTitle, notifyStoppedTitle, folderPlaceholder, itemWarning,
+    /// moreWarnings, tooltipMoreWarnings, itemFailed, itemStopped)
     /// </summary>
     public abstract class ToolboxOrchestratorBase : MediaOrchestratorBase
     {
+        #region Costanti
+
+        /// <summary>
+        /// Avvisi dello strumento riportati per esteso nel log e nel tooltip, per ogni elemento
+        /// </summary>
+        private const int LISTED_WARNINGS = 5;
+
+        #endregion
+
         #region Variabili di classe
 
         /// <summary>
@@ -108,6 +118,67 @@ namespace RemuxForge.Web.Services.Toolbox
         protected string GetBatchOutputFolder()
         {
             return this._useOutputFolder ? this._outputFolder : "";
+        }
+
+        /// <summary>
+        /// Esito di un elemento che il servizio non ha restituito: interrotto dallo stop, con il testo dello stop, oppure non riuscito
+        /// con il messaggio dell'eccezione
+        /// </summary>
+        /// <param name="result">Esito da compilare</param>
+        /// <param name="exception">Eccezione uscita dal servizio</param>
+        protected void ApplyException(ToolboxItemResult result, Exception exception)
+        {
+            bool stopped = this.IsOperationStopped(exception);
+
+            result.Status = stopped ? ToolboxItemStatus.Stopped : ToolboxItemStatus.Failed;
+            result.Message = stopped ? AppText.T("toolbox.output.stopped") : exception.Message;
+        }
+
+        /// <summary>
+        /// Registra l'esito di un elemento: sul record, nel riepilogo e nel log, con gli avvisi. Senza errori dello strumento il
+        /// tooltip della riga mostra gli avvisi
+        /// </summary>
+        /// <param name="result">Esito dell'elemento</param>
+        /// <param name="label">Nome dell'elemento nel log</param>
+        /// <param name="doneKey">Chiave della riga del log per l'elemento riuscito, con nome e file scritto</param>
+        /// <param name="summary">Riepilogo del lotto</param>
+        /// <param name="store">Scrive l'esito sul record; chiamata sotto StateLock</param>
+        protected void RecordResult(ToolboxItemResult result, string label, string doneKey, ToolboxBatchSummary summary, Action store)
+        {
+            List<string> listed = result.Warnings.GetRange(0, Math.Min(result.Warnings.Count, LISTED_WARNINGS));
+            string failure = result.Details.Length > 0 ? result.Details : result.Message;
+
+            if (result.Warnings.Count > LISTED_WARNINGS)
+                listed.Add(AppText.Count(this.TextPrefix + ".tooltipMoreWarnings", result.Warnings.Count - LISTED_WARNINGS));
+            if (result.Details.Length == 0)
+                result.Details = string.Join(Environment.NewLine, listed);
+            lock (this.StateLock)
+            {
+                store();
+            }
+
+            this.LogWarnings(label, result.Warnings);
+            summary.Add(result.Status);
+            if (result.IsDone)
+                this.AppendLog(AppText.F(doneKey, label, result.OutputPath));
+            else if (result.Status == ToolboxItemStatus.Failed)
+                this.AppendLog(AppText.F(this.TextPrefix + ".itemFailed", label, failure));
+            else
+                this.AppendLog(AppText.F(this.TextPrefix + ".itemStopped", label));
+        }
+
+        /// <summary>
+        /// Scrive nel log gli avvisi dello strumento su un elemento: lo strumento può ripetere lo stesso avviso, quindi il log ne
+        /// riporta i primi e il conteggio degli altri
+        /// </summary>
+        /// <param name="label">Nome dell'elemento nel log</param>
+        /// <param name="warnings">Avvisi dello strumento</param>
+        protected void LogWarnings(string label, List<string> warnings)
+        {
+            for (int i = 0; i < warnings.Count && i < LISTED_WARNINGS; i++)
+                this.AppendLog(AppText.F(this.TextPrefix + ".itemWarning", label, warnings[i]));
+            if (warnings.Count > LISTED_WARNINGS)
+                this.AppendLog(AppText.Count(this.TextPrefix + ".moreWarnings", warnings.Count - LISTED_WARNINGS, label));
         }
 
         /// <summary>
@@ -322,6 +393,96 @@ namespace RemuxForge.Web.Services.Toolbox
         #region Metodi protected
 
         /// <summary>
+        /// Worker del lotto, un file alla volta: ricontrolla la cartella, che può sparire fra la scelta e l'avvio, e senza cartella il
+        /// lotto non parte e nessun elemento cambia stato. Un errore su un file ferma quel file soltanto; il file concluso conta per
+        /// intero nell'avanzamento anche quando lo strumento non ha riportato il cento per cento, quello fermato no
+        /// </summary>
+        /// <param name="files">File del lotto, fissati alla riserva</param>
+        /// <param name="outputFolder">Cartella di uscita del lotto, fissata alla riserva; vuota per scrivere senza cartella scelta</param>
+        /// <param name="summary">Riepilogo del lotto</param>
+        /// <param name="startedMessage">Riga del log all'avvio</param>
+        /// <param name="prepare">Riporta gli elementi del lotto da elaborare, senza l'esito del lotto precedente; chiamata sotto StateLock</param>
+        /// <param name="markRunning">Segna in corso gli elementi di un file; chiamata sotto StateLock</param>
+        /// <param name="process">Elabora un file con l'allocatore del lotto e l'avanzamento del file in percentuale, e ne registra gli esiti</param>
+        protected void RunBatch(List<TRecord> files, string outputFolder, ToolboxBatchSummary summary, string startedMessage, Action prepare, Action<TRecord> markRunning,
+            Action<TRecord, OutputPathAllocator, Action<int>> process)
+        {
+            this.SetBusy(true, AppText.T(this.TextPrefix + ".progress"));
+            try
+            {
+                string folderError = outputFolder.Length > 0 ? OutputPathAllocator.ValidateFolder(outputFolder) : "";
+                OutputPathAllocator allocator;
+
+                if (folderError.Length > 0)
+                    throw new InvalidOperationException(folderError);
+
+                // Gli ingressi dell'intero elenco restano vietati come uscita
+                lock (this.StateLock)
+                {
+                    allocator = new OutputPathAllocator(this.CollectInputs());
+                    prepare();
+                }
+                this.NotifyRecordsChanged();
+                this.AppendLog(startedMessage);
+
+                for (int i = 0; i < files.Count; i++)
+                {
+                    TRecord file = files[i];
+                    int index = i;
+
+                    if (this.StopRequested)
+                        break;
+
+                    this.ReportProgress(i, files.Count, Path.GetFileName(file.InputPath));
+                    lock (this.StateLock)
+                    {
+                        markRunning(file);
+                    }
+                    this.NotifyRecordsChanged();
+
+                    process(file, allocator, percent =>
+                    {
+                        lock (this.StateLock)
+                        {
+                            this.ProgressState.CurrentIndeterminate = false;
+                            this.ProgressState.CurrentPercent = percent;
+                            this.ProgressState.GlobalPercent = (index * 100 + percent) / files.Count;
+                        }
+                        this.NotifyProgressChanged();
+                    });
+
+                    if (!this.StopRequested)
+                    {
+                        lock (this.StateLock)
+                        {
+                            this.ProgressState.CurrentPercent = 100;
+                            this.ProgressState.GlobalPercent = (i + 1) * 100 / files.Count;
+                        }
+                        this.NotifyProgressChanged();
+                    }
+                    this.NotifyRecordsChanged();
+                }
+            }
+            catch (Exception ex)
+            {
+                this.AppendLog(AppText.F(this.TextPrefix + ".batchError", ex.Message));
+            }
+            finally
+            {
+                this.FinishBatch(summary);
+            }
+        }
+
+        /// <summary>
+        /// File dell'elenco mai usati come uscita; da chiamare sotto StateLock. La card con altri ingressi oltre ai file lo ridefinisce
+        /// </summary>
+        /// <returns>Percorsi degli ingressi</returns>
+        protected virtual List<string> CollectInputs()
+        {
+            return this._records.ConvertAll(r => r.InputPath);
+        }
+
+        /// <summary>
         /// Crea la riga di un file appena accodato
         /// </summary>
         /// <param name="inputPath">Percorso completo del file</param>
@@ -433,9 +594,11 @@ namespace RemuxForge.Web.Services.Toolbox
         /// Costruttore
         /// </summary>
         /// <param name="textPrefix">Prefisso delle chiavi dei testi della card</param>
-        public ToolboxBatchSummary(string textPrefix)
+        /// <param name="total">Elementi del lotto</param>
+        public ToolboxBatchSummary(string textPrefix, int total)
         {
             this._textPrefix = textPrefix;
+            this.Total = total;
         }
 
         #endregion
@@ -484,7 +647,7 @@ namespace RemuxForge.Web.Services.Toolbox
         /// <summary>
         /// Elementi del lotto, elaborati o no
         /// </summary>
-        public int Total { get; set; }
+        public int Total { get; }
 
         /// <summary>
         /// True se il lotto è stato fermato

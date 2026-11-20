@@ -284,7 +284,7 @@ namespace RemuxForge.Core.Toolbox.TrackExtraction
                     if (ProcessRunner.IsStopRequested())
                     {
                         result.Status = ToolboxItemStatus.Stopped;
-                        result.Message = AppText.T("toolbox.trackExtraction.stopped");
+                        result.Message = AppText.T("toolbox.output.stopped");
                         continue;
                     }
 
