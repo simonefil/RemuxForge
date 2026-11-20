@@ -58,15 +58,15 @@ namespace RemuxForge.Core.Toolbox.VideoToMkv
         /// <param name="cancellationToken">Annullamento che interrompe la lettura delle tracce</param>
         /// <param name="onProgress">Avanzamento di mkvmerge in percentuale</param>
         /// <returns>Esito della conversione</returns>
-        public VideoToMkvResult Convert(string inputPath, string outputFolder, OutputPathAllocator allocator, CancellationToken cancellationToken, Action<int> onProgress)
+        public ToolboxItemResult Convert(string inputPath, string outputFolder, OutputPathAllocator allocator, CancellationToken cancellationToken, Action<int> onProgress)
         {
-            VideoToMkvResult result = new VideoToMkvResult();
+            ToolboxItemResult result = new ToolboxItemResult();
             List<string> errors = new List<string>();
             string folderError = string.IsNullOrEmpty(outputFolder) ? "" : OutputPathAllocator.ValidateFolder(outputFolder);
 
             if (folderError.Length > 0 || !File.Exists(inputPath))
             {
-                result.Status = VideoToMkvStatus.Failed;
+                result.Status = ToolboxItemStatus.Failed;
                 result.Message = folderError.Length > 0 ? folderError : AppText.F("toolbox.videoToMkv.inputMissing", Path.GetFileName(inputPath));
                 return result;
             }
@@ -87,7 +87,7 @@ namespace RemuxForge.Core.Toolbox.VideoToMkv
                     // Un mkvmerge ucciso dallo stop ha un exit code qualsiasi: lo stop si riconosce prima del codice
                     if (ProcessRunner.IsStopRequested())
                     {
-                        result.Status = VideoToMkvStatus.Stopped;
+                        result.Status = ToolboxItemStatus.Stopped;
                         result.Message = AppText.T("toolbox.videoToMkv.stopped");
                     }
                     else if (run.ExitCode != 0 && run.ExitCode != MkvToolNixGuiMode.WARNING_EXIT_CODE)
@@ -96,19 +96,19 @@ namespace RemuxForge.Core.Toolbox.VideoToMkv
                             errors.Add(run.Stderr.Trim().Length > 0 ? run.Stderr.Trim() : AppText.F("toolbox.videoToMkv.exitCode", run.ExitCode));
 
                         // In riga il motivo senza percorsi: mkvmerge li cita completi, il dettaglio li conserva
-                        result.Status = VideoToMkvStatus.Failed;
+                        result.Status = ToolboxItemStatus.Failed;
                         result.Details = string.Join(Environment.NewLine, errors);
                         result.Message = string.Join(" ", errors).Replace(Path.GetFullPath(inputPath), Path.GetFileName(inputPath)).Replace(output.TempPath, Path.GetFileName(finalPath));
                     }
                     else if (!MediaContainerNormalizer.KeepsTracks(sourceTracks, this._mkvTools.GetFileInfoIsolated(output.TempPath, 0, cancellationToken, null)?.Tracks ?? new List<TrackInfo>()))
                     {
-                        result.Status = VideoToMkvStatus.Failed;
+                        result.Status = ToolboxItemStatus.Failed;
                         result.Message = AppText.T("toolbox.videoToMkv.tracksChanged");
                     }
                     else
                     {
                         output.Commit();
-                        result.Status = result.Warnings.Count > 0 ? VideoToMkvStatus.ConvertedWithWarnings : VideoToMkvStatus.Converted;
+                        result.Status = result.Warnings.Count > 0 ? ToolboxItemStatus.DoneWithWarnings : ToolboxItemStatus.Done;
                         result.OutputPath = finalPath;
                     }
                 }
@@ -133,81 +133,6 @@ namespace RemuxForge.Core.Toolbox.VideoToMkv
 
             return result;
         }
-
-        #endregion
-    }
-
-    /// <summary>
-    /// Stato di un file nella conversione in Matroska
-    /// </summary>
-    public enum VideoToMkvStatus
-    {
-        /// <summary>In attesa di conversione</summary>
-        Pending,
-
-        /// <summary>Conversione in corso</summary>
-        Running,
-
-        /// <summary>Matroska scritto</summary>
-        Converted,
-
-        /// <summary>Matroska scritto, con avvisi di mkvmerge</summary>
-        ConvertedWithWarnings,
-
-        /// <summary>Conversione non riuscita</summary>
-        Failed,
-
-        /// <summary>Conversione interrotta dallo stop</summary>
-        Stopped
-    }
-
-    /// <summary>
-    /// Esito della conversione di un file
-    /// </summary>
-    public sealed class VideoToMkvResult
-    {
-        #region Costruttore
-
-        /// <summary>
-        /// Costruttore
-        /// </summary>
-        public VideoToMkvResult()
-        {
-            this.Status = VideoToMkvStatus.Pending;
-            this.OutputPath = "";
-            this.Message = "";
-            this.Details = "";
-            this.Warnings = new List<string>();
-        }
-
-        #endregion
-
-        #region Proprietà
-
-        /// <summary>
-        /// Stato finale del file
-        /// </summary>
-        public VideoToMkvStatus Status { get; set; }
-
-        /// <summary>
-        /// Matroska scritto, vuoto se la conversione non è riuscita
-        /// </summary>
-        public string OutputPath { get; set; }
-
-        /// <summary>
-        /// Motivo dell'errore o dell'interruzione, senza percorsi completi
-        /// </summary>
-        public string Message { get; set; }
-
-        /// <summary>
-        /// Errori di mkvmerge così come li ha scritti, vuoto se il motivo non viene da mkvmerge
-        /// </summary>
-        public string Details { get; set; }
-
-        /// <summary>
-        /// Avvisi di mkvmerge, anche con conversione riuscita
-        /// </summary>
-        public List<string> Warnings { get; }
 
         #endregion
     }

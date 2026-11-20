@@ -257,7 +257,7 @@ namespace RemuxForge.Core.Toolbox.TrackExtraction
                 {
                     foreach (TrackExtractionResult result in results)
                     {
-                        result.Status = TrackExtractionStatus.Failed;
+                        result.Status = ToolboxItemStatus.Failed;
                         result.Message = failure;
                     }
                     return results;
@@ -283,7 +283,7 @@ namespace RemuxForge.Core.Toolbox.TrackExtraction
 
                     if (ProcessRunner.IsStopRequested())
                     {
-                        result.Status = TrackExtractionStatus.Stopped;
+                        result.Status = ToolboxItemStatus.Stopped;
                         result.Message = AppText.T("toolbox.trackExtraction.stopped");
                         continue;
                     }
@@ -295,13 +295,13 @@ namespace RemuxForge.Core.Toolbox.TrackExtraction
                         size = 0;
                     if (!run.Succeeded)
                     {
-                        result.Status = TrackExtractionStatus.Failed;
+                        result.Status = ToolboxItemStatus.Failed;
                         result.Details = string.Join(Environment.NewLine, run.Errors);
                         result.Message = string.Join(" ", run.Errors);
                     }
                     else if (size == 0 || (companion.Length > 0 && (!File.Exists(companion) || new FileInfo(companion).Length == 0)))
                     {
-                        result.Status = TrackExtractionStatus.Failed;
+                        result.Status = ToolboxItemStatus.Failed;
                         result.Message = AppText.T("toolbox.trackExtraction.emptyTrack");
                     }
                     else
@@ -310,12 +310,12 @@ namespace RemuxForge.Core.Toolbox.TrackExtraction
                         try
                         {
                             staged[i].Commit();
-                            result.Status = result.Warnings.Count > 0 ? TrackExtractionStatus.ExtractedWithWarnings : TrackExtractionStatus.Extracted;
+                            result.Status = result.Warnings.Count > 0 ? ToolboxItemStatus.DoneWithWarnings : ToolboxItemStatus.Done;
                             result.OutputPath = result.ReservedPath;
                         }
                         catch (IOException ex)
                         {
-                            result.Status = TrackExtractionStatus.Failed;
+                            result.Status = ToolboxItemStatus.Failed;
                             result.Message = ex.Message;
                         }
                     }
@@ -474,33 +474,9 @@ namespace RemuxForge.Core.Toolbox.TrackExtraction
     }
 
     /// <summary>
-    /// Stato di una traccia nell'estrazione
-    /// </summary>
-    public enum TrackExtractionStatus
-    {
-        /// <summary>Da estrarre</summary>
-        Pending,
-
-        /// <summary>Estrazione in corso</summary>
-        Running,
-
-        /// <summary>File scritto</summary>
-        Extracted,
-
-        /// <summary>File scritto, con avvisi dello strumento</summary>
-        ExtractedWithWarnings,
-
-        /// <summary>Estrazione non riuscita</summary>
-        Failed,
-
-        /// <summary>Estrazione interrotta dallo stop</summary>
-        Stopped
-    }
-
-    /// <summary>
     /// Esito dell'estrazione di una traccia
     /// </summary>
-    public sealed class TrackExtractionResult
+    public sealed class TrackExtractionResult : ToolboxItemResult
     {
         #region Costruttore
 
@@ -511,12 +487,7 @@ namespace RemuxForge.Core.Toolbox.TrackExtraction
         public TrackExtractionResult(ExtractableTrack track)
         {
             this.Track = track;
-            this.Status = TrackExtractionStatus.Pending;
             this.ReservedPath = "";
-            this.OutputPath = "";
-            this.Message = "";
-            this.Details = "";
-            this.Warnings = new List<string>();
         }
 
         #endregion
@@ -529,34 +500,9 @@ namespace RemuxForge.Core.Toolbox.TrackExtraction
         public ExtractableTrack Track { get; }
 
         /// <summary>
-        /// Stato finale della traccia
-        /// </summary>
-        public TrackExtractionStatus Status { get; set; }
-
-        /// <summary>
         /// Nome prenotato per la traccia, vuoto se la prenotazione non è avvenuta
         /// </summary>
         public string ReservedPath { get; set; }
-
-        /// <summary>
-        /// File scritto, vuoto se l'estrazione non è riuscita
-        /// </summary>
-        public string OutputPath { get; set; }
-
-        /// <summary>
-        /// Motivo dell'errore o dell'interruzione, senza percorsi completi
-        /// </summary>
-        public string Message { get; set; }
-
-        /// <summary>
-        /// Errori dello strumento riga per riga, vuoto se il motivo non viene dallo strumento
-        /// </summary>
-        public string Details { get; set; }
-
-        /// <summary>
-        /// Avvisi dello strumento, anche con estrazione riuscita
-        /// </summary>
-        public List<string> Warnings { get; }
 
         #endregion
     }

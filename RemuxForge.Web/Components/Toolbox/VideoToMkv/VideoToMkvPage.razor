@@ -1,4 +1,4 @@
-@using RemuxForge.Core.Toolbox.VideoToMkv
+@using RemuxForge.Core.Toolbox.Common
 @inherits ToolboxBatchPageBase<VideoToMkvOrchestrator, VideoToMkvRecord>
 
 @{
@@ -39,22 +39,22 @@
                 <RadzenDataGridColumn TItem="VideoToMkvRecord" Title="@AppText.T("web.dashboard.status")" Width="13%" MinWidth="2.5rem">
                     <Template Context="record">
                         <RadzenBadge IsPill="true"
-                                     Text="@AppText.T(record.Status switch
+                                     Text="@AppText.T(record.Result.Status switch
                                      {
-                                         VideoToMkvStatus.Running => "web.toolbox.videoToMkv.statusRunning",
-                                         VideoToMkvStatus.Converted => "web.toolbox.videoToMkv.statusConverted",
-                                         VideoToMkvStatus.ConvertedWithWarnings => "web.toolbox.videoToMkv.statusConvertedWithWarnings",
-                                         VideoToMkvStatus.Failed => "web.toolbox.videoToMkv.statusFailed",
-                                         VideoToMkvStatus.Stopped => "web.toolbox.videoToMkv.statusStopped",
+                                         ToolboxItemStatus.Running => "web.toolbox.videoToMkv.statusRunning",
+                                         ToolboxItemStatus.Done => "web.toolbox.videoToMkv.statusDone",
+                                         ToolboxItemStatus.DoneWithWarnings => "web.toolbox.videoToMkv.statusDoneWithWarnings",
+                                         ToolboxItemStatus.Failed => "web.toolbox.videoToMkv.statusFailed",
+                                         ToolboxItemStatus.Stopped => "web.toolbox.videoToMkv.statusStopped",
                                          _ => "web.toolbox.videoToMkv.statusPending"
                                      })"
-                                     BadgeStyle="@(record.Status switch
+                                     BadgeStyle="@(record.Result.Status switch
                                      {
-                                         VideoToMkvStatus.Running => BadgeStyle.Info,
-                                         VideoToMkvStatus.Converted => BadgeStyle.Success,
-                                         VideoToMkvStatus.Failed => BadgeStyle.Danger,
-                                         VideoToMkvStatus.ConvertedWithWarnings => BadgeStyle.Warning,
-                                         VideoToMkvStatus.Stopped => BadgeStyle.Warning,
+                                         ToolboxItemStatus.Running => BadgeStyle.Info,
+                                         ToolboxItemStatus.Done => BadgeStyle.Success,
+                                         ToolboxItemStatus.Failed => BadgeStyle.Danger,
+                                         ToolboxItemStatus.DoneWithWarnings => BadgeStyle.Warning,
+                                         ToolboxItemStatus.Stopped => BadgeStyle.Warning,
                                          _ => BadgeStyle.Base
                                      })" />
                     </Template>
@@ -62,7 +62,7 @@
                 <RadzenDataGridColumn TItem="VideoToMkvRecord" Title="@AppText.T("web.toolbox.list.result")" Width="34%" MinWidth="2.5rem">
                     <Template Context="record">
                         @* In riga il MKV scritto o il motivo breve; nel tooltip il percorso completo, gli avvisi o l'errore di mkvmerge per intero *@
-                        <span title="@(record.OutputPath.Length > 0 ? (record.Details.Length > 0 ? record.OutputPath + Environment.NewLine + record.Details : record.OutputPath) : (record.Details.Length > 0 ? record.Details : record.Message))">@(record.OutputPath.Length > 0 ? System.IO.Path.GetFileName(record.OutputPath) : record.Message)</span>
+                        <span title="@(record.Result.OutputPath.Length > 0 ? (record.Result.Details.Length > 0 ? record.Result.OutputPath + Environment.NewLine + record.Result.Details : record.Result.OutputPath) : (record.Result.Details.Length > 0 ? record.Result.Details : record.Result.Message))">@(record.Result.OutputPath.Length > 0 ? System.IO.Path.GetFileName(record.Result.OutputPath) : record.Result.Message)</span>
                     </Template>
                 </RadzenDataGridColumn>
                 <RadzenDataGridColumn TItem="VideoToMkvRecord" Width="5%" MinWidth="3rem" TextAlign="TextAlign.Center">

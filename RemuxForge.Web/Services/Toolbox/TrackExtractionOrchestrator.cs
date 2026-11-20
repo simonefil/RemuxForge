@@ -178,7 +178,7 @@ namespace RemuxForge.Web.Services.Toolbox
                 if (!this.CanStart)
                     return;
 
-                List<TrackExtractionTrack> batch = this.SelectTracks().FindAll(t => !t.IsDone);
+                List<TrackExtractionTrack> batch = this.SelectTracks().FindAll(t => !t.Result.IsDone);
                 string outputFolder = this.GetBatchOutputFolder();
                 this.TryRunExclusive(() => this.ExtractWorker(batch, outputFolder));
             }
@@ -221,7 +221,7 @@ namespace RemuxForge.Web.Services.Toolbox
                 OutputPathAllocator allocator = new OutputPathAllocator(inputs);
                 foreach (TrackExtractionTrack track in this.SelectTracks())
                 {
-                    if (!track.IsDone)
+                    if (!track.Result.IsDone)
                         this._plan[track] = allocator.Reserve(TrackExtractionService.GetDesiredPath(track.File.InputPath, outputFolder, track.Track));
                 }
 
@@ -385,7 +385,7 @@ namespace RemuxForge.Web.Services.Toolbox
             List<TrackExtractionFile> files = new List<TrackExtractionFile>();
             Dictionary<TrackExtractionFile, List<TrackExtractionTrack>> tracksByFile = new Dictionary<TrackExtractionFile, List<TrackExtractionTrack>>();
             List<string> inputs = new List<string>();
-            TrackExtractionBatchSummary summary = new TrackExtractionBatchSummary();
+            TrackExtractionBatchSummary summary = new TrackExtractionBatchSummary(this.TextPrefix);
             string folderError;
 
             this.SetBusy(true, AppText.T("web.toolbox.trackExtraction.progress"));
@@ -413,7 +413,7 @@ namespace RemuxForge.Web.Services.Toolbox
                     foreach (TrackExtractionFile file in this.Records)
                         inputs.Add(file.InputPath);
                     foreach (TrackExtractionTrack track in batch)
-                        track.Reset(TrackExtractionStatus.Pending);
+                        track.Reset(ToolboxItemStatus.Pending);
                 }
                 this.NotifyRecordsChanged();
 
@@ -439,7 +439,7 @@ namespace RemuxForge.Web.Services.Toolbox
                     lock (this.StateLock)
                     {
                         foreach (TrackExtractionTrack track in tracks)
-                            track.Reset(TrackExtractionStatus.Running);
+                            track.Reset(ToolboxItemStatus.Running);
                     }
                     this.NotifyRecordsChanged();
 
@@ -462,7 +462,7 @@ namespace RemuxForge.Web.Services.Toolbox
                         bool stopped = this.IsOperationStopped(ex);
                         results = chosen.ConvertAll(t => new TrackExtractionResult(t)
                         {
-                            Status = stopped ? TrackExtractionStatus.Stopped : TrackExtractionStatus.Failed,
+                            Status = stopped ? ToolboxItemStatus.Stopped : ToolboxItemStatus.Failed,
                             Message = ex.Message
                         });
                     }
@@ -484,12 +484,12 @@ namespace RemuxForge.Web.Services.Toolbox
                         if (result.Warnings.Count > LISTED_WARNINGS)
                             listed.Add(AppText.Count("web.toolbox.trackExtraction.tooltipMoreWarnings", result.Warnings.Count - LISTED_WARNINGS));
 
+                        string failure = result.Details.Length > 0 ? result.Details : result.Message;
+                        if (result.Details.Length == 0)
+                            result.Details = string.Join(Environment.NewLine, listed);
                         lock (this.StateLock)
                         {
-                            track.Status = result.Status;
-                            track.OutputPath = result.OutputPath;
-                            track.Message = result.Message;
-                            track.Details = result.Details.Length > 0 ? result.Details : string.Join(Environment.NewLine, listed);
+                            track.Result = result;
                         }
 
                         for (int w = 0; w < result.Warnings.Count && w < LISTED_WARNINGS; w++)
@@ -498,10 +498,10 @@ namespace RemuxForge.Web.Services.Toolbox
                             this.AppendLog(AppText.Count("web.toolbox.trackExtraction.moreWarnings", result.Warnings.Count - LISTED_WARNINGS, label));
 
                         summary.Add(result.Status, track.Track.Format.ConvertsToSrt);
-                        if (result.Status == TrackExtractionStatus.Extracted || result.Status == TrackExtractionStatus.ExtractedWithWarnings)
+                        if (result.IsDone)
                             this.AppendLog(AppText.F(track.Track.Format.ConvertsToSrt ? "web.toolbox.trackExtraction.trackConverted" : "web.toolbox.trackExtraction.trackExtracted", label, result.OutputPath));
-                        else if (result.Status == TrackExtractionStatus.Failed)
-                            this.AppendLog(AppText.F("web.toolbox.trackExtraction.trackFailed", label, result.Details.Length > 0 ? result.Details : result.Message));
+                        else if (result.Status == ToolboxItemStatus.Failed)
+                            this.AppendLog(AppText.F("web.toolbox.trackExtraction.trackFailed", label, failure));
                         else
                             this.AppendLog(AppText.F("web.toolbox.trackExtraction.trackStopped", label));
                     }
@@ -700,7 +700,7 @@ namespace RemuxForge.Web.Services.Toolbox
             {
                 lock (this.StateLock)
                 {
-                    return !this.IsBusy && this.GetOutputFolderError().Length == 0 && this.SelectTracks().Exists(t => !t.IsDone);
+                    return !this.IsBusy && this.GetOutputFolderError().Length == 0 && this.SelectTracks().Exists(t => !t.Result.IsDone);
                 }
             }
         }
@@ -874,15 +874,15 @@ namespace RemuxForge.Web.Services.Toolbox
 
                 foreach (TrackExtractionTrack track in this.Tracks)
                 {
-                    if (track.Status == TrackExtractionStatus.Running)
+                    if (track.Result.Status == ToolboxItemStatus.Running)
                         return TrackExtractionFileOutcome.Running;
-                    if (track.Status == TrackExtractionStatus.Extracted)
+                    if (track.Result.Status == ToolboxItemStatus.Done)
                         extracted++;
-                    else if (track.Status == TrackExtractionStatus.ExtractedWithWarnings)
+                    else if (track.Result.Status == ToolboxItemStatus.DoneWithWarnings)
                         warnings++;
-                    else if (track.Status == TrackExtractionStatus.Failed)
+                    else if (track.Result.Status == ToolboxItemStatus.Failed)
                         failed++;
-                    else if (track.Status == TrackExtractionStatus.Stopped)
+                    else if (track.Result.Status == ToolboxItemStatus.Stopped)
                         stopped = true;
                 }
 
@@ -915,7 +915,7 @@ namespace RemuxForge.Web.Services.Toolbox
         {
             this.File = file;
             this.Track = track;
-            this.Reset(TrackExtractionStatus.Pending);
+            this.Reset(ToolboxItemStatus.Pending);
         }
 
         #endregion
@@ -926,12 +926,9 @@ namespace RemuxForge.Web.Services.Toolbox
         /// Porta la traccia a uno stato senza esito: uscita, motivo e dettagli si azzerano
         /// </summary>
         /// <param name="status">Stato da impostare</param>
-        public void Reset(TrackExtractionStatus status)
+        public void Reset(ToolboxItemStatus status)
         {
-            this.Status = status;
-            this.OutputPath = "";
-            this.Message = "";
-            this.Details = "";
+            this.Result = new ToolboxItemResult(status);
         }
 
         #endregion
@@ -954,41 +951,31 @@ namespace RemuxForge.Web.Services.Toolbox
         public bool IsChecked { get; set; }
 
         /// <summary>
-        /// Stato dell'estrazione
+        /// Esito dell'estrazione: in riga il file scritto o il motivo breve, nel tooltip gli errori dello strumento così come li ha
+        /// scritti oppure i suoi avvisi
         /// </summary>
-        public TrackExtractionStatus Status { get; set; }
-
-        /// <summary>
-        /// File scritto, vuoto finché l'estrazione non riesce
-        /// </summary>
-        public string OutputPath { get; set; }
-
-        /// <summary>
-        /// Motivo dell'errore o dell'interruzione, in forma breve
-        /// </summary>
-        public string Message { get; set; }
-
-        /// <summary>
-        /// Testo completo per il tooltip: errori dello strumento così come li ha scritti, oppure i suoi avvisi
-        /// </summary>
-        public string Details { get; set; }
-
-        /// <summary>
-        /// True se la traccia è già estratta, anche con avvisi, e non va rielaborata
-        /// </summary>
-        public bool IsDone
-        {
-            get { return this.Status == TrackExtractionStatus.Extracted || this.Status == TrackExtractionStatus.ExtractedWithWarnings; }
-        }
+        public ToolboxItemResult Result { get; set; }
 
         #endregion
     }
 
     /// <summary>
-    /// Riepilogo di un lotto di estrazione, contato in tracce
+    /// Riepilogo di un lotto di estrazione, contato in tracce, con quante delle estratte sono state convertite in SRT
     /// </summary>
     public sealed class TrackExtractionBatchSummary : ToolboxBatchSummary
     {
+        #region Costruttore
+
+        /// <summary>
+        /// Costruttore
+        /// </summary>
+        /// <param name="textPrefix">Prefisso delle chiavi dei testi della card</param>
+        public TrackExtractionBatchSummary(string textPrefix) : base(textPrefix)
+        {
+        }
+
+        #endregion
+
         #region Metodi pubblici
 
         /// <summary>
@@ -996,40 +983,23 @@ namespace RemuxForge.Web.Services.Toolbox
         /// </summary>
         /// <param name="status">Stato finale della traccia</param>
         /// <param name="convertsToSrt">True se la traccia si converte in SRT</param>
-        public void Add(TrackExtractionStatus status, bool convertsToSrt)
+        public void Add(ToolboxItemStatus status, bool convertsToSrt)
         {
-            if (status == TrackExtractionStatus.Extracted)
-                this.Extracted++;
-            else if (status == TrackExtractionStatus.ExtractedWithWarnings)
-                this.ExtractedWithWarnings++;
-            else if (status == TrackExtractionStatus.Failed)
-                this.Failed++;
-            else
-                this.Interrupted++;
-
-            if (convertsToSrt && (status == TrackExtractionStatus.Extracted || status == TrackExtractionStatus.ExtractedWithWarnings))
+            this.Add(status);
+            if (convertsToSrt && (status == ToolboxItemStatus.Done || status == ToolboxItemStatus.DoneWithWarnings))
                 this.ConvertedToSrt++;
         }
 
         /// <summary>
-        /// Descrive i conteggi diversi da zero, nell'ordine estratte, con avvisi, errori, interrotte, non elaborate, e quante delle
-        /// estratte sono state convertite in SRT
+        /// Descrive i conteggi diversi da zero, oppure che nessuna traccia è stata elaborata, e quante delle estratte sono state
+        /// convertite in SRT
         /// </summary>
         /// <returns>Testo del riepilogo</returns>
         public override string Describe()
         {
-            List<string> parts = new List<string>();
-            string[] keys = { "summaryExtracted", "summaryWithWarnings", "summaryFailed", "summaryStopped", "summaryNotProcessed" };
-            int[] counts = { this.Extracted, this.ExtractedWithWarnings, this.Failed, this.Interrupted, this.NotProcessed };
+            string counts = base.Describe();
+            List<string> parts = new List<string> { counts.Length > 0 ? counts : AppText.T("web.toolbox.trackExtraction.summaryNothing") };
 
-            for (int i = 0; i < keys.Length; i++)
-            {
-                if (counts[i] > 0)
-                    parts.Add(AppText.Count("web.toolbox.trackExtraction." + keys[i], counts[i]));
-            }
-
-            if (parts.Count == 0)
-                parts.Add(AppText.T("web.toolbox.trackExtraction.summaryNothing"));
             if (this.ConvertedToSrt > 0)
                 parts.Add(AppText.Count("web.toolbox.trackExtraction.summaryConverted", this.ConvertedToSrt));
 
@@ -1041,53 +1011,9 @@ namespace RemuxForge.Web.Services.Toolbox
         #region Proprietà
 
         /// <summary>
-        /// Tracce estratte senza avvisi
-        /// </summary>
-        public int Extracted { get; private set; }
-
-        /// <summary>
-        /// Tracce estratte con avvisi dello strumento
-        /// </summary>
-        public int ExtractedWithWarnings { get; private set; }
-
-        /// <summary>
-        /// Tracce non estratte per errore
-        /// </summary>
-        public int Failed { get; private set; }
-
-        /// <summary>
-        /// Tracce interrotte dallo stop durante l'estrazione
-        /// </summary>
-        public int Interrupted { get; private set; }
-
-        /// <summary>
         /// Tracce estratte convertendo il Timed Text in SRT
         /// </summary>
         public int ConvertedToSrt { get; private set; }
-
-        /// <summary>
-        /// Tracce del lotto mai avviate, per lo stop o per un errore prima del primo video
-        /// </summary>
-        public int NotProcessed
-        {
-            get { return this.Total - this.Extracted - this.ExtractedWithWarnings - this.Failed - this.Interrupted; }
-        }
-
-        /// <summary>
-        /// True se ogni traccia del lotto è stata estratta senza avvisi
-        /// </summary>
-        public override bool AllSucceeded
-        {
-            get { return this.Extracted > 0 && this.ExtractedWithWarnings + this.Failed + this.Interrupted + this.NotProcessed == 0 && !this.Stopped; }
-        }
-
-        /// <summary>
-        /// True se ci sono errori e nessuna traccia è stata estratta
-        /// </summary>
-        public override bool NothingSucceeded
-        {
-            get { return this.Failed > 0 && this.Extracted + this.ExtractedWithWarnings == 0; }
-        }
 
         #endregion
     }

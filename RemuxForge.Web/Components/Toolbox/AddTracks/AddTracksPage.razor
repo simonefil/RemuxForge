@@ -1,3 +1,4 @@
+@using RemuxForge.Core.Toolbox.Common
 @using RemuxForge.Core.Toolbox.AddTracks
 @inherits ToolboxBatchPageBase<AddTracksOrchestrator, AddTracksVideo>
 
@@ -7,7 +8,7 @@
     bool busy = Orchestrator.IsBusy;
     string pairingError = Orchestrator.PairingError;
     int delayMs = Orchestrator.DelayMs;
-    int pending = videos.FindAll(v => !v.IsDone).Count;
+    int pending = videos.FindAll(v => !v.Result.IsDone).Count;
 
     // Durante il lotto le uscite previste restano quelle calcolate all'avvio: le coppie in corso le mostrano fino all'esito
     if (!busy)
@@ -113,22 +114,22 @@
                         <RadzenDataGridColumn TItem="AddTracksVideo" Title="@AppText.T("web.dashboard.status")" Width="22%">
                             <Template Context="video">
                                 <RadzenBadge IsPill="true"
-                                             Text="@AppText.T(video.Status switch
+                                             Text="@AppText.T(video.Result.Status switch
                                              {
-                                                 AddTracksStatus.Running => "web.toolbox.addTracks.statusRunning",
-                                                 AddTracksStatus.Added => "web.toolbox.addTracks.statusAdded",
-                                                 AddTracksStatus.AddedWithWarnings => "web.toolbox.addTracks.statusAddedWithWarnings",
-                                                 AddTracksStatus.Failed => "web.toolbox.addTracks.statusFailed",
-                                                 AddTracksStatus.Stopped => "web.toolbox.addTracks.statusStopped",
+                                                 ToolboxItemStatus.Running => "web.toolbox.addTracks.statusRunning",
+                                                 ToolboxItemStatus.Done => "web.toolbox.addTracks.statusDone",
+                                                 ToolboxItemStatus.DoneWithWarnings => "web.toolbox.addTracks.statusDoneWithWarnings",
+                                                 ToolboxItemStatus.Failed => "web.toolbox.addTracks.statusFailed",
+                                                 ToolboxItemStatus.Stopped => "web.toolbox.addTracks.statusStopped",
                                                  _ => "web.toolbox.addTracks.statusPending"
                                              })"
-                                             BadgeStyle="@(video.Status switch
+                                             BadgeStyle="@(video.Result.Status switch
                                              {
-                                                 AddTracksStatus.Running => BadgeStyle.Info,
-                                                 AddTracksStatus.Added => BadgeStyle.Success,
-                                                 AddTracksStatus.Failed => BadgeStyle.Danger,
-                                                 AddTracksStatus.AddedWithWarnings => BadgeStyle.Warning,
-                                                 AddTracksStatus.Stopped => BadgeStyle.Warning,
+                                                 ToolboxItemStatus.Running => BadgeStyle.Info,
+                                                 ToolboxItemStatus.Done => BadgeStyle.Success,
+                                                 ToolboxItemStatus.Failed => BadgeStyle.Danger,
+                                                 ToolboxItemStatus.DoneWithWarnings => BadgeStyle.Warning,
+                                                 ToolboxItemStatus.Stopped => BadgeStyle.Warning,
                                                  _ => BadgeStyle.Base
                                              })" />
                             </Template>
@@ -136,18 +137,18 @@
                         <RadzenDataGridColumn TItem="AddTracksVideo" Title="@AppText.T("web.toolbox.list.result")" Width="40%">
                             <Template Context="video">
                                 @* Il file scritto o il motivo; prima dell'avvio l'uscita prevista. Nel tooltip il percorso completo, gli avvisi o l'errore per intero *@
-                                @if (video.OutputPath.Length > 0)
+                                @if (video.Result.OutputPath.Length > 0)
                                 {
-                                    string written = video.Replaced ? AppText.T("web.toolbox.addTracks.resultReplaced") : System.IO.Path.GetFileName(video.OutputPath);
-                                    <span title="@(video.Details.Length > 0 ? video.OutputPath + Environment.NewLine + video.Details : video.OutputPath)">@written</span>
+                                    string written = video.Replaced ? AppText.T("web.toolbox.addTracks.resultReplaced") : System.IO.Path.GetFileName(video.Result.OutputPath);
+                                    <span title="@(video.Result.Details.Length > 0 ? video.Result.OutputPath + Environment.NewLine + video.Result.Details : video.Result.OutputPath)">@written</span>
                                 }
                                 else if (video.BlockedReason.Length > 0)
                                 {
                                     <span class="rf-addtracks-wrap rf-addtracks-blocked-text" title="@video.BlockedReason">@video.BlockedReason</span>
                                 }
-                                else if (video.Message.Length > 0)
+                                else if (video.Result.Message.Length > 0)
                                 {
-                                    <span class="rf-addtracks-wrap" title="@(video.Details.Length > 0 ? video.Details : video.Message)">@video.Message</span>
+                                    <span class="rf-addtracks-wrap" title="@(video.Result.Details.Length > 0 ? video.Result.Details : video.Result.Message)">@video.Result.Message</span>
                                 }
                                 else if (videos.IndexOf(video) >= tracks.Count)
                                 {

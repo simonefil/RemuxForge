@@ -1,3 +1,4 @@
+@using RemuxForge.Core.Toolbox.Common
 @using RemuxForge.Core.Toolbox.TrackExtraction
 @inherits ToolboxBatchPageBase<TrackExtractionOrchestrator, TrackExtractionFile>
 
@@ -153,7 +154,7 @@
                                     }
                                     else
                                     {
-                                        int written = file.Tracks.FindAll(t => t.IsDone).Count;
+                                        int written = file.Tracks.FindAll(t => t.Result.IsDone).Count;
                                         <CellText Text="@(written > 0 ? AppText.Count("web.toolbox.trackExtraction.tracksWritten", written) : "")" />
                                     }
                                 </Template>
@@ -291,25 +292,25 @@
     /// </summary>
     private RenderFragment TrackStatusCell(TrackExtractionTrack track) =>
         @<span>
-            @if (track.Status != TrackExtractionStatus.Pending || _plan.ContainsKey(track))
+            @if (track.Result.Status != ToolboxItemStatus.Pending || _plan.ContainsKey(track))
             {
                 <RadzenBadge IsPill="true"
-                             Text="@AppText.T(track.Status switch
+                             Text="@AppText.T(track.Result.Status switch
                              {
-                                 TrackExtractionStatus.Running => "web.toolbox.trackExtraction.statusRunning",
-                                 TrackExtractionStatus.Extracted => "web.toolbox.trackExtraction.statusExtracted",
-                                 TrackExtractionStatus.ExtractedWithWarnings => "web.toolbox.trackExtraction.statusExtractedWithWarnings",
-                                 TrackExtractionStatus.Failed => "web.toolbox.trackExtraction.statusFailed",
-                                 TrackExtractionStatus.Stopped => "web.toolbox.trackExtraction.statusStopped",
+                                 ToolboxItemStatus.Running => "web.toolbox.trackExtraction.statusRunning",
+                                 ToolboxItemStatus.Done => "web.toolbox.trackExtraction.statusDone",
+                                 ToolboxItemStatus.DoneWithWarnings => "web.toolbox.trackExtraction.statusDoneWithWarnings",
+                                 ToolboxItemStatus.Failed => "web.toolbox.trackExtraction.statusFailed",
+                                 ToolboxItemStatus.Stopped => "web.toolbox.trackExtraction.statusStopped",
                                  _ => "web.toolbox.trackExtraction.statusPending"
                              })"
-                             BadgeStyle="@(track.Status switch
+                             BadgeStyle="@(track.Result.Status switch
                              {
-                                 TrackExtractionStatus.Running => BadgeStyle.Info,
-                                 TrackExtractionStatus.Extracted => BadgeStyle.Success,
-                                 TrackExtractionStatus.Failed => BadgeStyle.Danger,
-                                 TrackExtractionStatus.ExtractedWithWarnings => BadgeStyle.Warning,
-                                 TrackExtractionStatus.Stopped => BadgeStyle.Warning,
+                                 ToolboxItemStatus.Running => BadgeStyle.Info,
+                                 ToolboxItemStatus.Done => BadgeStyle.Success,
+                                 ToolboxItemStatus.Failed => BadgeStyle.Danger,
+                                 ToolboxItemStatus.DoneWithWarnings => BadgeStyle.Warning,
+                                 ToolboxItemStatus.Stopped => BadgeStyle.Warning,
                                  _ => BadgeStyle.Base
                              })" />
             }
@@ -325,13 +326,13 @@
             {
                 <span class="rf-tool-muted" title="@track.Track.UnavailableReason">@track.Track.UnavailableReason</span>
             }
-            else if (track.OutputPath.Length > 0)
+            else if (track.Result.OutputPath.Length > 0)
             {
-                <span title="@(track.Details.Length > 0 ? track.OutputPath + Environment.NewLine + track.Details : track.OutputPath)">@System.IO.Path.GetFileName(track.OutputPath)</span>
+                <span title="@(track.Result.Details.Length > 0 ? track.Result.OutputPath + Environment.NewLine + track.Result.Details : track.Result.OutputPath)">@System.IO.Path.GetFileName(track.Result.OutputPath)</span>
             }
-            else if (track.Message.Length > 0)
+            else if (track.Result.Message.Length > 0)
             {
-                <span title="@(track.Details.Length > 0 ? track.Details : track.Message)">@track.Message</span>
+                <span title="@(track.Result.Details.Length > 0 ? track.Result.Details : track.Result.Message)">@track.Result.Message</span>
             }
             else if (_plan.TryGetValue(track, out string planned))
             {

@@ -339,7 +339,7 @@ namespace RemuxForge.Web.Services.Toolbox
 
                 for (int i = 0; i < this.Records.Count; i++)
                 {
-                    if (!this.Records[i].IsDone)
+                    if (!this.Records[i].Result.IsDone)
                         batch.Add(new KeyValuePair<AddTracksVideo, AddTracksTrackFile>(this.Records[i], this._tracks[i]));
                 }
                 this.TryRunExclusive(() => this.AddWorker(batch, properties, outputFolder));
@@ -367,7 +367,7 @@ namespace RemuxForge.Web.Services.Toolbox
                 OutputPathAllocator allocator = new OutputPathAllocator(this.CollectInputs());
                 foreach (AddTracksVideo video in this.Records)
                 {
-                    if (!video.IsDone)
+                    if (!video.Result.IsDone)
                         this._plan[video] = outputFolder.Length == 0 && MediaContainerFormats.IsMatroska(video.InputPath) ? video.InputPath : allocator.Reserve(AddTracksService.GetDesiredPath(video.InputPath, outputFolder));
                 }
 
@@ -419,7 +419,7 @@ namespace RemuxForge.Web.Services.Toolbox
                 string trackPath = i < this._tracks.Count ? this._tracks[i].InputPath : "";
                 AddTracksReplacement replacement = this._replacements.Find(r => PathIdentity.IsSame(r.VideoPath, video.InputPath));
 
-                if (video.Status == AddTracksStatus.Running)
+                if (video.Result.Status == ToolboxItemStatus.Running)
                     continue;
 
                 if (replacement != null && trackPath.Length > 0 && replacement.TrackPaths.Exists(t => PathIdentity.IsSame(t, trackPath)))
@@ -429,7 +429,7 @@ namespace RemuxForge.Web.Services.Toolbox
                     else
                         video.Block(AppText.T("web.toolbox.addTracks.alreadyAdded"), trackPath);
                 }
-                else if ((video.Status != AddTracksStatus.Pending || video.BlockedReason.Length > 0) && !PathIdentity.IsSame(video.PairedTrackPath, trackPath))
+                else if ((video.Result.Status != ToolboxItemStatus.Pending || video.BlockedReason.Length > 0) && !PathIdentity.IsSame(video.PairedTrackPath, trackPath))
                     video.Reset();
             }
         }
@@ -582,7 +582,7 @@ namespace RemuxForge.Web.Services.Toolbox
         /// <param name="outputFolder">Cartella di uscita del lotto, vuota per sovrascrivere</param>
         private void AddWorker(List<KeyValuePair<AddTracksVideo, AddTracksTrackFile>> batch, AddedTrackProperties properties, string outputFolder)
         {
-            AddTracksBatchSummary summary = new AddTracksBatchSummary();
+            ToolboxBatchSummary summary = new ToolboxBatchSummary(this.TextPrefix);
             CancellationToken cancellation = this.OperationCancellationToken;
             string folderError;
             List<string> inputs;
@@ -625,7 +625,7 @@ namespace RemuxForge.Web.Services.Toolbox
                     this.ReportProgress(i, batch.Count, name);
                     lock (this.StateLock)
                     {
-                        video.Status = AddTracksStatus.Running;
+                        video.Result = new ToolboxItemResult(ToolboxItemStatus.Running);
                     }
                     this.NotifyRecordsChanged();
 
@@ -646,7 +646,7 @@ namespace RemuxForge.Web.Services.Toolbox
                     catch (Exception ex)
                     {
                         result = new AddTracksResult();
-                        result.Status = this.IsOperationStopped(ex) ? AddTracksStatus.Stopped : AddTracksStatus.Failed;
+                        result.Status = this.IsOperationStopped(ex) ? ToolboxItemStatus.Stopped : ToolboxItemStatus.Failed;
                         result.Message = this.IsOperationStopped(ex) ? AppText.T("toolbox.addTracks.stopped") : ex.Message;
                     }
 
@@ -655,13 +655,13 @@ namespace RemuxForge.Web.Services.Toolbox
                     if (result.Warnings.Count > LISTED_WARNINGS)
                         listed.Add(AppText.Count("web.toolbox.addTracks.tooltipMoreWarnings", result.Warnings.Count - LISTED_WARNINGS));
 
+                    string failure = result.Details.Length > 0 ? result.Details : result.Message;
+                    if (result.Details.Length == 0)
+                        result.Details = string.Join(Environment.NewLine, listed);
                     lock (this.StateLock)
                     {
-                        video.Status = result.Status;
-                        video.OutputPath = result.OutputPath;
+                        video.Result = result;
                         video.Replaced = result.Replaced;
-                        video.Message = result.Message;
-                        video.Details = result.Details.Length > 0 ? result.Details : string.Join(Environment.NewLine, listed);
                         video.PairedTrackPath = track.InputPath;
 
                         // Il video sostituito contiene ora la traccia: si ricorda, per non aggiungerla una seconda volta
@@ -683,10 +683,10 @@ namespace RemuxForge.Web.Services.Toolbox
                         this.AppendLog(AppText.Count("web.toolbox.addTracks.moreWarnings", result.Warnings.Count - LISTED_WARNINGS, label));
 
                     summary.Add(result.Status);
-                    if (result.Status == AddTracksStatus.Added || result.Status == AddTracksStatus.AddedWithWarnings)
+                    if (result.IsDone)
                         this.AppendLog(AppText.F(result.Replaced ? "web.toolbox.addTracks.pairReplaced" : "web.toolbox.addTracks.pairAdded", label, result.OutputPath));
-                    else if (result.Status == AddTracksStatus.Failed)
-                        this.AppendLog(AppText.F("web.toolbox.addTracks.pairFailed", label, result.Details.Length > 0 ? result.Details : result.Message));
+                    else if (result.Status == ToolboxItemStatus.Failed)
+                        this.AppendLog(AppText.F("web.toolbox.addTracks.pairFailed", label, failure));
                     else
                         this.AppendLog(AppText.F("web.toolbox.addTracks.pairStopped", label));
 
@@ -861,7 +861,7 @@ namespace RemuxForge.Web.Services.Toolbox
             {
                 lock (this.StateLock)
                 {
-                    return !this.IsBusy && this.GetOutputFolderError().Length == 0 && this.PairingError.Length == 0 && this.Records.Exists(v => !v.IsDone);
+                    return !this.IsBusy && this.GetOutputFolderError().Length == 0 && this.PairingError.Length == 0 && this.Records.Exists(v => !v.Result.IsDone);
                 }
             }
         }
@@ -1016,11 +1016,8 @@ namespace RemuxForge.Web.Services.Toolbox
         /// </summary>
         public void Reset()
         {
-            this.Status = AddTracksStatus.Pending;
-            this.OutputPath = "";
+            this.Result = new ToolboxItemResult();
             this.Replaced = false;
-            this.Message = "";
-            this.Details = "";
             this.PairedTrackPath = "";
             this.BlockedReason = "";
         }
@@ -1042,29 +1039,15 @@ namespace RemuxForge.Web.Services.Toolbox
         #region Proprietà
 
         /// <summary>
-        /// Stato dell'aggiunta
+        /// Esito dell'ultima aggiunta: in riga il Matroska scritto o il motivo breve, nel tooltip gli errori di mkvmerge così come li
+        /// ha scritti oppure gli avvisi
         /// </summary>
-        public AddTracksStatus Status { get; set; }
-
-        /// <summary>
-        /// Matroska scritto, vuoto finché l'aggiunta non riesce
-        /// </summary>
-        public string OutputPath { get; set; }
+        public ToolboxItemResult Result { get; set; }
 
         /// <summary>
         /// True se il Matroska scritto ha sostituito il video
         /// </summary>
         public bool Replaced { get; set; }
-
-        /// <summary>
-        /// Motivo dell'errore o dell'interruzione, in forma breve
-        /// </summary>
-        public string Message { get; set; }
-
-        /// <summary>
-        /// Testo completo per il tooltip: errori di mkvmerge così come li ha scritti, oppure gli avvisi
-        /// </summary>
-        public string Details { get; set; }
 
         /// <summary>
         /// File di tracce con cui è stato ottenuto l'esito, o accanto a cui il video è bloccato; vuoto in attesa
@@ -1075,14 +1058,6 @@ namespace RemuxForge.Web.Services.Toolbox
         /// Perché la coppia non si può elaborare, vuoto se si può
         /// </summary>
         public string BlockedReason { get; private set; }
-
-        /// <summary>
-        /// True se la traccia è già stata aggiunta, anche con avvisi, e la coppia non va rielaborata
-        /// </summary>
-        public bool IsDone
-        {
-            get { return this.Status == AddTracksStatus.Added || this.Status == AddTracksStatus.AddedWithWarnings; }
-        }
 
         #endregion
     }
@@ -1120,8 +1095,8 @@ namespace RemuxForge.Web.Services.Toolbox
             if (!this.TrackPaths.Exists(t => PathIdentity.IsSame(t, video.PairedTrackPath)))
                 this.TrackPaths.Add(video.PairedTrackPath);
             this.LastTrackPath = video.PairedTrackPath;
-            this.LastStatus = video.Status;
-            this.LastDetails = video.Details;
+            this.LastStatus = video.Result.Status;
+            this.LastDetails = video.Result.Details;
         }
 
         /// <summary>
@@ -1131,10 +1106,12 @@ namespace RemuxForge.Web.Services.Toolbox
         public void Restore(AddTracksVideo video)
         {
             video.Reset();
-            video.Status = this.LastStatus;
-            video.OutputPath = video.InputPath;
+            video.Result = new ToolboxItemResult(this.LastStatus)
+            {
+                OutputPath = video.InputPath,
+                Details = this.LastDetails
+            };
             video.Replaced = true;
-            video.Details = this.LastDetails;
             video.PairedTrackPath = this.LastTrackPath;
         }
 
@@ -1160,105 +1137,12 @@ namespace RemuxForge.Web.Services.Toolbox
         /// <summary>
         /// Stato dell'ultima sostituzione
         /// </summary>
-        public AddTracksStatus LastStatus { get; private set; }
+        public ToolboxItemStatus LastStatus { get; private set; }
 
         /// <summary>
         /// Avvisi dell'ultima sostituzione, per il tooltip
         /// </summary>
         public string LastDetails { get; private set; }
-
-        #endregion
-    }
-
-    /// <summary>
-    /// Riepilogo di un lotto di aggiunta di tracce, contato in coppie
-    /// </summary>
-    public sealed class AddTracksBatchSummary : ToolboxBatchSummary
-    {
-        #region Metodi pubblici
-
-        /// <summary>
-        /// Conta l'esito di una coppia elaborata
-        /// </summary>
-        /// <param name="status">Stato finale del video</param>
-        public void Add(AddTracksStatus status)
-        {
-            if (status == AddTracksStatus.Added)
-                this.Added++;
-            else if (status == AddTracksStatus.AddedWithWarnings)
-                this.AddedWithWarnings++;
-            else if (status == AddTracksStatus.Failed)
-                this.Failed++;
-            else
-                this.Interrupted++;
-        }
-
-        /// <summary>
-        /// Descrive i conteggi diversi da zero, nell'ordine aggiunte, con avvisi, errori, interrotte, non elaborate
-        /// </summary>
-        /// <returns>Testo del riepilogo</returns>
-        public override string Describe()
-        {
-            List<string> parts = new List<string>();
-            string[] keys = { "summaryAdded", "summaryWithWarnings", "summaryFailed", "summaryStopped", "summaryNotProcessed" };
-            int[] counts = { this.Added, this.AddedWithWarnings, this.Failed, this.Interrupted, this.NotProcessed };
-
-            for (int i = 0; i < keys.Length; i++)
-            {
-                if (counts[i] > 0)
-                    parts.Add(AppText.Count("web.toolbox.addTracks." + keys[i], counts[i]));
-            }
-
-            return string.Join(", ", parts);
-        }
-
-        #endregion
-
-        #region Proprietà
-
-        /// <summary>
-        /// Coppie riuscite senza avvisi
-        /// </summary>
-        public int Added { get; private set; }
-
-        /// <summary>
-        /// Coppie riuscite con avvisi
-        /// </summary>
-        public int AddedWithWarnings { get; private set; }
-
-        /// <summary>
-        /// Coppie non riuscite per errore
-        /// </summary>
-        public int Failed { get; private set; }
-
-        /// <summary>
-        /// Coppie interrotte dallo stop
-        /// </summary>
-        public int Interrupted { get; private set; }
-
-        /// <summary>
-        /// Coppie del lotto mai avviate, per lo stop o per un errore prima della prima
-        /// </summary>
-        public int NotProcessed
-        {
-            get { return this.Total - this.Added - this.AddedWithWarnings - this.Failed - this.Interrupted; }
-        }
-
-        /// <summary>
-        /// True se ogni coppia del lotto è riuscita senza avvisi
-        /// </summary>
-        public override bool AllSucceeded
-        {
-            get { return this.Added > 0 && this.AddedWithWarnings + this.Failed + this.Interrupted + this.NotProcessed == 0 && !this.Stopped; }
-        }
-
-        /// <summary>
-        /// True se ci sono errori e nessuna coppia è riuscita
-        /// </summary>
-        public override bool NothingSucceeded
-        {
-            get { return this.Failed > 0 && this.Added + this.AddedWithWarnings == 0; }
-        }
 
         #endregion
     }

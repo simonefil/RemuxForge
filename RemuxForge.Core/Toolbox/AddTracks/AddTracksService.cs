@@ -201,7 +201,7 @@ namespace RemuxForge.Core.Toolbox.AddTracks
             }
             if (failure.Length > 0)
             {
-                result.Status = AddTracksStatus.Failed;
+                result.Status = ToolboxItemStatus.Failed;
                 result.Message = failure;
                 return result;
             }
@@ -270,7 +270,7 @@ namespace RemuxForge.Core.Toolbox.AddTracks
                     // Un mkvmerge ucciso dallo stop ha un exit code qualsiasi: lo stop si riconosce prima del codice
                     if (ProcessRunner.IsStopRequested())
                     {
-                        result.Status = AddTracksStatus.Stopped;
+                        result.Status = ToolboxItemStatus.Stopped;
                         result.Message = AppText.T("toolbox.addTracks.stopped");
                         return result;
                     }
@@ -281,7 +281,7 @@ namespace RemuxForge.Core.Toolbox.AddTracks
                             errors.Add(run.Stderr.Trim().Length > 0 ? run.Stderr.Trim() : AppText.F("toolbox.addTracks.exitCode", run.ExitCode));
 
                         // In riga il motivo senza percorsi: mkvmerge li cita completi, il dettaglio li conserva
-                        result.Status = AddTracksStatus.Failed;
+                        result.Status = ToolboxItemStatus.Failed;
                         result.Details = string.Join(Environment.NewLine, errors);
                         result.Message = string.Join(" ", errors).Replace(fullVideo, videoName).Replace(track.Path, Path.GetFileName(track.Path)).Replace(output.TempPath, Path.GetFileName(finalPath));
                         return result;
@@ -303,7 +303,7 @@ namespace RemuxForge.Core.Toolbox.AddTracks
                     }
                     if (!expected)
                     {
-                        result.Status = AddTracksStatus.Failed;
+                        result.Status = ToolboxItemStatus.Failed;
                         result.Message = AppText.T("toolbox.addTracks.tracksChanged");
                         return result;
                     }
@@ -313,7 +313,7 @@ namespace RemuxForge.Core.Toolbox.AddTracks
                     TrackInfo added = outputTracks[insertAt];
                     if (properties.IsDefault && (!added.DefaultTrack || outputTracks.Exists(t => t != added && t.Type == track.Type && t.DefaultTrack)))
                     {
-                        result.Status = AddTracksStatus.Failed;
+                        result.Status = ToolboxItemStatus.Failed;
                         result.Message = AppText.T("toolbox.addTracks.defaultNotUnique");
                         return result;
                     }
@@ -329,12 +329,12 @@ namespace RemuxForge.Core.Toolbox.AddTracks
                     }
                     catch (IOException ex)
                     {
-                        result.Status = AddTracksStatus.Failed;
+                        result.Status = ToolboxItemStatus.Failed;
                         result.Message = ex.Message;
                         return result;
                     }
 
-                    result.Status = result.Warnings.Count > 0 ? AddTracksStatus.AddedWithWarnings : AddTracksStatus.Added;
+                    result.Status = result.Warnings.Count > 0 ? ToolboxItemStatus.DoneWithWarnings : ToolboxItemStatus.Done;
                     result.OutputPath = finalPath;
                     result.Replaced = replace;
                 }
@@ -354,7 +354,7 @@ namespace RemuxForge.Core.Toolbox.AddTracks
             catch (IOException ex)
             {
                 // Cartella non scrivibile alla creazione del temporaneo
-                result.Status = AddTracksStatus.Failed;
+                result.Status = ToolboxItemStatus.Failed;
                 result.Message = ex.Message;
             }
             finally
@@ -497,81 +497,16 @@ namespace RemuxForge.Core.Toolbox.AddTracks
     }
 
     /// <summary>
-    /// Stato di un video nell'aggiunta di tracce
-    /// </summary>
-    public enum AddTracksStatus
-    {
-        /// <summary>In attesa</summary>
-        Pending,
-
-        /// <summary>Aggiunta in corso</summary>
-        Running,
-
-        /// <summary>Traccia aggiunta</summary>
-        Added,
-
-        /// <summary>Traccia aggiunta, con avvisi</summary>
-        AddedWithWarnings,
-
-        /// <summary>Aggiunta non riuscita</summary>
-        Failed,
-
-        /// <summary>Aggiunta interrotta dallo stop</summary>
-        Stopped
-    }
-
-    /// <summary>
     /// Esito dell'aggiunta di una traccia a un video
     /// </summary>
-    public sealed class AddTracksResult
+    public sealed class AddTracksResult : ToolboxItemResult
     {
-        #region Costruttore
-
-        /// <summary>
-        /// Costruttore
-        /// </summary>
-        public AddTracksResult()
-        {
-            this.Status = AddTracksStatus.Pending;
-            this.OutputPath = "";
-            this.Message = "";
-            this.Details = "";
-            this.Warnings = new List<string>();
-        }
-
-        #endregion
-
         #region Proprietà
-
-        /// <summary>
-        /// Stato finale
-        /// </summary>
-        public AddTracksStatus Status { get; set; }
-
-        /// <summary>
-        /// Matroska scritto, vuoto se l'aggiunta non è riuscita
-        /// </summary>
-        public string OutputPath { get; set; }
 
         /// <summary>
         /// True se il Matroska scritto ha sostituito l'originale
         /// </summary>
         public bool Replaced { get; set; }
-
-        /// <summary>
-        /// Motivo dell'errore o dell'interruzione, senza percorsi completi
-        /// </summary>
-        public string Message { get; set; }
-
-        /// <summary>
-        /// Errori di mkvmerge così come li ha scritti, vuoto se il motivo non viene da mkvmerge
-        /// </summary>
-        public string Details { get; set; }
-
-        /// <summary>
-        /// Avvisi di mkvmerge e del controllo dei flag, anche con aggiunta riuscita
-        /// </summary>
-        public List<string> Warnings { get; }
 
         #endregion
     }

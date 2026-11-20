@@ -66,7 +66,7 @@ namespace RemuxForge.Web.Services.Toolbox
         {
             List<VideoToMkvRecord> targets = new List<VideoToMkvRecord>();
             List<string> inputs = new List<string>();
-            VideoToMkvBatchSummary summary = new VideoToMkvBatchSummary();
+            ToolboxBatchSummary summary = new ToolboxBatchSummary(this.TextPrefix);
             CancellationToken cancellation = this.OperationCancellationToken;
             string outputFolder;
             string folderError;
@@ -81,7 +81,7 @@ namespace RemuxForge.Web.Services.Toolbox
                     foreach (VideoToMkvRecord record in this.Records)
                     {
                         inputs.Add(record.InputPath);
-                        if (!record.IsDone)
+                        if (!record.Result.IsDone)
                             targets.Add(record);
                     }
                 }
@@ -99,7 +99,7 @@ namespace RemuxForge.Web.Services.Toolbox
                 {
                     VideoToMkvRecord record = targets[i];
                     string name = Path.GetFileName(record.InputPath);
-                    VideoToMkvResult result;
+                    ToolboxItemResult result;
 
                     if (this.StopRequested)
                         break;
@@ -107,10 +107,7 @@ namespace RemuxForge.Web.Services.Toolbox
                     this.ReportProgress(i, targets.Count, name);
                     lock (this.StateLock)
                     {
-                        record.Status = VideoToMkvStatus.Running;
-                        record.OutputPath = "";
-                        record.Message = "";
-                        record.Details = "";
+                        record.Result = new ToolboxItemResult(ToolboxItemStatus.Running);
                     }
                     this.NotifyRecordsChanged();
 
@@ -130,8 +127,7 @@ namespace RemuxForge.Web.Services.Toolbox
                     }
                     catch (Exception ex)
                     {
-                        result = new VideoToMkvResult();
-                        result.Status = this.IsOperationStopped(ex) ? VideoToMkvStatus.Stopped : VideoToMkvStatus.Failed;
+                        result = new ToolboxItemResult(this.IsOperationStopped(ex) ? ToolboxItemStatus.Stopped : ToolboxItemStatus.Failed);
                         result.Message = ex.Message;
                     }
 
@@ -140,12 +136,12 @@ namespace RemuxForge.Web.Services.Toolbox
                     if (result.Warnings.Count > LISTED_WARNINGS)
                         listed.Add(AppText.Count("web.toolbox.videoToMkv.tooltipMoreWarnings", result.Warnings.Count - LISTED_WARNINGS));
 
+                    string failure = result.Details.Length > 0 ? result.Details : result.Message;
+                    if (result.Details.Length == 0)
+                        result.Details = string.Join(Environment.NewLine, listed);
                     lock (this.StateLock)
                     {
-                        record.Status = result.Status;
-                        record.OutputPath = result.OutputPath;
-                        record.Message = result.Message;
-                        record.Details = result.Details.Length > 0 ? result.Details : string.Join(Environment.NewLine, listed);
+                        record.Result = result;
                     }
 
                     for (int w = 0; w < result.Warnings.Count && w < LISTED_WARNINGS; w++)
@@ -154,10 +150,10 @@ namespace RemuxForge.Web.Services.Toolbox
                         this.AppendLog(AppText.Count("web.toolbox.videoToMkv.moreWarnings", result.Warnings.Count - LISTED_WARNINGS, name));
 
                     summary.Add(result.Status);
-                    if (result.Status == VideoToMkvStatus.Converted || result.Status == VideoToMkvStatus.ConvertedWithWarnings)
+                    if (result.IsDone)
                         this.AppendLog(AppText.F("web.toolbox.videoToMkv.fileConverted", name, result.OutputPath));
-                    else if (result.Status == VideoToMkvStatus.Failed)
-                        this.AppendLog(AppText.F("web.toolbox.videoToMkv.fileFailed", name, result.Details.Length > 0 ? result.Details : result.Message));
+                    else if (result.Status == ToolboxItemStatus.Failed)
+                        this.AppendLog(AppText.F("web.toolbox.videoToMkv.fileFailed", name, failure));
                     else
                         this.AppendLog(AppText.F("web.toolbox.videoToMkv.fileStopped", name));
 
@@ -188,7 +184,7 @@ namespace RemuxForge.Web.Services.Toolbox
             {
                 lock (this.StateLock)
                 {
-                    return !this.IsBusy && this.GetOutputFolderError().Length == 0 && this.Records.Exists(r => !r.IsDone);
+                    return !this.IsBusy && this.GetOutputFolderError().Length == 0 && this.Records.Exists(r => !r.Result.IsDone);
                 }
             }
         }
@@ -210,10 +206,7 @@ namespace RemuxForge.Web.Services.Toolbox
         /// <param name="size">Dimensione in byte</param>
         public VideoToMkvRecord(string inputPath, long size) : base(inputPath, size)
         {
-            this.Status = VideoToMkvStatus.Pending;
-            this.OutputPath = "";
-            this.Message = "";
-            this.Details = "";
+            this.Result = new ToolboxItemResult();
         }
 
         #endregion
@@ -221,125 +214,10 @@ namespace RemuxForge.Web.Services.Toolbox
         #region Proprietà
 
         /// <summary>
-        /// Stato della conversione
+        /// Esito della conversione: in riga il Matroska scritto o il motivo breve, nel tooltip gli errori di mkvmerge così come li ha
+        /// scritti oppure i suoi avvisi
         /// </summary>
-        public VideoToMkvStatus Status { get; set; }
-
-        /// <summary>
-        /// Matroska scritto, vuoto finché la conversione non riesce
-        /// </summary>
-        public string OutputPath { get; set; }
-
-        /// <summary>
-        /// Motivo dell'errore o dell'interruzione, in forma breve
-        /// </summary>
-        public string Message { get; set; }
-
-        /// <summary>
-        /// Testo completo per il tooltip: errori di mkvmerge così come li ha scritti, oppure i suoi avvisi
-        /// </summary>
-        public string Details { get; set; }
-
-        /// <summary>
-        /// True se il file non va rielaborato: convertito, anche con avvisi
-        /// </summary>
-        public bool IsDone
-        {
-            get { return this.Status == VideoToMkvStatus.Converted || this.Status == VideoToMkvStatus.ConvertedWithWarnings; }
-        }
-
-        #endregion
-    }
-
-    /// <summary>
-    /// Riepilogo di un lotto di conversione in Matroska
-    /// </summary>
-    public sealed class VideoToMkvBatchSummary : ToolboxBatchSummary
-    {
-        #region Metodi pubblici
-
-        /// <summary>
-        /// Conta l'esito di un file elaborato
-        /// </summary>
-        /// <param name="status">Stato finale del file</param>
-        public void Add(VideoToMkvStatus status)
-        {
-            if (status == VideoToMkvStatus.Converted)
-                this.Converted++;
-            else if (status == VideoToMkvStatus.ConvertedWithWarnings)
-                this.ConvertedWithWarnings++;
-            else if (status == VideoToMkvStatus.Failed)
-                this.Failed++;
-            else
-                this.Interrupted++;
-        }
-
-        /// <summary>
-        /// Descrive i conteggi diversi da zero, nell'ordine convertiti, con avvisi, errori, interrotti, non elaborati
-        /// </summary>
-        /// <returns>Testo del riepilogo</returns>
-        public override string Describe()
-        {
-            List<string> parts = new List<string>();
-            string[] keys = { "summaryConverted", "summaryWithWarnings", "summaryFailed", "summaryStopped", "summaryNotProcessed" };
-            int[] counts = { this.Converted, this.ConvertedWithWarnings, this.Failed, this.Interrupted, this.NotProcessed };
-
-            for (int i = 0; i < keys.Length; i++)
-            {
-                if (counts[i] > 0)
-                    parts.Add(AppText.Count("web.toolbox.videoToMkv." + keys[i], counts[i]));
-            }
-
-            return string.Join(", ", parts);
-        }
-
-        #endregion
-
-        #region Proprietà
-
-        /// <summary>
-        /// File convertiti senza avvisi
-        /// </summary>
-        public int Converted { get; private set; }
-
-        /// <summary>
-        /// File convertiti con avvisi di mkvmerge
-        /// </summary>
-        public int ConvertedWithWarnings { get; private set; }
-
-        /// <summary>
-        /// File non convertiti per errore
-        /// </summary>
-        public int Failed { get; private set; }
-
-        /// <summary>
-        /// File interrotti dallo stop durante la conversione
-        /// </summary>
-        public int Interrupted { get; private set; }
-
-        /// <summary>
-        /// File del lotto mai avviati, per lo stop o per un errore prima del primo file
-        /// </summary>
-        public int NotProcessed
-        {
-            get { return this.Total - this.Converted - this.ConvertedWithWarnings - this.Failed - this.Interrupted; }
-        }
-
-        /// <summary>
-        /// True se ogni file del lotto è stato convertito senza avvisi
-        /// </summary>
-        public override bool AllSucceeded
-        {
-            get { return this.Converted > 0 && this.ConvertedWithWarnings + this.Failed + this.Interrupted + this.NotProcessed == 0 && !this.Stopped; }
-        }
-
-        /// <summary>
-        /// True se ci sono errori e nessun file è stato convertito
-        /// </summary>
-        public override bool NothingSucceeded
-        {
-            get { return this.Failed > 0 && this.Converted + this.ConvertedWithWarnings == 0; }
-        }
+        public ToolboxItemResult Result { get; set; }
 
         #endregion
     }

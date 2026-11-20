@@ -413,17 +413,69 @@ namespace RemuxForge.Web.Services.Toolbox
     }
 
     /// <summary>
-    /// Riepilogo di un lotto: lo descrive il log e lo riassume il toast di fine lotto
+    /// Riepilogo di un lotto, contato per stato degli elementi: lo descrive il log e lo riassume il toast di fine lotto. I testi
+    /// stanno sotto il prefisso della card (summaryDone, summaryWithWarnings, summaryFailed, summaryStopped, summaryNotProcessed)
     /// </summary>
-    public abstract class ToolboxBatchSummary
+    public class ToolboxBatchSummary
     {
+        #region Variabili di classe
+
+        /// <summary>
+        /// Prefisso delle chiavi dei testi della card
+        /// </summary>
+        private readonly string _textPrefix;
+
+        #endregion
+
+        #region Costruttore
+
+        /// <summary>
+        /// Costruttore
+        /// </summary>
+        /// <param name="textPrefix">Prefisso delle chiavi dei testi della card</param>
+        public ToolboxBatchSummary(string textPrefix)
+        {
+            this._textPrefix = textPrefix;
+        }
+
+        #endregion
+
         #region Metodi pubblici
 
         /// <summary>
-        /// Descrive gli esiti del lotto
+        /// Conta l'esito di un elemento elaborato
+        /// </summary>
+        /// <param name="status">Stato finale dell'elemento</param>
+        public void Add(ToolboxItemStatus status)
+        {
+            if (status == ToolboxItemStatus.Done)
+                this.Done++;
+            else if (status == ToolboxItemStatus.DoneWithWarnings)
+                this.DoneWithWarnings++;
+            else if (status == ToolboxItemStatus.Failed)
+                this.Failed++;
+            else
+                this.Interrupted++;
+        }
+
+        /// <summary>
+        /// Descrive i conteggi diversi da zero, nell'ordine riusciti, con avvisi, errori, interrotti, non elaborati
         /// </summary>
         /// <returns>Testo del riepilogo</returns>
-        public abstract string Describe();
+        public virtual string Describe()
+        {
+            List<string> parts = new List<string>();
+            string[] keys = { "summaryDone", "summaryWithWarnings", "summaryFailed", "summaryStopped", "summaryNotProcessed" };
+            int[] counts = { this.Done, this.DoneWithWarnings, this.Failed, this.Interrupted, this.NotProcessed };
+
+            for (int i = 0; i < keys.Length; i++)
+            {
+                if (counts[i] > 0)
+                    parts.Add(AppText.Count(this._textPrefix + "." + keys[i], counts[i]));
+            }
+
+            return string.Join(", ", parts);
+        }
 
         #endregion
 
@@ -440,14 +492,48 @@ namespace RemuxForge.Web.Services.Toolbox
         public bool Stopped { get; set; }
 
         /// <summary>
+        /// Elementi riusciti senza avvisi
+        /// </summary>
+        public int Done { get; private set; }
+
+        /// <summary>
+        /// Elementi riusciti con avvisi dello strumento
+        /// </summary>
+        public int DoneWithWarnings { get; private set; }
+
+        /// <summary>
+        /// Elementi non riusciti per errore
+        /// </summary>
+        public int Failed { get; private set; }
+
+        /// <summary>
+        /// Elementi interrotti dallo stop
+        /// </summary>
+        public int Interrupted { get; private set; }
+
+        /// <summary>
+        /// Elementi del lotto mai avviati, per lo stop o per un errore prima del primo
+        /// </summary>
+        public int NotProcessed
+        {
+            get { return this.Total - this.Done - this.DoneWithWarnings - this.Failed - this.Interrupted; }
+        }
+
+        /// <summary>
         /// True se ogni elemento del lotto è riuscito senza avvisi
         /// </summary>
-        public abstract bool AllSucceeded { get; }
+        public bool AllSucceeded
+        {
+            get { return this.Done > 0 && this.DoneWithWarnings + this.Failed + this.Interrupted + this.NotProcessed == 0 && !this.Stopped; }
+        }
 
         /// <summary>
         /// True se ci sono errori e nessun elemento è riuscito
         /// </summary>
-        public abstract bool NothingSucceeded { get; }
+        public bool NothingSucceeded
+        {
+            get { return this.Failed > 0 && this.Done + this.DoneWithWarnings == 0; }
+        }
 
         #endregion
     }
