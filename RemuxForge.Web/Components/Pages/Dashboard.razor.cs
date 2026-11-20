@@ -731,7 +731,8 @@ namespace RemuxForge.Web.Components.Pages
             }
 
             // La scorciatoia di un comando disabilitato non fa nulla, come il click sul pulsante disabilitato
-            if (UiCommandDefinition.IsShortcutDisabled(this.BuildUiCommands(), key, ctrl))
+            IReadOnlyList<UiCommandDefinition> commands = this.BuildUiCommands();
+            if (UiCommandDefinition.IsShortcutDisabled(commands, key, ctrl))
                 return;
 
             if (this.ToolboxCatalog.IsAnyBusy() && ((key.StartsWith("F", StringComparison.Ordinal) && key.Length <= 3) || ctrl))
@@ -749,11 +750,10 @@ namespace RemuxForge.Web.Components.Pages
             // Una card tool non ha rami propri: il tasto esegue il suo comando con la stessa scorciatoia, Stop compreso
             if (this.ToolboxCatalog.Find(this._currentCardId).PageType != null)
             {
-                string shortcut = ctrl ? "Ctrl+" + key.ToUpperInvariant() : key;
                 UiCommandDefinition command = null;
-                foreach (UiCommandDefinition candidate in this.BuildUiCommands())
+                foreach (UiCommandDefinition candidate in commands)
                 {
-                    if (!candidate.Disabled && string.Equals(candidate.Shortcut, shortcut, StringComparison.OrdinalIgnoreCase))
+                    if (!candidate.Disabled && candidate.Matches(key, ctrl))
                     {
                         command = candidate;
                         break;
