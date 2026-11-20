@@ -1,3 +1,4 @@
+using RemuxForge.Core.Infrastructure;
 using RemuxForge.Core.Localization;
 using RemuxForge.Core.Models;
 using System;
@@ -275,13 +276,14 @@ namespace RemuxForge.Core.MediaCatalog
         }
 
         /// <summary>
-        /// Errore di risposta non interpretabile
+        /// Errore di risposta non interpretabile: il dettaglio va nel log, all'utente il messaggio senza dettaglio
         /// </summary>
         /// <param name="detail">Cosa manca o non torna</param>
         /// <returns>Eccezione da lanciare</returns>
         protected MediaCatalogException CreateFormatError(string detail)
         {
-            return new MediaCatalogException(AppText.F("mediaCatalog.error.format", this.DisplayName, detail));
+            ConsoleHelper.Write(LogSection.General, LogLevel.Warning, AppText.F("mediaCatalog.error.format", this.DisplayName, detail));
+            return new MediaCatalogException(AppText.F("mediaCatalog.error.unreadable", this.DisplayName));
         }
 
         /// <summary>
@@ -491,7 +493,8 @@ namespace RemuxForge.Core.MediaCatalog
             }
             catch (JsonException ex)
             {
-                throw new MediaCatalogException(AppText.F("mediaCatalog.error.format", displayName, ex.Message), ex);
+                ConsoleHelper.Write(LogSection.General, LogLevel.Warning, AppText.F("mediaCatalog.error.format", displayName, ex.Message));
+                throw new MediaCatalogException(AppText.F("mediaCatalog.error.unreadable", displayName), ex);
             }
 
             throw new MediaCatalogException(AppText.F("mediaCatalog.error.format", displayName, AppText.T("mediaCatalog.error.emptyBody")));

@@ -791,7 +791,8 @@ namespace RemuxForge.Core.MediaCatalog
             if (exception is HttpRequestException || exception is System.IO.IOException)
                 return new MediaCatalogException(AppText.F("mediaCatalog.error.network", DISPLAY_NAME, exception.Message), exception);
 
-            return new MediaCatalogException(AppText.F("mediaCatalog.error.format", DISPLAY_NAME, exception.Message), exception);
+            ConsoleHelper.Write(LogSection.General, LogLevel.Warning, AppText.F("mediaCatalog.error.format", DISPLAY_NAME, exception.Message));
+            return new MediaCatalogException(AppText.F("mediaCatalog.error.unreadable", DISPLAY_NAME), exception);
         }
 
         /// <summary>
