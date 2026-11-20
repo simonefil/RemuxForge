@@ -76,6 +76,7 @@ namespace RemuxForge.Core.Ai
             string instructions = MetadataAiContextBuilder.BuildInstructions();
             JsonArray input = new JsonArray();
             List<string> lastErrors = new List<string>();
+            string effort = reasoningEffort;
 
             input.Add(CreateUserMessage(MetadataAiContextBuilder.BuildUserMessage(userRequest, tools.BuildOverview())));
 
@@ -86,14 +87,26 @@ namespace RemuxForge.Core.Ai
 
                 AiResponseRequest request = new AiResponseRequest();
                 request.Model = model;
-                request.ReasoningEffort = reasoningEffort;
+                request.ReasoningEffort = effort;
                 request.Instructions = instructions;
                 request.Input = input;
                 request.Tools = toolDefinitions;
                 if (progress != null)
                     request.Progress = stream => progress.Report(new AiPresetGenerationStep { Kind = AiPresetGenerationStepKind.Streaming, Round = round, Stream = stream });
 
-                AiResponseResult response = await this._client.CreateResponseAsync(request, AiRetryPolicy.None, cancellationToken);
+                AiResponseResult response;
+                try
+                {
+                    response = await this._client.CreateResponseAsync(request, AiRetryPolicy.None, cancellationToken);
+                }
+                catch (AiServiceException ex) when (ex.Kind == AiErrorKind.UnsupportedCapability && effort.Length > 0 && ex.RejectedParameter.StartsWith("reasoning", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Con la API key l'elenco offre i livelli a ogni modello e uno senza ragionamento li rifiuta: il livello si toglie per
+                    // il resto della generazione e il giro si ripete
+                    effort = "";
+                    request.ReasoningEffort = "";
+                    response = await this._client.CreateResponseAsync(request, AiRetryPolicy.None, cancellationToken);
+                }
                 if (response.Status == AiResponseStatus.Incomplete)
                     throw new AiServiceException(AiErrorKind.InvalidResponse, AppText.T("ai.error.incomplete"));
 
