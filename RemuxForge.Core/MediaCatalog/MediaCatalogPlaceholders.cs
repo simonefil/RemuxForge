@@ -1,5 +1,5 @@
+using RemuxForge.Core.Infrastructure;
 using RemuxForge.Core.Models;
-using RemuxForge.Core.Rename;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -124,7 +124,7 @@ namespace RemuxForge.Core.MediaCatalog
         /// <returns>Testo composto</returns>
         public static string Expand(string pattern, Dictionary<string, string> values)
         {
-            return RenameEngine.ExpandTags(pattern, tagContent =>
+            return TagTemplate.Expand(pattern, tagContent =>
             {
                 string value;
                 return TryResolve(tagContent, values, out value) ? value : "<" + tagContent + ">";

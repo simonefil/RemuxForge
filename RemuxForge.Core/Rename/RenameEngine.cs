@@ -1,3 +1,4 @@
+using RemuxForge.Core.Infrastructure;
 using RemuxForge.Core.Localization;
 using RemuxForge.Core.MediaCatalog;
 using RemuxForge.Core.Models;
@@ -123,43 +124,6 @@ namespace RemuxForge.Core.Rename
             else if (method.MethodType == RenameMethodType.Catalog)
             {
                 result = ApplyCatalog(fileName, method, fileIndex, lastModified, parentFolder, fullPath);
-            }
-
-            return result;
-        }
-
-        /// <summary>
-        /// Compone un testo sostituendo ogni tag fra parentesi angolari con il valore del risolutore
-        /// </summary>
-        /// <param name="pattern">Pattern con tag</param>
-        /// <param name="resolveTag">Valore di un tag dato il suo contenuto senza parentesi</param>
-        /// <returns>Testo composto</returns>
-        public static string ExpandTags(string pattern, Func<string, string> resolveTag)
-        {
-            string result = "";
-            int pos = 0;
-
-            while (pos < pattern.Length)
-            {
-                int tagStart = pattern.IndexOf('<', pos);
-                if (tagStart < 0)
-                {
-                    result = result + pattern.Substring(pos);
-                    break;
-                }
-
-                if (tagStart > pos)
-                    result = result + pattern.Substring(pos, tagStart - pos);
-
-                int tagEnd = pattern.IndexOf('>', tagStart);
-                if (tagEnd < 0)
-                {
-                    result = result + pattern.Substring(tagStart);
-                    break;
-                }
-
-                result = result + resolveTag(pattern.Substring(tagStart + 1, tagEnd - tagStart - 1));
-                pos = tagEnd + 1;
             }
 
             return result;
@@ -437,7 +401,7 @@ namespace RemuxForge.Core.Rename
             if (string.IsNullOrEmpty(pattern))
                 return fileName;
 
-            return ExpandTags(pattern, tagContent => ResolveTag(tagContent, originalName, originalExt, fileIndex, lastModified, parentFolder));
+            return TagTemplate.Expand(pattern, tagContent => ResolveTag(tagContent, originalName, originalExt, fileIndex, lastModified, parentFolder));
         }
 
         /// <summary>
@@ -458,7 +422,7 @@ namespace RemuxForge.Core.Rename
                 return fileName;
 
             SplitFileName(fileName, out string originalName, out string originalExt);
-            return ExpandTags(method.CatalogPattern, tagContent =>
+            return TagTemplate.Expand(method.CatalogPattern, tagContent =>
             {
                 string value;
                 StringBuilder clean = new StringBuilder();
