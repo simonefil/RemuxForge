@@ -1,5 +1,6 @@
 using RemuxForge.Core.Configuration;
 using RemuxForge.Core.Infrastructure;
+using RemuxForge.Core.Localization;
 using RemuxForge.Core.Models;
 using System;
 using System.IO;
@@ -63,7 +64,7 @@ namespace RemuxForge.Core.MediaCatalog
         #region Metodi pubblici
 
         /// <summary>
-        /// Restituisce una copia delle impostazioni correnti, leggendo il file al primo uso
+        /// Restituisce una copia delle impostazioni correnti, leggendo il file al primo uso; un file illeggibile vale come assente
         /// </summary>
         /// <returns>Impostazioni</returns>
         public MediaCatalogSettings Load()
@@ -73,8 +74,15 @@ namespace RemuxForge.Core.MediaCatalog
                 if (this._current == null)
                 {
                     MediaCatalogSettings read = null;
-                    if (File.Exists(this._filePath))
-                        read = JsonSerializer.Deserialize<MediaCatalogSettings>(File.ReadAllText(this._filePath), CreateSerializerOptions());
+                    try
+                    {
+                        if (File.Exists(this._filePath))
+                            read = JsonSerializer.Deserialize<MediaCatalogSettings>(File.ReadAllText(this._filePath), CreateSerializerOptions());
+                    }
+                    catch (Exception ex) when (ex is JsonException || ex is IOException || ex is UnauthorizedAccessException)
+                    {
+                        ConsoleHelper.Write(LogSection.Config, LogLevel.Warning, AppText.F("mediaCatalog.settingsLoadError", FILE_NAME, ex.Message));
+                    }
 
                     this._current = Normalize(read != null ? read : new MediaCatalogSettings());
                 }

@@ -4090,6 +4090,7 @@
   "mediaCatalog.error.network": "Network error contacting {0}: {1}",
   "mediaCatalog.error.service": "{0} answered with status {1}",
   "mediaCatalog.error.format": "Unreadable response from {0}: {1}",
+  "mediaCatalog.settingsLoadError": "Error loading {0}, default TVDB and TMDB settings: {1}",
   "web.menu.mediaCatalog": "TVDB and TMDB",
   "web.mediaCatalogSettings.title": "TVDB and TMDB",
   "web.mediaCatalogSettings.tvdbMode": "TheTVDB mode:",
