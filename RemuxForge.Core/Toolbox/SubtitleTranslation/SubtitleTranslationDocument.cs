@@ -150,12 +150,11 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <param name="letterEffects">Righe Comment delle frasi animate per posizione della battuta</param>
         /// <param name="attachedLines">Righe dei pezzi delle frasi animate per posizione della riga intera</param>
         /// <param name="shownLines">Posizioni delle righe intere lette con la frase visibile</param>
-        /// <param name="untimedBlockCount">Blocchi SRT senza riga dei tempi valida</param>
         /// <param name="rejectionReason">Motivo del rifiuto, vuoto per un file valido</param>
         private SubtitleTranslationDocument(SubtitleTranslationFormat format, string text, byte[] preamble, Encoding outputEncoding,
             List<SubtitleCue> cues, List<SubtitleStyleUsage> styles, Dictionary<int, LetterEffect> letterEffects,
             Dictionary<int, List<SourceLine>> attachedLines,
-            HashSet<int> shownLines, int untimedBlockCount, string rejectionReason)
+            HashSet<int> shownLines, string rejectionReason)
         {
             this.Format = format;
             this._text = text;
@@ -166,7 +165,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             this._letterEffects = letterEffects;
             this._attachedLines = attachedLines;
             this._shownLines = shownLines;
-            this.UntimedBlockCount = untimedBlockCount;
             this.RejectionReason = rejectionReason;
         }
 
@@ -213,7 +211,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             else if (Array.IndexOf(data, (byte)0) >= 0)
             {
                 return new SubtitleTranslationDocument(format, "", new byte[0], null, empty, new List<SubtitleStyleUsage>(), new Dictionary<int, LetterEffect>(), new Dictionary<int, List<SourceLine>>(),
-                    new HashSet<int>(), 0, REJECTION_UTF16_WITHOUT_BOM);
+                    new HashSet<int>(), REJECTION_UTF16_WITHOUT_BOM);
             }
             else
             {
@@ -227,7 +225,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 {
                     if (string.IsNullOrEmpty(encoding) || string.Equals(encoding, DEFAULT_ENCODING, StringComparison.OrdinalIgnoreCase))
                         return new SubtitleTranslationDocument(format, "", new byte[0], null, empty, new List<SubtitleStyleUsage>(), new Dictionary<int, LetterEffect>(), new Dictionary<int, List<SourceLine>>(),
-                            new HashSet<int>(), 0, REJECTION_ENCODING_REQUIRED);
+                            new HashSet<int>(), REJECTION_ENCODING_REQUIRED);
 
                     // Le codifiche di Aggiungi tracce che il runtime non ha di suo stanno nel provider delle code page
                     try
@@ -237,7 +235,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     catch (ArgumentException)
                     {
                         return new SubtitleTranslationDocument(format, "", new byte[0], null, empty, new List<SubtitleStyleUsage>(), new Dictionary<int, LetterEffect>(), new Dictionary<int, List<SourceLine>>(),
-                            new HashSet<int>(), 0, REJECTION_ENCODING_UNKNOWN);
+                            new HashSet<int>(), REJECTION_ENCODING_UNKNOWN);
                     }
                 }
             }
@@ -250,7 +248,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 same = encoded[i] == data[offset + i];
             if (!same)
                 return new SubtitleTranslationDocument(format, "", new byte[0], null, empty, new List<SubtitleStyleUsage>(), new Dictionary<int, LetterEffect>(), new Dictionary<int, List<SourceLine>>(),
-                    new HashSet<int>(), 0, REJECTION_ROUNDTRIP_MISMATCH);
+                    new HashSet<int>(), REJECTION_ROUNDTRIP_MISMATCH);
 
             byte[] preamble = new byte[offset];
             Array.Copy(data, preamble, offset);
@@ -289,7 +287,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             List<SubtitleStyleUsage> usages = new List<SubtitleStyleUsage>();
             List<List<long[]>> intervals = new List<List<long[]>>();
             Dictionary<string, List<long[]>> shown = new Dictionary<string, List<long[]>>(StringComparer.Ordinal);
-            int untimed = 0;
             if (format == SubtitleTranslationFormat.Srt)
             {
                 // Blocchi: righe non vuote consecutive; una riga di soli spazi conta come vuota
@@ -329,10 +326,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     }
 
                     if (!timed)
-                    {
-                        untimed++;
                         continue;
-                    }
 
                     // Text: dalla riga dopo i tempi alla fine del contenuto dell'ultima riga del blocco, terminatori interni compresi
                     if (timing == blockEnd)
@@ -360,7 +354,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 catch (InvalidDataException)
                 {
                     return new SubtitleTranslationDocument(format, "", new byte[0], null, empty, new List<SubtitleStyleUsage>(), new Dictionary<int, LetterEffect>(), new Dictionary<int, List<SourceLine>>(),
-                        new HashSet<int>(), 0, REJECTION_ASS_INVALID_DIALOGUE);
+                        new HashSet<int>(), REJECTION_ASS_INVALID_DIALOGUE);
                 }
 
                 // Format di [Events] in vigore su ogni riga, letto come ReadDialogues, per Style, Layer e margini; le righe Comment
@@ -929,7 +923,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             }
 
             if (rawCues.Count == 0)
-                return new SubtitleTranslationDocument(format, text, preamble, outputEncoding, empty, usages, letterEffects, attachedLines, new HashSet<int>(shownTexts.Keys), untimed, REJECTION_NO_CUES);
+                return new SubtitleTranslationDocument(format, text, preamble, outputEncoding, empty, usages, letterEffects, attachedLines, new HashSet<int>(shownTexts.Keys), REJECTION_NO_CUES);
 
             // Pulizia
             List<SubtitleCleanResult> cleanedCues = new List<SubtitleCleanResult>();
@@ -1034,7 +1028,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 cues.Add(cue);
             }
 
-            return new SubtitleTranslationDocument(format, text, preamble, outputEncoding, cues, usages, letterEffects, attachedLines, new HashSet<int>(shownTexts.Keys), untimed, "");
+            return new SubtitleTranslationDocument(format, text, preamble, outputEncoding, cues, usages, letterEffects, attachedLines, new HashSet<int>(shownTexts.Keys), "");
         }
 
         /// <summary>
@@ -1129,11 +1123,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         {
             get { return this._styles; }
         }
-
-        /// <summary>
-        /// Blocchi SRT senza una riga dei tempi valida, lasciati come sono, per il rapporto di preparazione
-        /// </summary>
-        public int UntimedBlockCount { get; }
 
         /// <summary>
         /// Motivo del rifiuto del file, vuoto per un file valido
