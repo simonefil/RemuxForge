@@ -102,7 +102,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// che il formato di oggi non legge più
         /// </summary>
         /// <param name="bytes">Byte UTF-8 del file</param>
-        /// <returns>Valore di schemaVersion, 0 se il file non è un oggetto JSON con la versione</returns>
+        /// <returns>Valore di schemaVersion, 0 se il file non è un oggetto JSON con una versione intera</returns>
         public static int ReadSchemaVersion(byte[] bytes)
         {
             try
@@ -110,8 +110,9 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 using (JsonDocument document = JsonDocument.Parse(bytes))
                 {
                     JsonElement version;
-                    if (document.RootElement.ValueKind == JsonValueKind.Object && document.RootElement.TryGetProperty("schemaVersion", out version) && version.ValueKind == JsonValueKind.Number)
-                        return version.GetInt32();
+                    int value;
+                    if (document.RootElement.ValueKind == JsonValueKind.Object && document.RootElement.TryGetProperty("schemaVersion", out version) && version.ValueKind == JsonValueKind.Number && version.TryGetInt32(out value))
+                        return value;
                 }
             }
             catch (JsonException)
