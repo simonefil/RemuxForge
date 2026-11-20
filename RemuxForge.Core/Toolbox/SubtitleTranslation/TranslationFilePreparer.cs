@@ -2,22 +2,16 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Security.Cryptography;
-using System.Text;
 
 namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 {
     /// <summary>
-    /// Preparazione di un file del progetto: lettura con la codifica scelta, battute traducibili e impronte del sorgente; senza
+    /// Preparazione di un file del progetto: lettura con la codifica scelta, battute traducibili e impronta del sorgente; senza
     /// chiamate al modello
     /// </summary>
     public static class TranslationFilePreparer
     {
         #region Costanti
-
-        /// <summary>
-        /// Versione della preparazione, da aumentare quando cambiano id, tipi, testo pulito o record del sorgente numerato
-        /// </summary>
-        public const int PREPARER_VERSION = 23;
 
         /// <summary>
         /// Rifiuto di un file che non c'è più
@@ -57,8 +51,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         }
 
         /// <summary>
-        /// Prepara un file del progetto e ne aggiorna dimensione, impronte, preparazione e rifiuto. Un file bloccato dall'analisi
-        /// tiene le impronte salvate: se i byte sono cambiati si rifiuta, altrimenti si rilegge senza toccarle
+        /// Prepara un file del progetto e ne aggiorna dimensione, impronta, preparazione e rifiuto. Un file bloccato dall'analisi
+        /// tiene l'impronta salvata: se i byte sono cambiati si rifiuta, altrimenti si rilegge senza toccarla
         /// </summary>
         /// <param name="file">File del progetto</param>
         /// <param name="styles">Tabella degli stili del progetto</param>
@@ -133,9 +127,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 }
             }
 
-            preparation.NumberedSourceSha256 = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(TranslationRequestBuilder.FormatSource(document.Cues)))).ToLowerInvariant();
-            preparation.PreparerVersion = PREPARER_VERSION;
-            preparation.PreparedAt = DateTimeOffset.Now;
             file.Preparation = preparation;
             return document;
         }

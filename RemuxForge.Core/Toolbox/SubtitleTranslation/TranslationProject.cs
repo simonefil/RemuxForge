@@ -381,9 +381,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         {
             this.CueCount = 0;
             this.ExcludedCount = 0;
-            this.NumberedSourceSha256 = "";
-            this.PreparerVersion = 0;
-            this.PreparedAt = DateTimeOffset.Now;
         }
 
         #endregion
@@ -399,21 +396,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// Battute lasciate al codice
         /// </summary>
         public int ExcludedCount { get; set; }
-
-        /// <summary>
-        /// SHA-256 del sorgente numerato in UTF-8
-        /// </summary>
-        public string NumberedSourceSha256 { get; set; }
-
-        /// <summary>
-        /// Versione della preparazione
-        /// </summary>
-        public int PreparerVersion { get; set; }
-
-        /// <summary>
-        /// Momento della preparazione
-        /// </summary>
-        public DateTimeOffset PreparedAt { get; set; }
 
         #endregion
     }

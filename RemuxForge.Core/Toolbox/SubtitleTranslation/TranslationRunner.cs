@@ -74,7 +74,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// Stato iniziale di un file del job: nome e sorgente numerato congelati in ordine di tempo, col tipo di ogni battuta, e piano
         /// dei blocchi con obiettivo e tetto di partenza sulle battute fuori dalle tratte condivise
         /// </summary>
-        /// <param name="file">File del progetto, con le impronte della preparazione</param>
+        /// <param name="file">File del progetto, con l'impronta del sorgente</param>
         /// <param name="document">Documento preparato del file</param>
         /// <param name="shared">Id delle battute del file che stanno in una tratta condivisa</param>
         /// <returns>Stato del file da salvare</returns>
@@ -84,8 +84,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             state.FileId = file.Id;
             state.SourceFileName = Path.GetFileName(file.Path);
             state.SourceSha256 = file.SourceSha256;
-            state.NumberedSourceSha256 = file.Preparation.NumberedSourceSha256;
-            state.PreparerVersion = file.Preparation.PreparerVersion;
             state.Encoding = file.Encoding;
             List<SubtitleCue> timed = new List<SubtitleCue>(document.Cues);
             timed.Sort(SubtitleCue.CompareByTime);

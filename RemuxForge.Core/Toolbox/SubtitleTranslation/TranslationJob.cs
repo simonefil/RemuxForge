@@ -305,8 +305,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             this.FileId = "";
             this.SourceFileName = "";
             this.SourceSha256 = "";
-            this.NumberedSourceSha256 = "";
-            this.PreparerVersion = 0;
             this.Encoding = SubtitleTranslationDocument.DEFAULT_ENCODING;
             this.Cues = new List<FrozenCue>();
             this.Blocks = new List<TranslationBlock>();
@@ -359,16 +357,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// SHA-256 del sorgente su cui il job lavora
         /// </summary>
         public string SourceSha256 { get; set; }
-
-        /// <summary>
-        /// SHA-256 del sorgente numerato
-        /// </summary>
-        public string NumberedSourceSha256 { get; set; }
-
-        /// <summary>
-        /// Versione della preparazione
-        /// </summary>
-        public int PreparerVersion { get; set; }
 
         /// <summary>
         /// Codifica usata in lettura
