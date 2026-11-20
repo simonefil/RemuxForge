@@ -50,8 +50,7 @@ namespace RemuxForge.Core.MediaCatalog
         /// </summary>
         public MediaCatalogImageDownloader()
         {
-            this._httpClient = new HttpClient();
-            this._httpClient.Timeout = DOWNLOAD_TIMEOUT;
+            this._httpClient = MediaCatalogHttpClientFactory.Create(DOWNLOAD_TIMEOUT);
         }
 
         #endregion

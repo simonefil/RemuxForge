@@ -59,8 +59,7 @@ namespace RemuxForge.Core.MediaCatalog
         /// </summary>
         protected MediaCatalogApiSourceBase()
         {
-            this._httpClient = new HttpClient();
-            this._httpClient.Timeout = TimeSpan.FromSeconds(30);
+            this._httpClient = MediaCatalogHttpClientFactory.Create(TimeSpan.FromSeconds(30));
         }
 
         #endregion

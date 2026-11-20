@@ -1,7 +1,5 @@
 using RemuxForge.Core.MediaCatalog;
 using RemuxForge.Core.Models;
-using System.Net.Http;
-using System.Net.Http.Headers;
 
 namespace RemuxForge.Web.Services
 {
@@ -42,11 +40,8 @@ namespace RemuxForge.Web.Services
         /// <param name="settingsService">Impostazioni dei cataloghi</param>
         public MediaCatalogSourceProvider(MediaCatalogSettingsService settingsService)
         {
-            HttpClient siteClient = new HttpClient();
-            siteClient.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue(new ProductHeaderValue("RemuxForge")));
-
             this._settingsService = settingsService;
-            this._tvdbSite = new TvdbScraperSource(siteClient);
+            this._tvdbSite = new TvdbScraperSource();
             this._tvdbApi = new TvdbApiSource(() => this._settingsService.Load().TvdbApiKey);
             this._tmdbApi = new TmdbApiSource(() => this._settingsService.Load().TmdbCredential);
         }

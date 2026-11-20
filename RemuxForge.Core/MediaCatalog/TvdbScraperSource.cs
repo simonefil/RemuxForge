@@ -17,7 +17,6 @@ namespace RemuxForge.Core.MediaCatalog
 {
     /// <summary>
     /// Fonte del sito pubblico TVDB per IMediaCatalogSource, senza API key
-    /// Richiede HtmlAgilityPack e un HttpClient condiviso, di proprietà del chiamante
     /// </summary>
     public class TvdbScraperSource : IMediaCatalogSource
     {
@@ -58,7 +57,7 @@ namespace RemuxForge.Core.MediaCatalog
         #region Variabili di classe
 
         /// <summary>
-        /// Client condiviso; i dati delle singole operazioni rimangono locali ai metodi
+        /// Client HTTP della fonte; i dati delle singole operazioni rimangono locali ai metodi
         /// </summary>
         private readonly HttpClient _httpClient;
 
@@ -67,12 +66,11 @@ namespace RemuxForge.Core.MediaCatalog
         #region Costruttore
 
         /// <summary>
-        /// Inizializza la fonte senza acquisire la proprietà del client HTTP
+        /// Costruttore
         /// </summary>
-        /// <param name="httpClient">Client HTTP condiviso dall'applicazione</param>
-        public TvdbScraperSource(HttpClient httpClient)
+        public TvdbScraperSource()
         {
-            this._httpClient = httpClient;
+            this._httpClient = MediaCatalogHttpClientFactory.Create(REQUEST_TIMEOUT);
         }
 
         #endregion
