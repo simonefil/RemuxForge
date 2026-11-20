@@ -86,7 +86,7 @@ namespace RemuxForge.Core.Toolbox.Common
             int moved = 0;
 
             if (this._released)
-                throw new InvalidOperationException(AppText.F("toolbox.output.alreadyCommitted", this.FinalPath));
+                throw new InvalidOperationException(AppText.F("toolbox.output.alreadyCommitted", this._finalPaths[0]));
 
             try
             {
@@ -126,7 +126,7 @@ namespace RemuxForge.Core.Toolbox.Common
             int backedUp = 0;
 
             if (this._released)
-                throw new InvalidOperationException(AppText.F("toolbox.output.alreadyCommitted", this.FinalPath));
+                throw new InvalidOperationException(AppText.F("toolbox.output.alreadyCommitted", this._finalPaths[0]));
 
             if (!File.Exists(originalFull))
                 throw new FileNotFoundException(AppText.F("toolbox.output.originalMissing", originalFull), originalFull);
@@ -248,14 +248,6 @@ namespace RemuxForge.Core.Toolbox.Common
         #endregion
 
         #region Proprietà
-
-        /// <summary>
-        /// Percorso finale del file principale
-        /// </summary>
-        public string FinalPath
-        {
-            get { return this._finalPaths[0]; }
-        }
 
         /// <summary>
         /// Percorso temporaneo in cui il tool scrive il file principale; il tool scrive l'accoppiato accanto con lo stesso nome
