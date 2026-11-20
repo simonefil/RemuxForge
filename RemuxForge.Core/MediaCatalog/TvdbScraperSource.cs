@@ -1,4 +1,5 @@
 using HtmlAgilityPack;
+using RemuxForge.Core.Ai;
 using RemuxForge.Core.Infrastructure;
 using RemuxForge.Core.Localization;
 using RemuxForge.Core.Models;
@@ -52,6 +53,11 @@ namespace RemuxForge.Core.MediaCatalog
         /// Tempo massimo di un invio, e attesa massima chiesta dal sito con Retry-After
         /// </summary>
         private static readonly TimeSpan REQUEST_TIMEOUT = TimeSpan.FromSeconds(45);
+
+        /// <summary>
+        /// Attesa del primo nuovo tentativo; raddoppia a ogni tentativo
+        /// </summary>
+        private static readonly TimeSpan RETRY_BASE_DELAY = TimeSpan.FromSeconds(1);
 
         #endregion
 
@@ -467,12 +473,11 @@ namespace RemuxForge.Core.MediaCatalog
 
                                 if (attempt < MAX_ATTEMPTS - 1 && ((int)response.StatusCode == 429 || (int)response.StatusCode >= 500 || response.StatusCode == HttpStatusCode.RequestTimeout))
                                 {
-                                    TimeSpan delay;
+                                    TimeSpan? retryAfter = HttpRetryDelay.ReadRetryAfter(response.Headers.RetryAfter);
 
-                                    delay = response.Headers.RetryAfter?.Delta ?? (response.Headers.RetryAfter?.Date - DateTimeOffset.UtcNow) ?? TimeSpan.FromSeconds(attempt + 1);
-                                    if (delay >= TimeSpan.Zero && delay <= REQUEST_TIMEOUT)
+                                    if (!retryAfter.HasValue || retryAfter.Value <= REQUEST_TIMEOUT)
                                     {
-                                        await Task.Delay(delay, cancellationToken);
+                                        await Task.Delay(HttpRetryDelay.Compute(attempt, retryAfter, RETRY_BASE_DELAY, REQUEST_TIMEOUT, REQUEST_TIMEOUT, 0), cancellationToken);
                                         continue;
                                     }
                                 }
@@ -499,7 +504,7 @@ namespace RemuxForge.Core.MediaCatalog
                     }
                 }
 
-                await Task.Delay(TimeSpan.FromSeconds(attempt + 1), cancellationToken);
+                await Task.Delay(HttpRetryDelay.Compute(attempt, null, RETRY_BASE_DELAY, REQUEST_TIMEOUT, REQUEST_TIMEOUT, 0), cancellationToken);
             }
         }
 

@@ -1,3 +1,4 @@
+using RemuxForge.Core.Ai;
 using RemuxForge.Core.Infrastructure;
 using RemuxForge.Core.Localization;
 using RemuxForge.Core.Models;
@@ -38,9 +39,9 @@ namespace RemuxForge.Core.MediaCatalog
         private static readonly TimeSpan RETRY_BASE_DELAY = TimeSpan.FromSeconds(1);
 
         /// <summary>
-        /// Tetto dell'attesa chiesta dal servizio con Retry-After
+        /// Tetto dell'attesa prima di un ritentativo, chiesta dal servizio con Retry-After o calcolata col backoff
         /// </summary>
-        private static readonly TimeSpan MAX_RETRY_AFTER = TimeSpan.FromSeconds(30);
+        private static readonly TimeSpan MAX_RETRY_DELAY = TimeSpan.FromSeconds(30);
 
         #endregion
 
@@ -168,16 +169,14 @@ namespace RemuxForge.Core.MediaCatalog
                         {
                             status = response.StatusCode;
                             body = await response.Content.ReadAsStringAsync(cancellationToken);
-                            RetryConditionHeaderValue retryHeader = response.Headers.RetryAfter;
-                            if (retryHeader != null && retryHeader.Delta.HasValue)
-                                retryAfter = retryHeader.Delta.Value;
+                            retryAfter = HttpRetryDelay.ReadRetryAfter(response.Headers.RetryAfter);
                         }
                     }
                     catch (Exception ex) when (ex is HttpRequestException || ex is IOException || (ex is TaskCanceledException && !cancellationToken.IsCancellationRequested))
                     {
                         if (retry < MAX_RETRIES)
                         {
-                            await Task.Delay(GetRetryDelay(retry, null), cancellationToken);
+                            await Task.Delay(HttpRetryDelay.Compute(retry, null, RETRY_BASE_DELAY, MAX_RETRY_DELAY, MAX_RETRY_DELAY, 0), cancellationToken);
                             retry++;
                             continue;
                         }
@@ -206,7 +205,7 @@ namespace RemuxForge.Core.MediaCatalog
                 {
                     if (retry < MAX_RETRIES)
                     {
-                        await Task.Delay(GetRetryDelay(retry, retryAfter), cancellationToken);
+                        await Task.Delay(HttpRetryDelay.Compute(retry, retryAfter, RETRY_BASE_DELAY, MAX_RETRY_DELAY, MAX_RETRY_DELAY, 0), cancellationToken);
                         retry++;
                         continue;
                     }
@@ -462,20 +461,6 @@ namespace RemuxForge.Core.MediaCatalog
         #endregion
 
         #region Metodi privati
-
-        /// <summary>
-        /// Attesa prima di un ritentativo: Retry-After se il servizio lo indica, altrimenti backoff che raddoppia
-        /// </summary>
-        /// <param name="retry">Ritentativi già fatti</param>
-        /// <param name="retryAfter">Attesa chiesta dal servizio</param>
-        /// <returns>Attesa</returns>
-        private static TimeSpan GetRetryDelay(int retry, TimeSpan? retryAfter)
-        {
-            if (retryAfter.HasValue)
-                return retryAfter.Value < MAX_RETRY_AFTER ? retryAfter.Value : MAX_RETRY_AFTER;
-
-            return TimeSpan.FromTicks(RETRY_BASE_DELAY.Ticks << retry);
-        }
 
         /// <summary>
         /// Interpreta il corpo di una risposta riuscita
