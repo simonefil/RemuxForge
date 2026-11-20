@@ -1,3 +1,4 @@
+using RemuxForge.Core.Infrastructure;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -30,45 +31,14 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         #region Metodi pubblici
 
         /// <summary>
-        /// Scrive un file intero in modo atomico: temporaneo nella stessa cartella, flush su disco, rename sopra il file
+        /// Scrive un file intero in modo atomico, leggibile solo dal proprietario
         /// </summary>
         /// <typeparam name="T">Tipo del contenuto</typeparam>
         /// <param name="path">File da scrivere</param>
         /// <param name="value">Contenuto</param>
         public static void Write<T>(string path, T value)
         {
-            string tempPath = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
-            string json = JsonSerializer.Serialize(value, s_options);
-
-            try
-            {
-                Directory.CreateDirectory(Path.GetDirectoryName(path));
-                using (FileStream stream = new FileStream(tempPath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
-                using (StreamWriter writer = new StreamWriter(stream, new UTF8Encoding(false)))
-                {
-                    writer.Write(json);
-                    writer.Flush();
-                    stream.Flush(true);
-                }
-
-                File.Move(tempPath, path, true);
-            }
-            finally
-            {
-                try
-                {
-                    if (File.Exists(tempPath))
-                        File.Delete(tempPath);
-                }
-                catch (IOException)
-                {
-                    // La scrittura ha già propagato l'errore principale; la pulizia resta best-effort
-                }
-                catch (UnauthorizedAccessException)
-                {
-                    // La scrittura ha già propagato l'errore principale; la pulizia resta best-effort
-                }
-            }
+            PrivateFileWriter.WriteAtomic(path, JsonSerializer.Serialize(value, s_options));
         }
 
         /// <summary>

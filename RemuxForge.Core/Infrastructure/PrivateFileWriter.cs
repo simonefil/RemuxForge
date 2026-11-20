@@ -5,7 +5,7 @@ using System.Text;
 namespace RemuxForge.Core.Infrastructure
 {
     /// <summary>
-    /// Scrittura atomica dei file di configurazione che contengono credenziali
+    /// Scrittura atomica dei file di configurazione, leggibili solo dal proprietario
     /// </summary>
     public static class PrivateFileWriter
     {
@@ -31,7 +31,7 @@ namespace RemuxForge.Core.Infrastructure
                 streamOptions.Access = FileAccess.Write;
                 streamOptions.Share = FileShare.None;
 
-                // Il file contiene token e chiavi: su macOS e Linux nasce leggibile solo dal proprietario
+                // Il file può contenere token e chiavi: su macOS e Linux nasce leggibile solo dal proprietario
                 if (!OperatingSystem.IsWindows())
                     streamOptions.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
 
