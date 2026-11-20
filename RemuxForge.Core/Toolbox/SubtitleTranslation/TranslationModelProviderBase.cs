@@ -28,17 +28,25 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 
         #endregion
 
+        #region Variabili di classe
+
+        /// <summary>
+        /// Politica di retry del job, con la pausa condivisa dai file in parallelo
+        /// </summary>
+        private readonly AiRetryPolicy _retry;
+
+        #endregion
+
         #region Costruttore
 
         /// <summary>
         /// Costruttore
         /// </summary>
         /// <param name="accessMode">Modalità di accesso del job</param>
-        /// <param name="retry">Politica di retry del job, con la pausa condivisa dai file in parallelo</param>
         /// <param name="disabledCapabilities">Capacità già spente nel job, null se nessuna</param>
-        protected TranslationModelProviderBase(AiConnectionMode accessMode, AiRetryPolicy retry, IEnumerable<string> disabledCapabilities)
+        protected TranslationModelProviderBase(AiConnectionMode accessMode, IEnumerable<string> disabledCapabilities)
         {
-            this.Retry = retry;
+            this._retry = AiRetryPolicy.CreateDefault();
             this.Capabilities = new TranslationProviderCapabilities(accessMode, disabledCapabilities);
         }
 
@@ -124,7 +132,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <returns>Risposta dell'ultimo tentativo</returns>
         private Task<AiResponseResult> SendWithRetryAsync(TranslationModelRequest request, AiResponseRequest prepared, CancellationToken cancellationToken)
         {
-            return this.Retry.ExecuteAsync(async attempt =>
+            return this._retry.ExecuteAsync(async attempt =>
             {
                 TranslationTransportAttempt tracked = new TranslationTransportAttempt(attempt, prepared);
                 try
@@ -167,11 +175,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// Capacità dell'accesso corrente nel job
         /// </summary>
         public TranslationProviderCapabilities Capabilities { get; private set; }
-
-        /// <summary>
-        /// Politica di retry del job
-        /// </summary>
-        protected AiRetryPolicy Retry { get; private set; }
 
         #endregion
     }

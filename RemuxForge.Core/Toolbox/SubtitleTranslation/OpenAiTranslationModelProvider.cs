@@ -60,9 +60,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// </summary>
         /// <param name="client">Client della Responses API</param>
         /// <param name="accessMode">Modalità di accesso del job</param>
-        /// <param name="retry">Politica di retry del job</param>
         /// <param name="disabledCapabilities">Capacità già spente nel job, null se nessuna</param>
-        public OpenAiTranslationModelProvider(OpenAiResponsesClient client, AiConnectionMode accessMode, AiRetryPolicy retry, IEnumerable<string> disabledCapabilities) : base(accessMode, retry, disabledCapabilities)
+        public OpenAiTranslationModelProvider(OpenAiResponsesClient client, AiConnectionMode accessMode, IEnumerable<string> disabledCapabilities) : base(accessMode, disabledCapabilities)
         {
             this._client = client;
             this._sessions = new HashSet<string>();

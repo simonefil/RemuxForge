@@ -48,7 +48,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public ITranslationModelProvider Create(IEnumerable<string> disabledCapabilities)
         {
             AiConnectionMode accessMode = this._credentialService.Load().Mode;
-            return new OpenAiTranslationModelProvider(this._client, accessMode, AiRetryPolicy.CreateDefault(), disabledCapabilities);
+            return new OpenAiTranslationModelProvider(this._client, accessMode, disabledCapabilities);
         }
 
         #endregion
