@@ -68,7 +68,7 @@ namespace RemuxForge.Core.MediaCatalog
             Uri address;
             byte[] content;
 
-            if (!Uri.TryCreate(url, UriKind.Absolute, out address) || address.Scheme != Uri.UriSchemeHttps || Array.IndexOf(s_coverHosts, address.Host.ToLowerInvariant()) < 0)
+            if (!Uri.TryCreate(url, UriKind.Absolute, out address) || !IsCoverAddress(address))
                 throw new MediaCatalogException(AppText.F("mediaCatalog.error.coverAddress", url));
 
             using (CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
@@ -78,6 +78,10 @@ namespace RemuxForge.Core.MediaCatalog
                 {
                     using (HttpResponseMessage response = await this._httpClient.GetAsync(address, HttpCompletionOption.ResponseHeadersRead, timeout.Token))
                     {
+                        // Il client segue i redirect: anche l'indirizzo che ha risposto deve stare sugli host dei cataloghi
+                        if (!IsCoverAddress(response.RequestMessage.RequestUri))
+                            throw new MediaCatalogException(AppText.F("mediaCatalog.error.coverAddress", response.RequestMessage.RequestUri));
+
                         response.EnsureSuccessStatusCode();
                         if (response.Content.Headers.ContentLength > MAX_COVER_BYTES)
                             throw new MediaCatalogException(AppText.F("mediaCatalog.error.coverTooLarge", MAX_COVER_BYTES / (1024 * 1024)));
@@ -132,6 +136,20 @@ namespace RemuxForge.Core.MediaCatalog
             }
 
             return path;
+        }
+
+        #endregion
+
+        #region Metodi privati
+
+        /// <summary>
+        /// True se l'indirizzo è https su un host da cui i cataloghi servono le immagini
+        /// </summary>
+        /// <param name="address">Indirizzo da controllare</param>
+        /// <returns>True se si può scaricare da lì</returns>
+        private static bool IsCoverAddress(Uri address)
+        {
+            return address.Scheme == Uri.UriSchemeHttps && Array.IndexOf(s_coverHosts, address.Host.ToLowerInvariant()) >= 0;
         }
 
         #endregion
