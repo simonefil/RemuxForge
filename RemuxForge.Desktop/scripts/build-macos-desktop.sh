@@ -2,7 +2,8 @@
 
 set -e
 
-export PATH="/opt/homebrew/bin:/usr/local/share/dotnet:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
+export DOTNET_ROOT="$HOME/.dotnet"
+export PATH="$HOME/.dotnet:/opt/homebrew/bin:/usr/local/share/dotnet:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
 
 if [ $# -ne 4 ]; then
     echo "Usage: build-macos-desktop.sh <source-archive> <work-directory> <artifacts-directory> <version>"
