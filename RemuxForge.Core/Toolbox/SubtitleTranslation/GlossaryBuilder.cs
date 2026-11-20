@@ -284,6 +284,62 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         }
 
         /// <summary>
+        /// Chiamate A1 dell'analisi: una sola con tutti i file quando l'ingresso stimato sta sotto la soglia, altrimenti una per
+        /// file, coi candidati ricorrenti e il glossario caricato, e l'impronta degli ingressi di ognuna
+        /// </summary>
+        /// <param name="context">Campo serie/contesto</param>
+        /// <param name="loaded">Voci e testi del glossario caricato, null senza</param>
+        /// <param name="episodes">File preparati del progetto</param>
+        /// <returns>Unità, messaggi e battute di ogni A1</returns>
+        public GlossaryAnalysisPlan PlanAnalysis(string context, Glossary loaded, List<GlossaryEpisode> episodes)
+        {
+            GlossaryAnalysisPlan plan = new GlossaryAnalysisPlan();
+            List<KeyValuePair<string, IReadOnlyList<SubtitleCue>>> sources = new List<KeyValuePair<string, IReadOnlyList<SubtitleCue>>>();
+            foreach (GlossaryEpisode episode in episodes)
+                sources.Add(new KeyValuePair<string, IReadOnlyList<SubtitleCue>>(episode.FileId, episode.Cues));
+            plan.Candidates = new RecurringTermExtractor().Extract(sources, this._sourceLanguage);
+
+            // Il glossario caricato arriva al modello come già deciso: solo le sue voci, con i testi del file
+            plan.Loaded = loaded;
+
+            string allMessage = this.CreateAnalysisMessage(context, plan.Loaded, plan.Candidates, episodes, episodes);
+            if (episodes.Count == 1 || TranslationRequestBuilder.EstimateTokens(this.AnalysisInstructions + allMessage) < SINGLE_ANALYSIS_TOKENS)
+            {
+                plan.Units.Add(episodes);
+                plan.Messages.Add(allMessage);
+            }
+            else
+            {
+                foreach (GlossaryEpisode episode in episodes)
+                {
+                    List<GlossaryEpisode> unit = new List<GlossaryEpisode> { episode };
+                    plan.Units.Add(unit);
+                    plan.Messages.Add(this.CreateAnalysisMessage(context, plan.Loaded, plan.Candidates, episodes, unit));
+                }
+            }
+
+            foreach (string message in plan.Messages)
+                plan.Fingerprints.Add(TranslationFilePreparer.ComputeSha256(Encoding.UTF8.GetBytes(this.AnalysisInstructions + "\n" + message)));
+
+            foreach (List<GlossaryEpisode> unit in plan.Units)
+            {
+                plan.FileIds.Add(unit.Count == 1 ? unit[0].FileId : TranslationSessionKey.NO_FILE);
+                int cues = 0;
+                foreach (GlossaryEpisode episode in unit)
+                {
+                    foreach (SubtitleCue cue in episode.Cues)
+                    {
+                        if (cue.Id.HasValue)
+                            cues++;
+                    }
+                }
+                plan.Cues.Add(cues);
+            }
+
+            return plan;
+        }
+
+        /// <summary>
         /// Messaggio iniziale dell'analisi
         /// </summary>
         /// <param name="context">Campo serie/contesto</param>
@@ -1476,6 +1532,89 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         {
             get { return this.TermConflicts.Count > 0 || this.CharacterConflicts.Count > 0 || this.AddressingConflicts.Count > 0; }
         }
+
+        #endregion
+    }
+
+    /// <summary>
+    /// Chiamate A1 di un'analisi: per ogni unità i file, il messaggio e le battute mandate
+    /// </summary>
+    public class GlossaryAnalysisPlan
+    {
+        #region Costruttore
+
+        /// <summary>
+        /// Costruttore
+        /// </summary>
+        public GlossaryAnalysisPlan()
+        {
+            this.Candidates = new List<RecurringCandidate>();
+            this.Loaded = null;
+            this.Units = new List<List<GlossaryEpisode>>();
+            this.FileIds = new List<string>();
+            this.Messages = new List<string>();
+            this.Fingerprints = new List<string>();
+            this.Cues = new List<int>();
+        }
+
+        #endregion
+
+        #region Metodi pubblici
+
+        /// <summary>
+        /// True se il parziale è stato fatto su un'unità del piano con gli stessi ingressi
+        /// </summary>
+        /// <param name="partial">Glossario parziale salvato</param>
+        /// <returns>True se il parziale vale ancora</returns>
+        public bool IsCurrent(GlossaryPartial partial)
+        {
+            for (int i = 0; i < this.Units.Count; i++)
+            {
+                if (this.FileIds[i] == partial.FileId && this.Fingerprints[i] == partial.InputSha256)
+                    return true;
+            }
+
+            return false;
+        }
+
+        #endregion
+
+        #region Proprietà
+
+        /// <summary>
+        /// Candidati ricorrenti di tutti i file
+        /// </summary>
+        public List<RecurringCandidate> Candidates { get; set; }
+
+        /// <summary>
+        /// Voci e testi del glossario caricato, null senza
+        /// </summary>
+        public Glossary Loaded { get; set; }
+
+        /// <summary>
+        /// File di ogni A1
+        /// </summary>
+        public List<List<GlossaryEpisode>> Units { get; }
+
+        /// <summary>
+        /// File della chiamata di ogni A1, TranslationSessionKey.NO_FILE per l'unità con più file
+        /// </summary>
+        public List<string> FileIds { get; }
+
+        /// <summary>
+        /// Messaggio di ogni A1
+        /// </summary>
+        public List<string> Messages { get; }
+
+        /// <summary>
+        /// SHA-256 di instructions e messaggio di ogni A1: un parziale vale solo se è stato fatto sugli stessi ingressi
+        /// </summary>
+        public List<string> Fingerprints { get; }
+
+        /// <summary>
+        /// Battute mandate da ogni A1
+        /// </summary>
+        public List<int> Cues { get; }
 
         #endregion
     }

@@ -9,7 +9,6 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
-using System.Text;
 using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
@@ -1540,16 +1539,16 @@ namespace RemuxForge.Web.Services.Toolbox
                     await this.ClassifyAsync(provider, cancellation);
 
                 GlossaryBuilder builder = new GlossaryBuilder(project.SourceLanguage, project.TargetLanguage);
-                AnalysisPlan plan;
+                GlossaryAnalysisPlan plan;
                 lock (this.StateLock)
                 {
                     episodes = this.GetEpisodes();
-                    plan = this.PlanAnalysis(builder, episodes);
+                    plan = builder.PlanAnalysis(project.Context, project.ImportedGlossary != null && project.Glossary != null
+                        ? project.Glossary.CopyWhere(origin => origin == GlossaryOrigin.Import) : null, episodes);
 
                     // Parziali fatti su ingressi che non ci sono più, come contesto o glossario caricato cambiati o il passaggio fra
                     // chiamata unica e una per file: si scartano e la ripresa li rifà
-                    analysis.Partials.RemoveAll(p => !plan.Units.Exists(u =>
-                        (u.Count == 1 ? u[0].FileId : TranslationSessionKey.NO_FILE) == p.FileId && plan.Fingerprints[plan.Units.IndexOf(u)] == p.InputSha256));
+                    analysis.Partials.RemoveAll(p => !plan.IsCurrent(p));
                 }
 
                 // Stima delle A1 rifatta sui tipi appena riconosciuti, che tolgono le battute da non tradurre
@@ -1565,7 +1564,7 @@ namespace RemuxForge.Web.Services.Toolbox
                 for (int i = 0; i < plan.Units.Count; i++)
                 {
                     List<GlossaryEpisode> unit = plan.Units[i];
-                    string fileId = unit.Count == 1 ? unit[0].FileId : TranslationSessionKey.NO_FILE;
+                    string fileId = plan.FileIds[i];
                     if (analysis.Partials.Exists(p => p.FileId == fileId))
                         continue;
 
@@ -1599,11 +1598,8 @@ namespace RemuxForge.Web.Services.Toolbox
 
                 // Fusione dei parziali in ordine di progetto, poi A2 solo sui conflitti
                 List<GlossaryPartial> partials = new List<GlossaryPartial>();
-                foreach (List<GlossaryEpisode> unit in plan.Units)
-                {
-                    string fileId = unit.Count == 1 ? unit[0].FileId : TranslationSessionKey.NO_FILE;
+                foreach (string fileId in plan.FileIds)
                     partials.Add(analysis.Partials.Find(p => p.FileId == fileId));
-                }
 
                 GlossaryMergeResult merge = builder.MergePartials(partials, episodes, plan.Candidates);
                 Glossary merged = merge.Agreed;
@@ -2084,62 +2080,6 @@ namespace RemuxForge.Web.Services.Toolbox
             this._job = null;
             this._jobFiles.Clear();
             this._jobCalls.Clear();
-        }
-
-        /// <summary>
-        /// Chiamate A1 dell'analisi: una sola con tutti i file quando l'ingresso stimato sta sotto la soglia, altrimenti una per
-        /// file, coi candidati ricorrenti e il glossario caricato, e l'impronta degli ingressi di ognuna; chiamato sotto StateLock
-        /// </summary>
-        /// <param name="builder">Richieste del glossario</param>
-        /// <param name="episodes">File preparati del progetto</param>
-        /// <returns>Unità, messaggi e battute di ogni A1</returns>
-        private AnalysisPlan PlanAnalysis(GlossaryBuilder builder, List<GlossaryEpisode> episodes)
-        {
-            TranslationProject project = this._project;
-            AnalysisPlan plan = new AnalysisPlan();
-            List<KeyValuePair<string, IReadOnlyList<SubtitleCue>>> sources = new List<KeyValuePair<string, IReadOnlyList<SubtitleCue>>>();
-            foreach (GlossaryEpisode episode in episodes)
-                sources.Add(new KeyValuePair<string, IReadOnlyList<SubtitleCue>>(episode.FileId, episode.Cues));
-            plan.Candidates = new RecurringTermExtractor().Extract(sources, project.SourceLanguage);
-
-            // Il glossario caricato arriva al modello come già deciso: solo le sue voci, con i testi del file
-            if (project.ImportedGlossary != null && project.Glossary != null)
-                plan.Loaded = project.Glossary.CopyWhere(origin => origin == GlossaryOrigin.Import);
-
-            string allMessage = builder.CreateAnalysisMessage(project.Context, plan.Loaded, plan.Candidates, episodes, episodes);
-            if (episodes.Count == 1 || TranslationRequestBuilder.EstimateTokens(builder.AnalysisInstructions + allMessage) < GlossaryBuilder.SINGLE_ANALYSIS_TOKENS)
-            {
-                plan.Units.Add(episodes);
-                plan.Messages.Add(allMessage);
-            }
-            else
-            {
-                foreach (GlossaryEpisode episode in episodes)
-                {
-                    List<GlossaryEpisode> unit = new List<GlossaryEpisode> { episode };
-                    plan.Units.Add(unit);
-                    plan.Messages.Add(builder.CreateAnalysisMessage(project.Context, plan.Loaded, plan.Candidates, episodes, unit));
-                }
-            }
-
-            foreach (string message in plan.Messages)
-                plan.Fingerprints.Add(TranslationFilePreparer.ComputeSha256(Encoding.UTF8.GetBytes(builder.AnalysisInstructions + "\n" + message)));
-
-            foreach (List<GlossaryEpisode> unit in plan.Units)
-            {
-                int cues = 0;
-                foreach (GlossaryEpisode episode in unit)
-                {
-                    foreach (SubtitleCue cue in episode.Cues)
-                    {
-                        if (cue.Id.HasValue)
-                            cues++;
-                    }
-                }
-                plan.Cues.Add(cues);
-            }
-
-            return plan;
         }
 
         /// <summary>
@@ -2740,55 +2680,6 @@ namespace RemuxForge.Web.Services.Toolbox
             /// Ultimo evento nella lingua dell'interfaccia
             /// </summary>
             public string Text { get; set; }
-        }
-
-        /// <summary>
-        /// Chiamate A1 di un'analisi: per ogni unità i file, il messaggio e le battute mandate
-        /// </summary>
-        private sealed class AnalysisPlan
-        {
-            /// <summary>
-            /// Costruttore
-            /// </summary>
-            public AnalysisPlan()
-            {
-                this.Candidates = new List<RecurringCandidate>();
-                this.Loaded = null;
-                this.Units = new List<List<GlossaryEpisode>>();
-                this.Messages = new List<string>();
-                this.Fingerprints = new List<string>();
-                this.Cues = new List<int>();
-            }
-
-            /// <summary>
-            /// Candidati ricorrenti di tutti i file
-            /// </summary>
-            public List<RecurringCandidate> Candidates { get; set; }
-
-            /// <summary>
-            /// Voci e testi del glossario caricato, null senza
-            /// </summary>
-            public Glossary Loaded { get; set; }
-
-            /// <summary>
-            /// File di ogni A1
-            /// </summary>
-            public List<List<GlossaryEpisode>> Units { get; }
-
-            /// <summary>
-            /// Messaggio di ogni A1
-            /// </summary>
-            public List<string> Messages { get; }
-
-            /// <summary>
-            /// SHA-256 di instructions e messaggio di ogni A1: un parziale vale solo se è stato fatto sugli stessi ingressi
-            /// </summary>
-            public List<string> Fingerprints { get; }
-
-            /// <summary>
-            /// Battute mandate da ogni A1
-            /// </summary>
-            public List<int> Cues { get; }
         }
 
         #endregion
