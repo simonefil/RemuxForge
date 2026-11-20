@@ -222,11 +222,10 @@ namespace RemuxForge.Core.Ai
         /// <summary>
         /// Esegue query_files con gli argomenti inviati dal modello
         /// </summary>
-        /// <param name="argumentsJson">Argomenti JSON della chiamata</param>
+        /// <param name="arguments">Argomenti della chiamata, null se non sono un oggetto JSON</param>
         /// <returns>Risultato JSON per il modello</returns>
-        public string QueryFiles(string argumentsJson)
+        public string QueryFiles(JsonObject arguments)
         {
-            JsonObject arguments = AiOAuthFlow.TryParseObject(argumentsJson);
             List<string> errors = new List<string>();
             MkvMetadataTargetScope scope;
             List<string> fields = new List<string>();
@@ -336,12 +335,11 @@ namespace RemuxForge.Core.Ai
         /// <summary>
         /// Valida il preset inviato dal modello
         /// </summary>
-        /// <param name="argumentsJson">Argomenti JSON della chiamata</param>
+        /// <param name="arguments">Argomenti della chiamata, null se non sono un oggetto JSON</param>
         /// <param name="outcome">Esito: preset valido o errori</param>
         /// <returns>Risultato JSON per il modello</returns>
-        public string SubmitPreset(string argumentsJson, out AiPresetGenerationResult outcome)
+        public string SubmitPreset(JsonObject arguments, out AiPresetGenerationResult outcome)
         {
-            JsonObject arguments = AiOAuthFlow.TryParseObject(argumentsJson);
             string presetJson = arguments != null ? AiOAuthFlow.GetString(arguments, "preset_json") : "";
             MetadataPresetService presetService = new MetadataPresetService("");
             JsonObject presetNode;

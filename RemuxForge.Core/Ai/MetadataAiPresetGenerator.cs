@@ -110,23 +110,16 @@ namespace RemuxForge.Core.Ai
                 if (response.Status == AiResponseStatus.Incomplete)
                     throw new AiServiceException(AiErrorKind.InvalidResponse, AppText.T("ai.error.incomplete"));
 
-                List<JsonObject> output = response.Items;
-                List<JsonObject> calls = new List<JsonObject>();
-                StringBuilder messageText = new StringBuilder();
-
-                // Ogni item torna invariato al giro successivo: senza stato lato server è l'unica memoria del modello
-                for (int i = 0; i < output.Count; i++)
-                {
-                    string type = AiOAuthFlow.GetString(output[i], "type");
-                    input.Add(output[i].DeepClone());
-                    if (type == "function_call")
-                        calls.Add(output[i]);
-                    else if (type == "message")
-                        AppendMessageText(output[i], messageText);
-                }
-
+                List<JsonObject> calls = AiToolCallReader.Echo(response, input);
                 if (calls.Count == 0)
                 {
+                    StringBuilder messageText = new StringBuilder();
+                    foreach (JsonObject item in response.Items)
+                    {
+                        if (AiOAuthFlow.GetString(item, "type") == "message")
+                            AppendMessageText(item, messageText);
+                    }
+
                     Report(progress, AiPresetGenerationStepKind.MissingSubmission, round, messageText.ToString().Trim(), null);
                     input.Add(CreateUserMessage(MetadataAiContextBuilder.BuildMissingSubmissionMessage()));
                     continue;
@@ -135,13 +128,13 @@ namespace RemuxForge.Core.Ai
                 for (int i = 0; i < calls.Count; i++)
                 {
                     string name = AiOAuthFlow.GetString(calls[i], "name");
-                    string arguments = AiOAuthFlow.GetString(calls[i], "arguments");
+                    JsonObject arguments = AiToolCallReader.ParseArguments(calls[i]);
                     string result;
 
                     if (name == MetadataAiTools.QUERY_FILES_TOOL)
                     {
                         result = tools.QueryFiles(arguments);
-                        Report(progress, AiPresetGenerationStepKind.FilesQueried, round, arguments, null);
+                        Report(progress, AiPresetGenerationStepKind.FilesQueried, round, AiOAuthFlow.GetString(calls[i], "arguments"), null);
                     }
                     else if (name == MetadataAiTools.SUBMIT_PRESET_TOOL)
                     {
@@ -162,12 +155,7 @@ namespace RemuxForge.Core.Ai
                         result = new JsonObject { ["valid"] = false, ["errors"] = new JsonArray("Unknown tool '" + name + "'.") }.ToJsonString();
                     }
 
-                    input.Add(new JsonObject
-                    {
-                        ["type"] = "function_call_output",
-                        ["call_id"] = AiOAuthFlow.GetString(calls[i], "call_id"),
-                        ["output"] = result
-                    });
+                    input.Add(AiToolCallReader.CreateOutput(calls[i], result));
                 }
             }
 
