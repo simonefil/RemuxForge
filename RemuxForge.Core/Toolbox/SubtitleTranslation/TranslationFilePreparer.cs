@@ -38,6 +38,16 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         #region Metodi pubblici
 
         /// <summary>
+        /// Impronta di un contenuto: SHA-256 in esadecimale minuscolo
+        /// </summary>
+        /// <param name="bytes">Contenuto</param>
+        /// <returns>Hash</returns>
+        public static string ComputeSha256(byte[] bytes)
+        {
+            return Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
+        }
+
+        /// <summary>
         /// Formato di un sottotitolo dall'estensione
         /// </summary>
         /// <param name="path">Percorso del file</param>
@@ -94,7 +104,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 return null;
             }
 
-            string sha256 = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
+            string sha256 = ComputeSha256(bytes);
             if (locked && sha256 != file.SourceSha256)
             {
                 file.RejectedReason = REJECTION_SOURCE_CHANGED;

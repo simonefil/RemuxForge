@@ -3,7 +3,6 @@ using RemuxForge.Core.Toolbox.Common;
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Security.Cryptography;
 
 namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 {
@@ -72,7 +71,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             // Il file dell'export precedente è ancora del job solo se il contenuto è quello scritto allora: modificato a mano non lo è più
             string previous = file.State.ExportedPath;
             string replaceable = previous.Length > 0 && File.Exists(previous) &&
-                Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(previous))).ToLowerInvariant() == file.State.ExportedSha256 ? previous : null;
+                TranslationFilePreparer.ComputeSha256(File.ReadAllBytes(previous)) == file.State.ExportedSha256 ? previous : null;
             byte[] content = file.Document.Write(texts);
             string path = allocator.Reserve(desiredPath, true, replaceable);
             try
@@ -93,7 +92,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             }
 
             file.State.ExportedPath = path;
-            file.State.ExportedSha256 = Convert.ToHexString(SHA256.HashData(content)).ToLowerInvariant();
+            file.State.ExportedSha256 = TranslationFilePreparer.ComputeSha256(content);
             return path;
         }
 
