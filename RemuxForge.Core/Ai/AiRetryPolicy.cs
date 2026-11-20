@@ -150,12 +150,7 @@ namespace RemuxForge.Core.Ai
         /// <returns>Attesa</returns>
         private TimeSpan GetDelay(int attempt, AiServiceException error)
         {
-            if (error.RetryAfter.HasValue && error.RetryAfter.Value > TimeSpan.Zero)
-                return error.RetryAfter.Value < this._maxRetryAfter ? error.RetryAfter.Value : this._maxRetryAfter;
-
-            double backoffMs = Math.Min(this._maxDelay.TotalMilliseconds, this._baseDelay.TotalMilliseconds * Math.Pow(2, attempt - 1));
-            double factor = 1.0 - JITTER_FRACTION + Random.Shared.NextDouble() * 2.0 * JITTER_FRACTION;
-            return TimeSpan.FromMilliseconds(backoffMs * factor);
+            return HttpRetryDelay.Compute(attempt - 1, error.RetryAfter, this._baseDelay, this._maxDelay, this._maxRetryAfter, JITTER_FRACTION);
         }
 
         /// <summary>

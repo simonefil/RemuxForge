@@ -245,15 +245,8 @@ namespace RemuxForge.Core.Ai
                         if (!response.IsSuccessStatusCode)
                         {
                             string errorText = await response.Content.ReadAsStringAsync(cancellationToken);
-                            TimeSpan? retryAfter = null;
-                            RetryConditionHeaderValue retryHeader = response.Headers.RetryAfter;
-                            if (retryHeader != null && retryHeader.Delta.HasValue)
-                                retryAfter = retryHeader.Delta.Value;
-                            else if (retryHeader != null && retryHeader.Date.HasValue)
-                                retryAfter = retryHeader.Date.Value > DateTimeOffset.UtcNow ? retryHeader.Date.Value - DateTimeOffset.UtcNow : TimeSpan.Zero;
-
                             JsonObject error = AiOAuthFlow.TryParseObject(errorText);
-                            throw CreateError(credentials.Mode, (int)response.StatusCode, error != null ? error["error"] as JsonObject : null, retryAfter);
+                            throw CreateError(credentials.Mode, (int)response.StatusCode, error != null ? error["error"] as JsonObject : null, HttpRetryDelay.ReadRetryAfter(response.Headers.RetryAfter));
                         }
 
                         using (Stream stream = await response.Content.ReadAsStreamAsync(cancellationToken))
