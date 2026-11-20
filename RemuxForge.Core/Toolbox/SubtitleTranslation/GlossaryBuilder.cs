@@ -355,40 +355,31 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public GlossaryDelivery ReadResponse(AiResponseResult response, JsonArray input, GlossaryMergeResult merge)
         {
             GlossaryDelivery delivery = new GlossaryDelivery();
-            List<JsonObject> calls = new List<JsonObject>();
-
-            // Ogni item torna invariato al giro successivo: senza stato lato server è l'unica memoria del modello
+            List<JsonObject> calls = AiToolCallReader.Echo(response, input);
             foreach (JsonObject item in response.Items)
             {
-                input.Add(item.DeepClone());
-                if (AiJson.GetString(item, "type") == "function_call")
-                {
-                    calls.Add(item);
-                }
-                else if (AiJson.GetString(item, "type") == "web_search_call")
-                {
+                if (AiJson.GetString(item, "type") == "web_search_call")
                     delivery.WebSearchCalls++;
-                }
             }
 
             if (calls.Count == 0)
             {
-                delivery.Errors.Add("NO_SUBMISSION: " + MISSING_SUBMISSION);
+                delivery.Errors.Add(TranslationValidator.NO_SUBMISSION + ": " + MISSING_SUBMISSION);
                 input.Add(TranslationRequestBuilder.CreateUserMessage(MISSING_SUBMISSION));
                 return delivery;
             }
 
-            List<KeyValuePair<string, string>> outputs = new List<KeyValuePair<string, string>>();
+            List<JsonObject> outputs = new List<JsonObject>();
             foreach (JsonObject call in calls)
             {
                 List<string> errors = new List<string>();
                 if (delivery.Glossary != null)
                 {
-                    errors.Add("DUPLICATE_SUBMISSION: only one submission is used; this one was ignored.");
+                    errors.Add(TranslationValidator.DUPLICATE_SUBMISSION + ": only one submission is used; this one was ignored.");
                 }
                 else if (AiJson.GetString(call, "name") != SUBMIT_TOOL)
                 {
-                    errors.Add("ARGS_INVALID: unknown tool '" + AiJson.GetString(call, "name") + "'.");
+                    errors.Add(TranslationValidator.ARGS_INVALID + ": unknown tool '" + AiJson.GetString(call, "name") + "'.");
                 }
                 else
                 {
@@ -403,7 +394,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     }
                 }
 
-                outputs.Add(new KeyValuePair<string, string>(AiJson.GetString(call, "call_id"), new JsonObject { ["valid"] = errors.Count == 0, ["errors"] = TranslationRequestBuilder.CreateArray(errors) }.ToJsonString()));
+                outputs.Add(AiToolCallReader.CreateOutput(call, new JsonObject { ["valid"] = errors.Count == 0, ["errors"] = TranslationRequestBuilder.CreateArray(errors) }.ToJsonString()));
             }
 
             // Con una consegna valida la sequenza è finita: gli esiti servono solo al giro successivo
@@ -413,8 +404,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 return delivery;
             }
 
-            foreach (KeyValuePair<string, string> output in outputs)
-                input.Add(new JsonObject { ["type"] = "function_call_output", ["call_id"] = output.Key, ["output"] = output.Value });
+            foreach (JsonObject output in outputs)
+                input.Add(output);
 
             return delivery;
         }
@@ -429,19 +420,10 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public Glossary Validate(string arguments, GlossaryMergeResult merge, List<string> errors)
         {
             Glossary glossary = new Glossary();
-            JsonObject root;
-            try
-            {
-                root = JsonNode.Parse(string.IsNullOrEmpty(arguments) ? "null" : arguments) as JsonObject;
-            }
-            catch (JsonException)
-            {
-                root = null;
-            }
-
+            JsonObject root = AiJson.TryParseObject(arguments);
             if (root == null)
             {
-                errors.Add("ARGS_INVALID: arguments are not a JSON object.");
+                errors.Add(TranslationValidator.ARGS_INVALID + ": arguments are not a JSON object.");
                 return glossary;
             }
 
