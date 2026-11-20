@@ -98,6 +98,54 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         }
 
         /// <summary>
+        /// Applica la modifica a mano già validata di una battuta: segnale «Modificata a mano» al posto della correzione della
+        /// revisione AI, revisione AI non riuscita dimenticata, e in una tratta condivisa la modifica in tutte le copie. Il lavoro
+        /// esportato torna da rivedere finché non si esporta di nuovo
+        /// </summary>
+        /// <param name="job">Testata del job</param>
+        /// <param name="state">Stato del file della battuta</param>
+        /// <param name="states">Stati di tutti i file del job</param>
+        /// <param name="id">Battuta</param>
+        /// <param name="result">Esito del validatore senza errori</param>
+        /// <returns>Stati da salvare, prima le altre copie e per ultimo il file della battuta; vuoto se il testo non cambia</returns>
+        public static List<TranslationJobFileState> ApplyUserEdit(TranslationJob job, TranslationJobFileState state, IEnumerable<TranslationJobFileState> states, int id,
+            CueValidationResult result)
+        {
+            List<TranslationJobFileState> changed = new List<TranslationJobFileState>();
+            TranslatedCueState translation = state.Translations.Find(t => t.Id == id);
+            if (translation == null)
+            {
+                translation = new TranslatedCueState { Id = id, Status = TranslatedCueStatus.ToReview };
+                state.Translations.Add(translation);
+                state.Translations.Sort((a, b) => a.Id.CompareTo(b.Id));
+            }
+            if (string.Equals(translation.Text, result.Text, StringComparison.Ordinal))
+                return changed;
+
+            translation.SetText(result.Text, result.GetGlossaryWarnings());
+            if (!translation.Signals.Contains(TranslationCueSignal.EditedByUser))
+                translation.Signals.Add(TranslationCueSignal.EditedByUser);
+            job.Exported = false;
+
+            // Il testo è dell'utente: la correzione e la revisione AI non riuscita non lo descrivono più, e la tratta le perde in
+            // tutte le copie
+            translation.AiCorrection = null;
+            translation.NotReviewedReason = null;
+            translation.Signals.Remove(TranslationCueSignal.CorrectedByAi);
+            SharedStretch stretch;
+            if (SharedStretch.MapFile(job.SharedStretches, state.FileId).TryGetValue(id, out stretch))
+            {
+                foreach (TranslationJobFileState other in stretch.Spread(state, id, states))
+                {
+                    if (other != state)
+                        changed.Add(other);
+                }
+            }
+            changed.Add(state);
+            return changed;
+        }
+
+        /// <summary>
         /// Aggiunge al file i blocchi delle tratte di cui ha la prima occorrenza e che non hanno ancora il loro blocco: tutte nella
         /// completa, nessuna senza revisione. Una tratta passa a un altro file quando quello
         /// della prima occorrenza viene tolto; chiamato sotto il lock dello stato

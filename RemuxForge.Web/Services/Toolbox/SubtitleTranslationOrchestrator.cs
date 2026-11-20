@@ -975,36 +975,12 @@ namespace RemuxForge.Web.Services.Toolbox
                     return string.Join(" · ", errors);
                 }
 
-                TranslatedCueState translation = state.Translations.Find(t => t.Id == id);
-                if (translation == null)
-                {
-                    translation = new TranslatedCueState { Id = id, Status = TranslatedCueStatus.ToReview };
-                    state.Translations.Add(translation);
-                    state.Translations.Sort((a, b) => a.Id.CompareTo(b.Id));
-                }
-                if (string.Equals(translation.Text, result.Text, StringComparison.Ordinal))
+                List<TranslationJobFileState> changed = TranslationReviewer.ApplyUserEdit(this._job, state, this._jobFiles.Values, id, result);
+                if (changed.Count == 0)
                     return "";
 
-                translation.SetText(result.Text, result.GetGlossaryWarnings());
-                if (!translation.Signals.Contains(TranslationCueSignal.EditedByUser))
-                    translation.Signals.Add(TranslationCueSignal.EditedByUser);
-                this._job.Exported = false;
-
-                // Il testo è dell'utente: la correzione e la revisione AI non riuscita non lo descrivono più, e la tratta le perde in
-                // tutte le copie
-                translation.AiCorrection = null;
-                translation.NotReviewedReason = null;
-                translation.Signals.Remove(TranslationCueSignal.CorrectedByAi);
-                SharedStretch stretch;
-                if (SharedStretch.MapFile(this._job.SharedStretches, fileId).TryGetValue(id, out stretch))
-                {
-                    foreach (TranslationJobFileState other in stretch.Spread(state, id, this._jobFiles.Values))
-                    {
-                        if (other != state)
-                            this._jobStore.SaveFile(this._job.Id, other);
-                    }
-                }
-                this._jobStore.SaveFile(this._job.Id, state);
+                foreach (TranslationJobFileState saved in changed)
+                    this._jobStore.SaveFile(this._job.Id, saved);
                 this._jobStore.Save(this._job);
             }
 
@@ -1988,9 +1964,7 @@ namespace RemuxForge.Web.Services.Toolbox
         }
 
         /// <summary>
-        /// Allinea gli stati dei file del job ai sorgenti appena preparati, conclusi compresi: un file mancante o cambiato diventa
-        /// bloccato col motivo, in ogni fase, e il giro non va oltre finché resta; uno che torna con l'hash del job riparte nella
-        /// traduzione, o torna concluso dopo la traduzione; chiamato sotto StateLock
+        /// Allinea gli stati dei file del job ai sorgenti appena preparati e salva quelli cambiati; chiamato sotto StateLock
         /// </summary>
         private void BlockChangedSources()
         {
@@ -1998,25 +1972,8 @@ namespace RemuxForge.Web.Services.Toolbox
             {
                 TranslationJobFileState state = this._jobFiles[fileId];
                 TranslationProjectFile file = this._project.Files.Find(f => f.Id == fileId);
-                if (!this._documents.ContainsKey(fileId))
-                {
-                    if (state.TranslationStatus == TranslationFileStatus.Blocked && state.BlockedReason == file.RejectedReason)
-                        continue;
-                    state.TranslationStatus = TranslationFileStatus.Blocked;
-                    state.BlockedReason = file.RejectedReason;
-                }
-                else if (state.TranslationStatus == TranslationFileStatus.Blocked)
-                {
-                    state.TranslationStatus = this._job.Phase != TranslationJobPhase.Translation ? TranslationFileStatus.Completed
-                        : state.Blocks.Exists(b => b.Status == TranslationBlockStatus.Done) ? TranslationFileStatus.InProgress : TranslationFileStatus.Pending;
-                    state.BlockedReason = "";
-                }
-                else
-                {
-                    continue;
-                }
-
-                this._jobStore.SaveFile(this._job.Id, state);
+                if (TranslationRunner.CheckSource(this._job, state, file, this._documents.ContainsKey(fileId)))
+                    this._jobStore.SaveFile(this._job.Id, state);
             }
         }
 

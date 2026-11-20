@@ -127,6 +127,36 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         }
 
         /// <summary>
+        /// Allinea lo stato di un file del job al suo sorgente appena preparato, conclusi compresi: un file mancante o cambiato
+        /// diventa bloccato col motivo, in ogni fase, e il giro non va oltre finché resta; uno che torna con l'hash del job riparte
+        /// nella traduzione, o torna concluso dopo la traduzione
+        /// </summary>
+        /// <param name="job">Testata del job</param>
+        /// <param name="state">Stato del file</param>
+        /// <param name="file">File del progetto, col motivo del rifiuto della preparazione</param>
+        /// <param name="prepared">True se il sorgente si è preparato</param>
+        /// <returns>True se lo stato è cambiato e va salvato</returns>
+        public static bool CheckSource(TranslationJob job, TranslationJobFileState state, TranslationProjectFile file, bool prepared)
+        {
+            if (!prepared)
+            {
+                if (state.TranslationStatus == TranslationFileStatus.Blocked && state.BlockedReason == file.RejectedReason)
+                    return false;
+                state.TranslationStatus = TranslationFileStatus.Blocked;
+                state.BlockedReason = file.RejectedReason;
+                return true;
+            }
+
+            if (state.TranslationStatus != TranslationFileStatus.Blocked)
+                return false;
+
+            state.TranslationStatus = job.Phase != TranslationJobPhase.Translation ? TranslationFileStatus.Completed
+                : state.Blocks.Exists(b => b.Status == TranslationBlockStatus.Done) ? TranslationFileStatus.InProgress : TranslationFileStatus.Pending;
+            state.BlockedReason = "";
+            return true;
+        }
+
+        /// <summary>
         /// Stima della traduzione per caratteri, come il giro la farebbe: gli stati dei file preparati come all'avvio, con le battute
         /// delle tratte condivise fuori dai blocchi, e ogni tratta contata una volta sola nel file della prima occorrenza. Ogni
         /// consegna manda il prefisso intero, la coda con le battute prima di quelle chieste e argomenti lunghi quanto il sorgente.
