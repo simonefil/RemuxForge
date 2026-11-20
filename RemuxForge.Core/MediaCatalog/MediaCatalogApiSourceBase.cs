@@ -176,7 +176,7 @@ namespace RemuxForge.Core.MediaCatalog
                             continue;
                         }
 
-                        throw new MediaCatalogException(MediaCatalogErrorKind.Network, AppText.F("mediaCatalog.error.network", this.DisplayName, ex.Message), ex);
+                        throw new MediaCatalogException(AppText.F("mediaCatalog.error.network", this.DisplayName, ex.Message), ex);
                     }
                 }
 
@@ -193,7 +193,7 @@ namespace RemuxForge.Core.MediaCatalog
                         continue;
                     }
 
-                    throw new MediaCatalogException(MediaCatalogErrorKind.Unauthorized, AppText.F("mediaCatalog.error.unauthorized", this.DisplayName));
+                    throw new MediaCatalogException(AppText.F("mediaCatalog.error.unauthorized", this.DisplayName));
                 }
 
                 if (status == HttpStatusCode.TooManyRequests || (int)status >= 500)
@@ -205,11 +205,11 @@ namespace RemuxForge.Core.MediaCatalog
                         continue;
                     }
 
-                    throw new MediaCatalogException(MediaCatalogErrorKind.Network, AppText.F("mediaCatalog.error.service", this.DisplayName, (int)status));
+                    throw new MediaCatalogException(AppText.F("mediaCatalog.error.service", this.DisplayName, (int)status));
                 }
 
                 if ((int)status < 200 || (int)status >= 300)
-                    throw new MediaCatalogException(MediaCatalogErrorKind.Format, AppText.F("mediaCatalog.error.service", this.DisplayName, (int)status));
+                    throw new MediaCatalogException(AppText.F("mediaCatalog.error.service", this.DisplayName, (int)status));
 
                 return ParseJson(body, this.DisplayName);
             }
@@ -225,7 +225,7 @@ namespace RemuxForge.Core.MediaCatalog
         {
             JsonNode root = await this.GetJsonOrNullAsync(url, cancellationToken);
             if (root == null)
-                throw new MediaCatalogException(MediaCatalogErrorKind.NotFound, AppText.F("mediaCatalog.error.notFound", this.DisplayName));
+                throw new MediaCatalogException(AppText.F("mediaCatalog.error.notFound", this.DisplayName));
 
             return root;
         }
@@ -256,15 +256,15 @@ namespace RemuxForge.Core.MediaCatalog
                 }
                 catch (Exception ex) when (ex is HttpRequestException || ex is IOException || (ex is TaskCanceledException && !cancellationToken.IsCancellationRequested))
                 {
-                    throw new MediaCatalogException(MediaCatalogErrorKind.Network, AppText.F("mediaCatalog.error.network", this.DisplayName, ex.Message), ex);
+                    throw new MediaCatalogException(AppText.F("mediaCatalog.error.network", this.DisplayName, ex.Message), ex);
                 }
             }
 
             if (status == HttpStatusCode.Unauthorized)
-                throw new MediaCatalogException(MediaCatalogErrorKind.Unauthorized, AppText.F("mediaCatalog.error.unauthorized", this.DisplayName));
+                throw new MediaCatalogException(AppText.F("mediaCatalog.error.unauthorized", this.DisplayName));
 
             if ((int)status < 200 || (int)status >= 300)
-                throw new MediaCatalogException(MediaCatalogErrorKind.Network, AppText.F("mediaCatalog.error.service", this.DisplayName, (int)status));
+                throw new MediaCatalogException(AppText.F("mediaCatalog.error.service", this.DisplayName, (int)status));
 
             return ParseJson(body, this.DisplayName);
         }
@@ -276,7 +276,7 @@ namespace RemuxForge.Core.MediaCatalog
         /// <returns>Eccezione da lanciare</returns>
         protected MediaCatalogException CreateFormatError(string detail)
         {
-            return new MediaCatalogException(MediaCatalogErrorKind.Format, AppText.F("mediaCatalog.error.format", this.DisplayName, detail));
+            return new MediaCatalogException(AppText.F("mediaCatalog.error.format", this.DisplayName, detail));
         }
 
         /// <summary>
@@ -389,10 +389,10 @@ namespace RemuxForge.Core.MediaCatalog
             }
             catch (JsonException ex)
             {
-                throw new MediaCatalogException(MediaCatalogErrorKind.Format, AppText.F("mediaCatalog.error.format", displayName, ex.Message), ex);
+                throw new MediaCatalogException(AppText.F("mediaCatalog.error.format", displayName, ex.Message), ex);
             }
 
-            throw new MediaCatalogException(MediaCatalogErrorKind.Format, AppText.F("mediaCatalog.error.format", displayName, "empty body"));
+            throw new MediaCatalogException(AppText.F("mediaCatalog.error.format", displayName, "empty body"));
         }
 
         #endregion

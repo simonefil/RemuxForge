@@ -142,13 +142,11 @@ namespace RemuxForge.Core.MediaCatalog
                 string name = ReadString(item["name"]);
                 MediaCatalogSearchHit hit = new MediaCatalogSearchHit();
                 hit.Key = key;
-                hit.Id = ReadLong(item["tvdb_id"]);
                 hit.Kind = kind;
                 hit.Title = PickFromMap(item["translations"] as JsonObject, tvdbLanguage, name);
                 hit.OriginalTitle = hit.Title == name ? "" : name;
                 hit.Year = ReadPositiveInt(item["year"]);
                 hit.Overview = PickFromMap(item["overviews"] as JsonObject, tvdbLanguage, ReadString(item["overview"]));
-                hit.PosterUrl = ToArtworkUrl(ReadString(item["image_url"]));
 
                 // In testa, nell'ordine del catalogo, i titoli che contengono il testo cercato nel nome, in una traduzione o in un alias
                 List<string> titles = new List<string> { name };
@@ -184,14 +182,10 @@ namespace RemuxForge.Core.MediaCatalog
                 throw this.CreateFormatError("series.data");
 
             MediaCatalogSeries series = new MediaCatalogSeries();
-            string name = ReadString(data["name"]);
-            JsonObject translations = data["translations"] as JsonObject;
             series.Key = key;
             series.Id = ReadLong(data["id"]);
-            series.Title = PickTranslation(translations, "nameTranslations", "name", tvdbLanguage, name);
-            series.OriginalTitle = series.Title == name ? "" : name;
+            series.Title = PickTranslation(data["translations"] as JsonObject, "nameTranslations", "name", tvdbLanguage, ReadString(data["name"]));
             series.Year = ReadPositiveInt(data["year"]);
-            series.Overview = PickTranslation(translations, "overviewTranslations", "overview", tvdbLanguage, ReadString(data["overview"]));
             series.PosterUrl = ToArtworkUrl(ReadString(data["image"]));
             ReadGenres(data["genres"] as JsonArray, series.Genres);
 
@@ -240,7 +234,6 @@ namespace RemuxForge.Core.MediaCatalog
                 episode.Title = ReadString(item["name"]);
                 episode.Overview = ReadString(item["overview"]);
                 episode.AiredDate = ReadDate(item["aired"]);
-                episode.RuntimeMinutes = ReadPositiveInt(item["runtime"]);
                 if (seasonNumbers.Contains(episode.SeasonNumber))
                     result.Add(episode);
             }
@@ -326,12 +319,10 @@ namespace RemuxForge.Core.MediaCatalog
                 throw this.CreateFormatError("movie.data");
 
             MediaCatalogMovie movie = new MediaCatalogMovie();
-            string name = ReadString(data["name"]);
             JsonObject translations = data["translations"] as JsonObject;
             movie.Key = key;
             movie.Id = ReadLong(data["id"]);
-            movie.Title = PickTranslation(translations, "nameTranslations", "name", tvdbLanguage, name);
-            movie.OriginalTitle = movie.Title == name ? "" : name;
+            movie.Title = PickTranslation(translations, "nameTranslations", "name", tvdbLanguage, ReadString(data["name"]));
             movie.Year = ReadPositiveInt(data["year"]);
 
             // Il film extended non ha una sinossi di base: solo le traduzioni
@@ -372,7 +363,7 @@ namespace RemuxForge.Core.MediaCatalog
         {
             string apiKey = (this._apiKeyProvider() ?? "").Trim();
             if (apiKey.Length == 0)
-                throw new MediaCatalogException(MediaCatalogErrorKind.NotConfigured, AppText.F("mediaCatalog.error.notConfigured", this.DisplayName));
+                throw new MediaCatalogException(AppText.F("mediaCatalog.error.notConfigured", this.DisplayName));
 
             string staleToken = renew ? this._token : null;
             string token;
@@ -498,7 +489,7 @@ namespace RemuxForge.Core.MediaCatalog
         {
             long id;
             if (!long.TryParse((key ?? "").Trim(), NumberStyles.None, CultureInfo.InvariantCulture, out id) || id <= 0)
-                throw new MediaCatalogException(MediaCatalogErrorKind.NotFound, AppText.F("mediaCatalog.error.notFound", this.DisplayName));
+                throw new MediaCatalogException(AppText.F("mediaCatalog.error.notFound", this.DisplayName));
 
             return id.ToString(CultureInfo.InvariantCulture);
         }

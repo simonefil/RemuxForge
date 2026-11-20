@@ -28,27 +28,6 @@ namespace RemuxForge.Core.Models
     }
 
     /// <summary>
-    /// Natura dell'errore di una fonte, per il messaggio mostrato all'utente
-    /// </summary>
-    public enum MediaCatalogErrorKind
-    {
-        /// <summary>Credenziali della fonte non inserite</summary>
-        NotConfigured,
-
-        /// <summary>Credenziali rifiutate dal catalogo</summary>
-        Unauthorized,
-
-        /// <summary>Chiave inesistente sul catalogo</summary>
-        NotFound,
-
-        /// <summary>Rete irraggiungibile, timeout, servizio non disponibile o limite di frequenza dopo i tentativi</summary>
-        Network,
-
-        /// <summary>Risposta arrivata ma non interpretabile</summary>
-        Format
-    }
-
-    /// <summary>
     /// Risultato di una ricerca su un catalogo media
     /// </summary>
     public class MediaCatalogSearchHit
@@ -64,7 +43,6 @@ namespace RemuxForge.Core.Models
             this.Title = "";
             this.OriginalTitle = "";
             this.Overview = "";
-            this.PosterUrl = "";
         }
 
         #endregion
@@ -75,11 +53,6 @@ namespace RemuxForge.Core.Models
         /// Chiave opaca della fonte da ripassare a GetSeriesAsync o GetMovieAsync: URL per il sito, ID per le API
         /// </summary>
         public string Key { get; set; }
-
-        /// <summary>
-        /// ID numerico sul catalogo, null se la fonte non lo conosce
-        /// </summary>
-        public long? Id { get; set; }
 
         /// <summary>
         /// Tipo del titolo
@@ -106,11 +79,6 @@ namespace RemuxForge.Core.Models
         /// </summary>
         public string Overview { get; set; }
 
-        /// <summary>
-        /// URL assoluto del poster, vuoto se assente
-        /// </summary>
-        public string PosterUrl { get; set; }
-
         #endregion
     }
 
@@ -128,8 +96,6 @@ namespace RemuxForge.Core.Models
         {
             this.Key = "";
             this.Title = "";
-            this.OriginalTitle = "";
-            this.Overview = "";
             this.Genres = new List<string>();
             this.PosterUrl = "";
             this.Seasons = new List<MediaCatalogSeason>();
@@ -155,19 +121,9 @@ namespace RemuxForge.Core.Models
         public string Title { get; set; }
 
         /// <summary>
-        /// Titolo nella lingua originale, vuoto se coincide con Title
-        /// </summary>
-        public string OriginalTitle { get; set; }
-
-        /// <summary>
         /// Anno della prima messa in onda
         /// </summary>
         public int? Year { get; set; }
-
-        /// <summary>
-        /// Sinossi nella lingua chiesta, con ripiego
-        /// </summary>
-        public string Overview { get; set; }
 
         /// <summary>
         /// Generi nella lingua che il catalogo fornisce
@@ -283,11 +239,6 @@ namespace RemuxForge.Core.Models
         public DateTime? AiredDate { get; set; }
 
         /// <summary>
-        /// Durata in minuti
-        /// </summary>
-        public int? RuntimeMinutes { get; set; }
-
-        /// <summary>
         /// Registi
         /// </summary>
         public List<string> Directors { get; set; }
@@ -319,7 +270,6 @@ namespace RemuxForge.Core.Models
         {
             this.Key = "";
             this.Title = "";
-            this.OriginalTitle = "";
             this.Overview = "";
             this.Genres = new List<string>();
             this.Directors = new List<string>();
@@ -346,11 +296,6 @@ namespace RemuxForge.Core.Models
         /// Titolo nella lingua chiesta, con ripiego
         /// </summary>
         public string Title { get; set; }
-
-        /// <summary>
-        /// Titolo nella lingua originale, vuoto se coincide con Title
-        /// </summary>
-        public string OriginalTitle { get; set; }
 
         /// <summary>
         /// Anno di uscita
@@ -410,32 +355,19 @@ namespace RemuxForge.Core.Models
         /// <summary>
         /// Costruttore
         /// </summary>
-        /// <param name="kind">Natura dell'errore</param>
         /// <param name="message">Messaggio localizzato</param>
-        public MediaCatalogException(MediaCatalogErrorKind kind, string message) : base(message)
+        public MediaCatalogException(string message) : base(message)
         {
-            this.Kind = kind;
         }
 
         /// <summary>
         /// Costruttore con eccezione interna
         /// </summary>
-        /// <param name="kind">Natura dell'errore</param>
         /// <param name="message">Messaggio localizzato</param>
         /// <param name="innerException">Eccezione originale</param>
-        public MediaCatalogException(MediaCatalogErrorKind kind, string message, Exception innerException) : base(message, innerException)
+        public MediaCatalogException(string message, Exception innerException) : base(message, innerException)
         {
-            this.Kind = kind;
         }
-
-        #endregion
-
-        #region Proprietà
-
-        /// <summary>
-        /// Natura dell'errore
-        /// </summary>
-        public MediaCatalogErrorKind Kind { get; }
 
         #endregion
     }

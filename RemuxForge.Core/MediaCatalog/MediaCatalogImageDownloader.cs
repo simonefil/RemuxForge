@@ -70,7 +70,7 @@ namespace RemuxForge.Core.MediaCatalog
             byte[] content;
 
             if (!Uri.TryCreate(url, UriKind.Absolute, out address) || address.Scheme != Uri.UriSchemeHttps || Array.IndexOf(s_coverHosts, address.Host.ToLowerInvariant()) < 0)
-                throw new MediaCatalogException(MediaCatalogErrorKind.Format, AppText.F("mediaCatalog.error.coverAddress", url));
+                throw new MediaCatalogException(AppText.F("mediaCatalog.error.coverAddress", url));
 
             using (CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
             {
@@ -81,7 +81,7 @@ namespace RemuxForge.Core.MediaCatalog
                     {
                         response.EnsureSuccessStatusCode();
                         if (response.Content.Headers.ContentLength > MAX_COVER_BYTES)
-                            throw new MediaCatalogException(MediaCatalogErrorKind.Format, AppText.F("mediaCatalog.error.coverTooLarge", MAX_COVER_BYTES / (1024 * 1024)));
+                            throw new MediaCatalogException(AppText.F("mediaCatalog.error.coverTooLarge", MAX_COVER_BYTES / (1024 * 1024)));
 
                         using (Stream stream = await response.Content.ReadAsStreamAsync(timeout.Token))
                         using (MemoryStream buffer = new MemoryStream())
@@ -92,7 +92,7 @@ namespace RemuxForge.Core.MediaCatalog
                             while ((read = await stream.ReadAsync(chunk, timeout.Token)) > 0)
                             {
                                 if (buffer.Length + read > MAX_COVER_BYTES)
-                                    throw new MediaCatalogException(MediaCatalogErrorKind.Format, AppText.F("mediaCatalog.error.coverTooLarge", MAX_COVER_BYTES / (1024 * 1024)));
+                                    throw new MediaCatalogException(AppText.F("mediaCatalog.error.coverTooLarge", MAX_COVER_BYTES / (1024 * 1024)));
 
                                 buffer.Write(chunk, 0, read);
                             }
@@ -103,7 +103,7 @@ namespace RemuxForge.Core.MediaCatalog
                 }
                 catch (Exception ex) when (ex is HttpRequestException || ex is IOException || (ex is OperationCanceledException && !cancellationToken.IsCancellationRequested))
                 {
-                    throw new MediaCatalogException(MediaCatalogErrorKind.Network, AppText.F("mediaCatalog.error.coverDownload", ex.Message), ex);
+                    throw new MediaCatalogException(AppText.F("mediaCatalog.error.coverDownload", ex.Message), ex);
                 }
             }
 
@@ -124,7 +124,7 @@ namespace RemuxForge.Core.MediaCatalog
             catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
             {
                 FileHelper.DeleteTempFile(path);
-                throw new MediaCatalogException(MediaCatalogErrorKind.Network, AppText.F("mediaCatalog.error.coverDownload", ex.Message), ex);
+                throw new MediaCatalogException(AppText.F("mediaCatalog.error.coverDownload", ex.Message), ex);
             }
             catch (OperationCanceledException)
             {

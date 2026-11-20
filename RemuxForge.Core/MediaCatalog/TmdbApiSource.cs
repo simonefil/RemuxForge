@@ -100,14 +100,12 @@ namespace RemuxForge.Core.MediaCatalog
 
                 MediaCatalogSearchHit hit = new MediaCatalogSearchHit();
                 hit.Key = id.Value.ToString(CultureInfo.InvariantCulture);
-                hit.Id = id;
                 hit.Kind = kind;
                 hit.Title = ReadString(item[movie ? "title" : "name"]);
                 string original = ReadString(item[movie ? "original_title" : "original_name"]);
                 hit.OriginalTitle = original == hit.Title ? "" : original;
                 hit.Year = ReadDate(item[movie ? "release_date" : "first_air_date"])?.Year;
                 hit.Overview = ReadString(item["overview"]);
-                hit.PosterUrl = ToImageUrl(ReadString(item["poster_path"]));
                 result.Add(hit);
                 if (result.Count == SEARCH_LIMIT)
                     break;
@@ -130,13 +128,10 @@ namespace RemuxForge.Core.MediaCatalog
             JsonNode data = await this.GetJsonAsync(API_BASE_URL + "/tv/" + id + "?language=" + tmdbLanguage + "&append_to_response=translations", cancellationToken);
 
             MediaCatalogSeries series = new MediaCatalogSeries();
-            string original = ReadString(data["original_name"]);
             series.Key = key;
             series.Id = ReadLong(data["id"]);
-            series.Title = PickText(ReadString(data["name"]), data, "name", original);
-            series.OriginalTitle = series.Title == original ? "" : original;
+            series.Title = PickText(ReadString(data["name"]), data, "name", ReadString(data["original_name"]));
             series.Year = ReadDate(data["first_air_date"])?.Year;
-            series.Overview = PickText(ReadString(data["overview"]), data, "overview", "");
             series.PosterUrl = ToImageUrl(ReadString(data["poster_path"]));
             ReadGenres(data["genres"] as JsonArray, series.Genres);
 
@@ -209,11 +204,9 @@ namespace RemuxForge.Core.MediaCatalog
             JsonNode data = await this.GetJsonAsync(API_BASE_URL + "/movie/" + id + "?language=" + ToTmdbLanguage(language) + "&append_to_response=credits,translations", cancellationToken);
 
             MediaCatalogMovie movie = new MediaCatalogMovie();
-            string original = ReadString(data["original_title"]);
             movie.Key = key;
             movie.Id = ReadLong(data["id"]);
-            movie.Title = PickText(ReadString(data["title"]), data, "title", original);
-            movie.OriginalTitle = movie.Title == original ? "" : original;
+            movie.Title = PickText(ReadString(data["title"]), data, "title", ReadString(data["original_title"]));
             movie.ReleaseDate = ReadDate(data["release_date"]);
             movie.Year = movie.ReleaseDate?.Year;
             movie.Overview = PickText(ReadString(data["overview"]), data, "overview", "");
@@ -243,7 +236,7 @@ namespace RemuxForge.Core.MediaCatalog
         {
             string credential = (this._credentialProvider() ?? "").Trim();
             if (credential.Length == 0)
-                throw new MediaCatalogException(MediaCatalogErrorKind.NotConfigured, AppText.F("mediaCatalog.error.notConfigured", this.DisplayName));
+                throw new MediaCatalogException(AppText.F("mediaCatalog.error.notConfigured", this.DisplayName));
 
             if (credential.Contains('.'))
                 request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", credential);
@@ -290,7 +283,6 @@ namespace RemuxForge.Core.MediaCatalog
                 episode.Title = ReadString(item["name"]);
                 episode.Overview = ReadString(item["overview"]);
                 episode.AiredDate = ReadDate(item["air_date"]);
-                episode.RuntimeMinutes = ReadPositiveInt(item["runtime"]);
                 ReadCrew(item["crew"] as JsonArray, episode.Directors, episode.Writers);
                 episode.Actors.AddRange(regularCast);
                 ReadCast(item["guest_stars"] as JsonArray, episode.Actors);
@@ -330,7 +322,7 @@ namespace RemuxForge.Core.MediaCatalog
         {
             long id;
             if (!long.TryParse((key ?? "").Trim(), NumberStyles.None, CultureInfo.InvariantCulture, out id) || id <= 0)
-                throw new MediaCatalogException(MediaCatalogErrorKind.NotFound, AppText.F("mediaCatalog.error.notFound", this.DisplayName));
+                throw new MediaCatalogException(AppText.F("mediaCatalog.error.notFound", this.DisplayName));
 
             return id.ToString(CultureInfo.InvariantCulture);
         }

@@ -37,7 +37,7 @@ namespace RemuxForge.Core.MediaCatalog
         /// <param name="httpClient">Client HTTP condiviso dall'applicazione</param>
         public TvdbScraperSource(HttpClient httpClient)
         {
-            this._httpClient = httpClient ?? throw new MediaCatalogException(MediaCatalogErrorKind.Format, "HttpClient non specificato", null);
+            this._httpClient = httpClient ?? throw new MediaCatalogException("HttpClient non specificato", null);
         }
 
         #endregion
@@ -107,20 +107,12 @@ namespace RemuxForge.Core.MediaCatalog
                     item = new MediaCatalogSearchHit
                     {
                         Key = PageUrl(JsonString(hit, "url"), kind == MediaCatalogKind.Series ? "series" : "movies").AbsoluteUri,
-                        Id = ParseLong(JsonString(hit, "id")),
                         Kind = kind,
                         Title = SearchText(hit, "translations", language, originalLanguage, originalTitle),
                         Overview = SearchText(hit, "overviews", language, originalLanguage, JsonString(hit, "overview")),
-                        Year = ParseInteger(JsonString(hit, "year")),
-                        PosterUrl = JsonString(hit, "poster")
+                        Year = ParseInteger(JsonString(hit, "year"))
                     };
                     item.OriginalTitle = originalTitle == item.Title ? string.Empty : originalTitle;
-                    if (string.IsNullOrEmpty(item.PosterUrl))
-                        item.PosterUrl = JsonString(hit, "image_url");
-
-                    if (string.IsNullOrEmpty(item.PosterUrl))
-                        item.PosterUrl = JsonString(hit, "image");
-
                     if (year.HasValue && item.Year != year)
                         continue;
 
@@ -171,10 +163,8 @@ namespace RemuxForge.Core.MediaCatalog
                     Genres = FieldValues(root, "Genres").Select(Text).ToList(),
                     PosterUrl = Poster(root)
                 };
-                ReadText(root, language, out string title, out string originalTitle, out string overview);
+                ReadText(root, language, out string title, out _);
                 series.Title = title;
-                series.OriginalTitle = originalTitle;
-                series.Overview = overview;
 
                 // Riga della tabella: stagione, prima e ultima messa in onda, episodi
                 foreach (HtmlNode row in Nodes(root, "//div[@id='seasons-official']//tr[td[1]/a[contains(@href,'/seasons/official/')]]"))
@@ -246,8 +236,7 @@ namespace RemuxForge.Core.MediaCatalog
                             SeasonNumber = int.Parse(label.Groups[1].Value, CultureInfo.InvariantCulture),
                             EpisodeNumber = int.Parse(label.Groups[2].Value, CultureInfo.InvariantCulture),
                             Title = Text(row.SelectSingleNode("./td[2]/a")),
-                            AiredDate = ParseDate(Text(row.SelectSingleNode("./td[3]/div[1]"))),
-                            RuntimeMinutes = ParseInteger(Text(row.SelectSingleNode("./td[4]")))
+                            AiredDate = ParseDate(Text(row.SelectSingleNode("./td[3]/div[1]")))
                         });
                     }
                 }
@@ -294,11 +283,10 @@ namespace RemuxForge.Core.MediaCatalog
 
                     root = await this.LoadPageAsync(new Uri(url.AbsoluteUri + "/episodes/" + episode.Id.Value.ToString(CultureInfo.InvariantCulture)), cancellationToken).ConfigureAwait(false);
                     episode.AiredDate = ParseDate(FieldText(root, "Originally Aired"));
-                    episode.RuntimeMinutes = ParseInteger(FieldText(root, "Runtime"));
                     episode.Directors = People(root, "director");
                     episode.Writers = People(root, "writer");
                     episode.Actors = People(root, "actor");
-                    ReadText(root, language, out string title, out _, out string overview, originalLanguage);
+                    ReadText(root, language, out string title, out string overview, originalLanguage);
                     episode.Title = title;
                     episode.Overview = overview;
 
@@ -357,9 +345,8 @@ namespace RemuxForge.Core.MediaCatalog
                     Writers = People(root, "writer"),
                     Actors = People(root, "actor")
                 };
-                ReadText(root, language, out string title, out string originalTitle, out string overview);
+                ReadText(root, language, out string title, out string overview);
                 movie.Title = title;
-                movie.OriginalTitle = originalTitle;
                 movie.Overview = overview;
 
                 foreach (HtmlNode release in FieldValues(root, "Released"))
@@ -426,8 +413,6 @@ namespace RemuxForge.Core.MediaCatalog
                 timeout.CancelAfter(TimeSpan.FromSeconds(45));
                 try
                 {
-                    MediaCatalogErrorKind kind;
-
                     using HttpRequestMessage request = new HttpRequestMessage(body == null ? HttpMethod.Get : HttpMethod.Post, url);
                     if (body != null)
                         request.Content = new StringContent(body, Encoding.UTF8, "application/json");
@@ -448,14 +433,7 @@ namespace RemuxForge.Core.MediaCatalog
                         }
                     }
 
-                    kind = response.StatusCode switch
-                    {
-                        HttpStatusCode.NotFound => MediaCatalogErrorKind.NotFound,
-                        HttpStatusCode.Unauthorized => MediaCatalogErrorKind.Unauthorized,
-                        _ => (int)response.StatusCode >= 500 || (int)response.StatusCode == 429 || response.StatusCode == HttpStatusCode.RequestTimeout ?
-                            MediaCatalogErrorKind.Network : MediaCatalogErrorKind.Format
-                    };
-                    throw new MediaCatalogException(kind, "TVDB: HTTP " + (int)response.StatusCode, null);
+                    throw new MediaCatalogException("TVDB: HTTP " + (int)response.StatusCode, null);
                 }
                 catch (OperationCanceledException ex)
                 {
@@ -463,7 +441,7 @@ namespace RemuxForge.Core.MediaCatalog
                         throw;
 
                     if (attempt == 2)
-                        throw new MediaCatalogException(MediaCatalogErrorKind.Network, "Timeout TVDB", ex);
+                        throw new MediaCatalogException("Timeout TVDB", ex);
                 }
                 catch (HttpRequestException)
                 {
@@ -474,7 +452,7 @@ namespace RemuxForge.Core.MediaCatalog
                 await Task.Delay(TimeSpan.FromSeconds(attempt + 1), cancellationToken).ConfigureAwait(false);
             }
 
-            throw new MediaCatalogException(MediaCatalogErrorKind.Network, "TVDB non raggiungibile", null);
+            throw new MediaCatalogException("TVDB non raggiungibile", null);
         }
 
         /// <summary>
@@ -482,12 +460,13 @@ namespace RemuxForge.Core.MediaCatalog
         /// </summary>
         /// <param name="root">Radice della scheda</param>
         /// <param name="language">Lingua richiesta</param>
-        /// <param name="title">Titolo selezionato</param>
-        /// <param name="originalTitle">Titolo originale, vuoto se coincide con quello selezionato</param>
+        /// <param name="title">Titolo selezionato, quello originale se non ce n'è uno tradotto</param>
         /// <param name="overview">Overview selezionata</param>
         /// <param name="originalLanguage">Lingua della serie per pagine episodio che non la dichiarano</param>
-        private static void ReadText(HtmlNode root, string language, out string title, out string originalTitle, out string overview, string originalLanguage = "")
+        private static void ReadText(HtmlNode root, string language, out string title, out string overview, string originalLanguage = "")
         {
+            string originalTitle;
+
             if (string.IsNullOrEmpty(originalLanguage))
                 originalLanguage = OriginalLanguage(root);
 
@@ -520,9 +499,6 @@ namespace RemuxForge.Core.MediaCatalog
 
             if (string.IsNullOrEmpty(title))
                 title = originalTitle;
-
-            if (title == originalTitle)
-                originalTitle = string.Empty;
         }
 
         /// <summary>
@@ -763,8 +739,7 @@ namespace RemuxForge.Core.MediaCatalog
         /// <returns>Errore classificato della fonte</returns>
         private static MediaCatalogException CatalogError(Exception exception)
         {
-            return exception as MediaCatalogException ?? new MediaCatalogException(exception is HttpRequestException || exception is System.IO.IOException ?
-                MediaCatalogErrorKind.Network : MediaCatalogErrorKind.Format, "TVDB: " + exception.Message, exception);
+            return exception as MediaCatalogException ?? new MediaCatalogException("TVDB: " + exception.Message, exception);
         }
 
         #endregion
