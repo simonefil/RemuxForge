@@ -26,9 +26,9 @@ namespace RemuxForge.Core.Media
         private const string VFW_CODEC_ID = "V_MS/VFW/FOURCC";
 
         /// <summary>
-        /// Exit code mkvmerge per esecuzione riuscita con avvisi
+        /// Exit code di mkvmerge e mkvextract per esecuzione riuscita con avvisi
         /// </summary>
-        private const int MKVMERGE_WARNING_EXIT_CODE = 1;
+        public const int MKVMERGE_WARNING_EXIT_CODE = 1;
 
         #endregion
 

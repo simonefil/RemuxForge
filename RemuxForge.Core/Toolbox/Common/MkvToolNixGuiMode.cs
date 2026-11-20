@@ -1,4 +1,5 @@
 using RemuxForge.Core.Infrastructure;
+using RemuxForge.Core.Media;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -11,11 +12,6 @@ namespace RemuxForge.Core.Toolbox.Common
     public static class MkvToolNixGuiMode
     {
         #region Costanti
-
-        /// <summary>
-        /// Exit code di mkvmerge e mkvextract per esecuzione riuscita con avvisi
-        /// </summary>
-        private const int WARNING_EXIT_CODE = 1;
 
         /// <summary>
         /// Prefisso delle righe di avanzamento
@@ -70,7 +66,7 @@ namespace RemuxForge.Core.Toolbox.Common
         /// <returns>True per esecuzione riuscita</returns>
         public static bool IsSuccess(int exitCode)
         {
-            return exitCode == 0 || exitCode == WARNING_EXIT_CODE;
+            return exitCode == 0 || exitCode == MediaContainerNormalizer.MKVMERGE_WARNING_EXIT_CODE;
         }
 
         /// <summary>
