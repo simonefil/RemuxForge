@@ -1031,6 +1031,19 @@ tr.metadata-diff-removed > td {
     font-weight: 600;
 }
 
+/* Campi del passo richiesta del wizard AI */
+.rz-dropdown.metadata-ai-model {
+    max-width: 40ch;
+}
+
+.rz-dropdown.metadata-ai-effort {
+    max-width: 20ch;
+}
+
+.rz-numeric.metadata-ai-rounds {
+    max-width: 12ch;
+}
+
 /* Elenco file della preview del wizard AI */
 .rz-listbox.metadata-ai-preview-files {
     flex: 0 0 35%;

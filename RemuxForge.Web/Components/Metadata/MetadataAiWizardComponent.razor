@@ -9,29 +9,31 @@
         <div class="rf-dialog-body">
             @if (_step == WizardStep.Request)
             {
-                <div>@AppText.T("web.metadata.ai.requestHint")</div>
-                <RadzenTextArea Style="width: 100%; min-height: 10em; margin-top: 0.5em; resize: vertical;" aria-label="@AppText.T("web.metadata.ai.requestLabel")" Placeholder="@AppText.T("web.metadata.ai.requestPlaceholder")" @bind-Value="_requestText" Immediate="true" />
-                <div style="margin-top: 0.5em; color: var(--rz-text-secondary-color);">@AppText.F("web.metadata.ai.requestContext", GetSourceRecordCount())</div>
-                <div class="form-row" style="margin-top: 0.5em;">
-                    <RadzenLabel class="form-label" Text="@AppText.T("web.metadata.ai.model")" Component="MetadataAiModel" />
-                    <RadzenDropDown TValue="string" Name="MetadataAiModel" Data="@GetModelValues()" Value="@(string.IsNullOrEmpty(_credentials.Model) ? null : _credentials.Model)" Change="@OnModelChanged"
-                                    AllowClear="true" Disabled="@(_modelsLoading || !AiCredentialService.IsConfigured(_credentials))" Style="max-width: 40ch;">
-                        <Template Context="model">@GetModelLabel((string)model)</Template>
-                        <ValueTemplate Context="model">@GetModelLabel((string)model)</ValueTemplate>
-                    </RadzenDropDown>
-                    <RadzenButton Text="@AppText.T("web.metadata.ai.refreshModels")" Icon="refresh" Size="ButtonSize.Small" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base"
-                                  Disabled="@(_modelsLoading || !AiCredentialService.IsConfigured(_credentials))" Click="@RefreshModelsAsync" />
-                </div>
-                <div class="form-row" style="margin-top: 0.5em;">
-                    <RadzenLabel class="form-label" Text="@AppText.T("web.metadata.ai.reasoning")" Component="MetadataAiReasoning" />
-                    <RadzenDropDown TValue="string" Name="MetadataAiReasoning" Data="@GetEffortValues()" Value="@(string.IsNullOrEmpty(_credentials.ReasoningEffort) ? null : _credentials.ReasoningEffort)"
-                                    Change="@OnEffortChanged" AllowClear="true" Disabled="@(_modelsLoading || string.IsNullOrEmpty(_credentials.Model))" Style="max-width: 20ch;" />
-                </div>
-                <div class="form-row" style="margin-top: 0.5em;">
-                    <RadzenLabel class="form-label" Text="@AppText.T("web.metadata.ai.maxRoundsLabel")" Component="MetadataAiMaxRounds" />
-                    <RadzenNumeric @key="_maxRoundsInputKey" TValue="int" Name="MetadataAiMaxRounds" Style="max-width: 12ch;"
-                                   Min="@MetadataAiPresetGenerator.MIN_MAX_ROUNDS" Max="@MetadataAiPresetGenerator.MAX_MAX_ROUNDS"
-                                   Value="@_credentials.MaxRounds" Change="@OnMaxRoundsChanged" />
+                <div class="form-stack">
+                    <div>@AppText.T("web.metadata.ai.requestHint")</div>
+                    <RadzenTextArea Style="width: 100%; min-height: 10em; resize: vertical;" aria-label="@AppText.T("web.metadata.ai.requestLabel")" Placeholder="@AppText.T("web.metadata.ai.requestPlaceholder")" @bind-Value="_requestText" Immediate="true" />
+                    <div style="color: var(--rz-text-secondary-color);">@AppText.F("web.metadata.ai.requestContext", GetSourceRecordCount())</div>
+                    <div class="form-row">
+                        <RadzenLabel class="form-label" Text="@AppText.T("web.metadata.ai.model")" Component="MetadataAiModel" />
+                        <RadzenDropDown TValue="string" Name="MetadataAiModel" Data="@GetModelValues()" Value="@(string.IsNullOrEmpty(_credentials.Model) ? null : _credentials.Model)" Change="@OnModelChanged"
+                                        AllowClear="true" Disabled="@(_modelsLoading || !AiCredentialService.IsConfigured(_credentials))" class="metadata-ai-model">
+                            <Template Context="model">@GetModelLabel((string)model)</Template>
+                            <ValueTemplate Context="model">@GetModelLabel((string)model)</ValueTemplate>
+                        </RadzenDropDown>
+                        <RadzenButton Text="@AppText.T("web.metadata.ai.refreshModels")" Icon="refresh" Size="ButtonSize.Small" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base"
+                                      Disabled="@(_modelsLoading || !AiCredentialService.IsConfigured(_credentials))" Click="@RefreshModelsAsync" />
+                    </div>
+                    <div class="form-row">
+                        <RadzenLabel class="form-label" Text="@AppText.T("web.metadata.ai.reasoning")" Component="MetadataAiReasoning" />
+                        <RadzenDropDown TValue="string" Name="MetadataAiReasoning" Data="@GetEffortValues()" Value="@(string.IsNullOrEmpty(_credentials.ReasoningEffort) ? null : _credentials.ReasoningEffort)"
+                                        Change="@OnEffortChanged" AllowClear="true" Disabled="@(_modelsLoading || string.IsNullOrEmpty(_credentials.Model))" class="metadata-ai-effort" />
+                    </div>
+                    <div class="form-row">
+                        <RadzenLabel class="form-label" Text="@AppText.T("web.metadata.ai.maxRoundsLabel")" Component="MetadataAiMaxRounds" />
+                        <RadzenNumeric @key="_maxRoundsInputKey" TValue="int" Name="MetadataAiMaxRounds" class="metadata-ai-rounds"
+                                       Min="@MetadataAiPresetGenerator.MIN_MAX_ROUNDS" Max="@MetadataAiPresetGenerator.MAX_MAX_ROUNDS"
+                                       Value="@_credentials.MaxRounds" Change="@OnMaxRoundsChanged" />
+                    </div>
                 </div>
             }
             else if (_step == WizardStep.Reading)
