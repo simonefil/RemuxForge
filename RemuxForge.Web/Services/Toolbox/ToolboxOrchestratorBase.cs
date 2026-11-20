@@ -380,14 +380,15 @@ namespace RemuxForge.Web.Services.Toolbox
         /// lotto non parte e nessun elemento cambia stato. Un errore su un file ferma quel file soltanto; il file concluso conta per
         /// intero nell'avanzamento anche quando lo strumento non ha riportato il cento per cento, quello fermato no
         /// </summary>
-        /// <param name="files">File del lotto, fissati alla riserva</param>
+        /// <param name="files">File del lotto, fissati alla riserva oppure raccolti da prepare</param>
         /// <param name="outputFolder">Cartella di uscita del lotto, fissata alla riserva; vuota per scrivere senza cartella scelta</param>
         /// <param name="summary">Riepilogo del lotto</param>
-        /// <param name="startedMessage">Riga del log all'avvio</param>
-        /// <param name="prepare">Riporta gli elementi del lotto da elaborare, senza l'esito del lotto precedente; chiamata sotto StateLock</param>
+        /// <param name="startedMessage">Riga del log all'avvio, composta dopo prepare</param>
+        /// <param name="prepare">Prepara il lotto, dal servizio agli elementi riportati da elaborare senza l'esito del lotto precedente; chiamata
+        /// sotto StateLock. Un suo errore chiude il lotto come gli altri</param>
         /// <param name="markRunning">Segna in corso gli elementi di un file; chiamata sotto StateLock</param>
         /// <param name="process">Elabora un file con l'allocatore del lotto e l'avanzamento del file in percentuale, e ne registra gli esiti</param>
-        protected void RunBatch(List<TRecord> files, string outputFolder, ToolboxBatchSummary summary, string startedMessage, Action prepare, Action<TRecord> markRunning,
+        protected void RunBatch(List<TRecord> files, string outputFolder, ToolboxBatchSummary summary, Func<string> startedMessage, Action prepare, Action<TRecord> markRunning,
             Action<TRecord, OutputPathAllocator, Action<int>> process)
         {
             this.SetBusy(true, AppText.T(this.TextPrefix + ".progress"));
@@ -406,7 +407,7 @@ namespace RemuxForge.Web.Services.Toolbox
                     prepare();
                 }
                 this.NotifyRecordsChanged();
-                this.AppendLog(startedMessage);
+                this.AppendLog(startedMessage());
 
                 for (int i = 0; i < files.Count; i++)
                 {

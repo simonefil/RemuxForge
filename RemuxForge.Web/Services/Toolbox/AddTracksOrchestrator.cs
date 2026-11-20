@@ -523,13 +523,17 @@ namespace RemuxForge.Web.Services.Toolbox
         /// <param name="outputFolder">Cartella di uscita del lotto, vuota per sovrascrivere</param>
         private void AddWorker(List<AddTracksVideo> batch, Dictionary<AddTracksVideo, AddTracksTrackFile> pairs, AddedTrackProperties properties, string outputFolder)
         {
-            AddTracksService service = new AddTracksService(AppSettingsService.Instance.Settings.Tools.MkvMergePath);
+            AddTracksService service = null;
             CancellationToken cancellation = this.OperationCancellationToken;
             ToolboxBatchSummary summary = new ToolboxBatchSummary(this.TextPrefix, batch.Count);
 
             this.RunBatch(batch, outputFolder, summary,
-                AppText.Count("web.toolbox.addTracks.batchStarted", batch.Count, outputFolder.Length > 0 ? outputFolder : AppText.T("web.toolbox.addTracks.overwrite")),
-                () => batch.ForEach(v => v.Reset()),
+                () => AppText.Count("web.toolbox.addTracks.batchStarted", batch.Count, outputFolder.Length > 0 ? outputFolder : AppText.T("web.toolbox.addTracks.overwrite")),
+                () =>
+                {
+                    service = new AddTracksService(AppSettingsService.Instance.Settings.Tools.MkvMergePath);
+                    batch.ForEach(v => v.Reset());
+                },
                 video => video.Result = new ToolboxItemResult(ToolboxItemStatus.Running),
                 (video, allocator, onProgress) =>
                 {

@@ -340,23 +340,26 @@ namespace RemuxForge.Web.Services.Toolbox
         {
             List<TrackExtractionFile> files = new List<TrackExtractionFile>();
             Dictionary<TrackExtractionFile, List<TrackExtractionTrack>> tracksByFile = new Dictionary<TrackExtractionFile, List<TrackExtractionTrack>>();
-            TrackExtractionService service = this.CreateService();
+            TrackExtractionService service = null;
             TrackExtractionBatchSummary summary = new TrackExtractionBatchSummary(this.TextPrefix, batch.Count);
 
-            foreach (TrackExtractionTrack track in batch)
-            {
-                if (!tracksByFile.ContainsKey(track.File))
-                {
-                    files.Add(track.File);
-                    tracksByFile[track.File] = new List<TrackExtractionTrack>();
-                }
-                tracksByFile[track.File].Add(track);
-            }
-
             this.RunBatch(files, outputFolder, summary,
-                AppText.F("web.toolbox.trackExtraction.batchStarted", AppText.Count("web.toolbox.trackExtraction.tracksCount", batch.Count), AppText.Count("web.toolbox.trackExtraction.filesCount", files.Count),
+                () => AppText.F("web.toolbox.trackExtraction.batchStarted", AppText.Count("web.toolbox.trackExtraction.tracksCount", batch.Count), AppText.Count("web.toolbox.trackExtraction.filesCount", files.Count),
                     outputFolder.Length > 0 ? outputFolder : AppText.T("web.toolbox.output.nextToSource")),
-                () => batch.ForEach(t => t.Reset(ToolboxItemStatus.Pending)),
+                () =>
+                {
+                    service = this.CreateService();
+                    foreach (TrackExtractionTrack track in batch)
+                    {
+                        if (!tracksByFile.ContainsKey(track.File))
+                        {
+                            files.Add(track.File);
+                            tracksByFile[track.File] = new List<TrackExtractionTrack>();
+                        }
+                        tracksByFile[track.File].Add(track);
+                    }
+                    batch.ForEach(t => t.Reset(ToolboxItemStatus.Pending));
+                },
                 file => tracksByFile[file].ForEach(t => t.Reset(ToolboxItemStatus.Running)),
                 (file, allocator, onProgress) =>
                 {

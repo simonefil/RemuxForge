@@ -65,13 +65,17 @@ namespace RemuxForge.Web.Services.Toolbox
         /// <param name="outputFolder">Cartella di uscita del lotto, vuota per scrivere accanto agli originali</param>
         private void ConvertWorker(List<VideoToMkvRecord> batch, string outputFolder)
         {
-            VideoToMkvService service = new VideoToMkvService(AppSettingsService.Instance.Settings.Tools.MkvMergePath);
+            VideoToMkvService service = null;
             CancellationToken cancellation = this.OperationCancellationToken;
             ToolboxBatchSummary summary = new ToolboxBatchSummary(this.TextPrefix, batch.Count);
 
             this.RunBatch(batch, outputFolder, summary,
-                AppText.Count("web.toolbox.videoToMkv.batchStarted", batch.Count, outputFolder.Length > 0 ? outputFolder : AppText.T("web.toolbox.output.nextToSource")),
-                () => batch.ForEach(r => r.Result = new ToolboxItemResult()),
+                () => AppText.Count("web.toolbox.videoToMkv.batchStarted", batch.Count, outputFolder.Length > 0 ? outputFolder : AppText.T("web.toolbox.output.nextToSource")),
+                () =>
+                {
+                    service = new VideoToMkvService(AppSettingsService.Instance.Settings.Tools.MkvMergePath);
+                    batch.ForEach(r => r.Result = new ToolboxItemResult());
+                },
                 record => record.Result = new ToolboxItemResult(ToolboxItemStatus.Running),
                 (record, allocator, onProgress) =>
                 {
