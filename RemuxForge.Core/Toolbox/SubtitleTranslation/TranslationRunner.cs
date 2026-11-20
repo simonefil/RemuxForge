@@ -105,6 +105,28 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         }
 
         /// <summary>
+        /// Stato nuovo di un file ricominciato da capo col sorgente cambiato: le tratte perdono le occorrenze del file vecchio e
+        /// cercano quelle del nuovo, che prende le copie già tradotte
+        /// </summary>
+        /// <param name="job">Testata del job</param>
+        /// <param name="file">File del progetto, con l'impronta del sorgente nuovo</param>
+        /// <param name="document">Documento preparato del sorgente nuovo</param>
+        /// <returns>Stato del file da salvare dopo il job</returns>
+        public static TranslationJobFileState RestartFile(TranslationJob job, TranslationProjectFile file, SubtitleTranslationDocument document)
+        {
+            SharedStretchDetector.Detach(job.SharedStretches, file.Id);
+            SharedStretchDetector.Attach(job.SharedStretches, file.Id, document);
+            TranslationJobFileState state = CreateFileState(file, document, SharedStretch.MapFile(job.SharedStretches, file.Id).Keys);
+            foreach (SharedStretch stretch in job.SharedStretches)
+            {
+                if (stretch.Status == TranslationBlockStatus.Done)
+                    stretch.CopyInto(state);
+            }
+
+            return state;
+        }
+
+        /// <summary>
         /// Stima della traduzione per caratteri, come il giro la farebbe: gli stati dei file preparati come all'avvio, con le battute
         /// delle tratte condivise fuori dai blocchi, e ogni tratta contata una volta sola nel file della prima occorrenza. Ogni
         /// consegna manda il prefisso intero, la coda con le battute prima di quelle chieste e argomenti lunghi quanto il sorgente.

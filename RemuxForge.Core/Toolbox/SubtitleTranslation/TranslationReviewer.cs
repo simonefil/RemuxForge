@@ -112,6 +112,58 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             return added;
         }
 
+        /// <summary>
+        /// Toglie un file dal job. Una tratta con un'altra prima occorrenza, promossa o nata dal taglio, va a un file che l'aveva
+        /// solo in copia. Il file prende il blocco di revisione concluso del file tolto; un blocco da fare lo sceglie la revisione
+        /// AI, anche a revisione AI finita, e allora il giro torna alla revisione AI e il lavoro non è più esportato; chiamato sotto
+        /// il lock dello stato
+        /// </summary>
+        /// <param name="job">Testata del job</param>
+        /// <param name="files">Stati dei file del job, per identificativo, da cui il file esce</param>
+        /// <param name="removed">Stato del file tolto</param>
+        /// <returns>Stati dei file che hanno preso una tratta, da salvare prima del job nell'ordine dato</returns>
+        public static List<TranslationJobFileState> RemoveFile(TranslationJob job, Dictionary<string, TranslationJobFileState> files, TranslationJobFileState removed)
+        {
+            List<TranslationJobFileState> changed = new List<TranslationJobFileState>();
+            job.FileIds.Remove(removed.FileId);
+            files.Remove(removed.FileId);
+            Dictionary<int, string> masters = new Dictionary<int, string>();
+            foreach (SharedStretch stretch in job.SharedStretches)
+                masters[stretch.Index] = stretch.Occurrences[0].FileId;
+            SharedStretchDetector.Detach(job.SharedStretches, removed.FileId);
+
+            foreach (SharedStretch stretch in job.SharedStretches)
+            {
+                string before;
+                TranslationJobFileState master = files[stretch.Occurrences[0].FileId];
+                if (masters.TryGetValue(stretch.Index, out before) && before == master.FileId)
+                    continue;
+
+                TranslationReviewBlock previous = removed.ReviewBlocks != null ? removed.ReviewBlocks.Find(b => b.SharedStretch == stretch.Index) : null;
+                if (master.ReviewBlocks != null && previous != null && previous.Status == TranslationReviewBlockStatus.Done
+                    && !master.ReviewBlocks.Exists(b => b.SharedStretch == stretch.Index))
+                {
+                    List<int> lines = stretch.Occurrences[0].Ids;
+                    master.ReviewBlocks.Add(new TranslationReviewBlock
+                    {
+                        SharedStretch = stretch.Index,
+                        FirstId = lines[0],
+                        LastId = lines[lines.Count - 1],
+                        Status = previous.Status,
+                        CallSeqs = new List<int>(previous.CallSeqs)
+                    });
+                }
+                if (job.Phase == TranslationJobPhase.UserReview && master.ReviewBlocks != null && AddStretchBlocks(job, master))
+                {
+                    job.Phase = TranslationJobPhase.Review;
+                    job.Exported = false;
+                }
+                changed.Add(master);
+            }
+
+            return changed;
+        }
+
         #endregion
 
         #region Metodi protetti

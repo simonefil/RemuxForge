@@ -785,16 +785,8 @@ namespace RemuxForge.Web.Services.Toolbox
                     return;
                 }
 
-                // Le tratte perdono le occorrenze del file vecchio e cercano quelle del nuovo, che prende le copie già tradotte
                 this._documents[fileId] = document;
-                SharedStretchDetector.Detach(this._job.SharedStretches, fileId);
-                SharedStretchDetector.Attach(this._job.SharedStretches, fileId, document);
-                state = TranslationRunner.CreateFileState(file, document, SharedStretch.MapFile(this._job.SharedStretches, fileId).Keys);
-                foreach (SharedStretch stretch in this._job.SharedStretches)
-                {
-                    if (stretch.Status == TranslationBlockStatus.Done)
-                        stretch.CopyInto(state);
-                }
+                state = TranslationRunner.RestartFile(this._job, file, document);
                 this._jobFiles[fileId] = state;
                 this._jobStore.Save(this._job);
                 this._jobStore.SaveFile(this._job.Id, state);
@@ -824,47 +816,16 @@ namespace RemuxForge.Web.Services.Toolbox
                     state.TranslationStatus != TranslationFileStatus.Blocked || this._project.Glossary.Status != GlossaryStatus.Approved)
                     return;
 
-                this._job.FileIds.Remove(fileId);
-                this._jobFiles.Remove(fileId);
-                Dictionary<int, string> masters = new Dictionary<int, string>();
-                foreach (SharedStretch stretch in this._job.SharedStretches)
-                    masters[stretch.Index] = stretch.Occurrences[0].FileId;
-                SharedStretchDetector.Detach(this._job.SharedStretches, fileId);
-
-                // Una tratta con un'altra prima occorrenza, promossa o nata dal taglio, va a un file che l'aveva solo in copia. Il
-                // file prende il blocco di revisione concluso del file tolto; un blocco da fare lo sceglie la revisione AI, anche a
-                // revisione AI finita, e allora il giro torna alla revisione AI e la revisione dell'utente va approvata di nuovo. Gli
-                // stati dei file si salvano prima del job
-                foreach (SharedStretch stretch in this._job.SharedStretches)
-                {
-                    string before;
-                    TranslationJobFileState master = this._jobFiles[stretch.Occurrences[0].FileId];
-                    if (masters.TryGetValue(stretch.Index, out before) && before == master.FileId)
-                        continue;
-
-                    TranslationReviewBlock previous = state.ReviewBlocks != null ? state.ReviewBlocks.Find(b => b.SharedStretch == stretch.Index) : null;
-                    if (master.ReviewBlocks != null && previous != null && previous.Status == TranslationReviewBlockStatus.Done
-                        && !master.ReviewBlocks.Exists(b => b.SharedStretch == stretch.Index))
-                    {
-                        List<int> lines = stretch.Occurrences[0].Ids;
-                        master.ReviewBlocks.Add(new TranslationReviewBlock
-                        {
-                            SharedStretch = stretch.Index,
-                            FirstId = lines[0],
-                            LastId = lines[lines.Count - 1],
-                            Status = previous.Status,
-                            CallSeqs = new List<int>(previous.CallSeqs)
-                        });
-                    }
-                    if (this._job.Phase == TranslationJobPhase.UserReview && master.ReviewBlocks != null && TranslationReviewer.AddStretchBlocks(this._job, master))
-                    {
-                        this._job.Phase = TranslationJobPhase.Review;
-                        this._job.Exported = false;
-                        if (this._project.ReachedStep > TranslationProjectStep.Review)
-                            this._project.ReachedStep = TranslationProjectStep.Review;
-                        review = true;
-                    }
+                // Il file che prende un blocco da fare riporta il giro alla revisione AI, e la revisione dell'utente va approvata di
+                // nuovo. Gli stati dei file si salvano prima del job
+                TranslationJobPhase phase = this._job.Phase;
+                foreach (TranslationJobFileState master in TranslationReviewer.RemoveFile(this._job, this._jobFiles, state))
                     this._jobStore.SaveFile(this._job.Id, master);
+                if (phase == TranslationJobPhase.UserReview && this._job.Phase == TranslationJobPhase.Review)
+                {
+                    if (this._project.ReachedStep > TranslationProjectStep.Review)
+                        this._project.ReachedStep = TranslationProjectStep.Review;
+                    review = true;
                 }
                 if (this._job.Phase == TranslationJobPhase.Translation && this._job.FileIds.TrueForAll(id => this._jobFiles[id].TranslationStatus == TranslationFileStatus.Completed))
                 {
@@ -1355,57 +1316,15 @@ namespace RemuxForge.Web.Services.Toolbox
         }
 
         /// <summary>
-        /// Chiamate del giro scartate da Stop, limite d'uso o chiusura: quelle che nessuna unità salvata riporta, cioè un blocco
-        /// tradotto o diviso, la diagnosi o la correzione di un blocco della revisione.
-        /// Durante il giro contano solo quelle prima dell'ultima chiamata salvata del file, perché l'unità in corso non è ancora
-        /// salvata
+        /// Chiamate del giro scartate da Stop, limite d'uso o chiusura
         /// </summary>
-        /// <returns>Numeri delle chiamate scartate</returns>
+        /// <returns>Numeri delle chiamate scartate, vuoti senza job</returns>
         public HashSet<int> GetDiscardedCalls()
         {
-            HashSet<int> discarded = new HashSet<int>();
             lock (this.StateLock)
             {
-                if (this._job == null)
-                    return discarded;
-
-                Dictionary<string, int> lastSaved = new Dictionary<string, int>(StringComparer.Ordinal);
-                HashSet<int> saved = new HashSet<int>();
-                foreach (SharedStretch stretch in this._job.SharedStretches)
-                    saved.UnionWith(stretch.CallSeqs);
-                foreach (TranslationJobFileState state in this._jobFiles.Values)
-                {
-                    List<int> seqs = new List<int>();
-                    foreach (TranslationBlock block in state.Blocks)
-                    {
-                        if (block.Status != TranslationBlockStatus.Pending)
-                            seqs.AddRange(block.CallSeqs);
-                    }
-                    foreach (TranslationReviewBlock block in state.ReviewBlocks ?? new List<TranslationReviewBlock>())
-                        seqs.AddRange(block.CallSeqs);
-
-                    int last = 0;
-                    foreach (int seq in seqs)
-                    {
-                        saved.Add(seq);
-                        last = Math.Max(last, seq);
-                    }
-                    lastSaved[state.FileId] = last;
-                }
-
-                bool running = this._job.Status == TranslationJobStatus.Running;
-                foreach (TranslationCallRecord call in this._jobCalls)
-                {
-                    if (saved.Contains(call.CallSeq))
-                        continue;
-                    int fileLast;
-                    if (running && (call.FileId == null || !lastSaved.TryGetValue(call.FileId, out fileLast) || call.CallSeq > fileLast))
-                        continue;
-                    discarded.Add(call.CallSeq);
-                }
+                return this._job != null ? this._job.GetDiscardedCalls(this._jobFiles.Values, this._jobCalls) : new HashSet<int>();
             }
-
-            return discarded;
         }
 
         /// <summary>

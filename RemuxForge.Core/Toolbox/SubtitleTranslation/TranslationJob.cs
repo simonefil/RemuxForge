@@ -183,6 +183,56 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             return true;
         }
 
+        /// <summary>
+        /// Chiamate del giro scartate da Stop, limite d'uso o chiusura: quelle che nessuna unità salvata riporta, cioè un blocco
+        /// tradotto o diviso, la diagnosi o la correzione di un blocco della revisione.
+        /// Durante il giro contano solo quelle prima dell'ultima chiamata salvata del file, perché l'unità in corso non è ancora
+        /// salvata
+        /// </summary>
+        /// <param name="files">Stati dei file del job</param>
+        /// <param name="calls">Registro delle chiamate del job</param>
+        /// <returns>Numeri delle chiamate scartate</returns>
+        public HashSet<int> GetDiscardedCalls(IEnumerable<TranslationJobFileState> files, IEnumerable<TranslationCallRecord> calls)
+        {
+            HashSet<int> discarded = new HashSet<int>();
+            Dictionary<string, int> lastSaved = new Dictionary<string, int>(StringComparer.Ordinal);
+            HashSet<int> saved = new HashSet<int>();
+            foreach (SharedStretch stretch in this.SharedStretches)
+                saved.UnionWith(stretch.CallSeqs);
+            foreach (TranslationJobFileState state in files)
+            {
+                List<int> seqs = new List<int>();
+                foreach (TranslationBlock block in state.Blocks)
+                {
+                    if (block.Status != TranslationBlockStatus.Pending)
+                        seqs.AddRange(block.CallSeqs);
+                }
+                foreach (TranslationReviewBlock block in state.ReviewBlocks ?? new List<TranslationReviewBlock>())
+                    seqs.AddRange(block.CallSeqs);
+
+                int last = 0;
+                foreach (int seq in seqs)
+                {
+                    saved.Add(seq);
+                    last = Math.Max(last, seq);
+                }
+                lastSaved[state.FileId] = last;
+            }
+
+            bool running = this.Status == TranslationJobStatus.Running;
+            foreach (TranslationCallRecord call in calls)
+            {
+                if (saved.Contains(call.CallSeq))
+                    continue;
+                int fileLast;
+                if (running && (call.FileId == null || !lastSaved.TryGetValue(call.FileId, out fileLast) || call.CallSeq > fileLast))
+                    continue;
+                discarded.Add(call.CallSeq);
+            }
+
+            return discarded;
+        }
+
         #endregion
 
         #region Proprietà
