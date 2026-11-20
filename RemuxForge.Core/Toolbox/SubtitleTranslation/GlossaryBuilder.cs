@@ -835,6 +835,104 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         }
 
         /// <summary>
+        /// Glossario con le voci di un file caricato al posto di quelle caricate prima: le voci dell'utente restano, tranne quelle
+        /// che il file porta con la stessa chiave, e le proposte dell'analisi si fondono di nuovo con le voci caricate
+        /// </summary>
+        /// <param name="imported">Voci e testi del file caricato, che ricevono le voci dell'utente</param>
+        /// <param name="restored">Glossario corrente senza le voci caricate prima, con le proposte ripristinate</param>
+        /// <param name="discarded">Proposte scartate perché la voce è già nel glossario</param>
+        /// <returns>Glossario in bozza</returns>
+        public Glossary ReplaceImported(Glossary imported, Glossary restored, List<GlossaryDiscard> discarded)
+        {
+            imported.Terms.AddRange(restored.Terms.FindAll(t => t.Origin == GlossaryOrigin.User && !this.HasEntry(imported, t, null)));
+            imported.Characters.AddRange(restored.Characters.FindAll(c => c.Origin == GlossaryOrigin.User && !this.HasEntry(imported, c, null)));
+            imported.Addressing.AddRange(restored.Addressing.FindAll(a => a.Origin == GlossaryOrigin.User && !this.HasEntry(imported, a, null)));
+            return this.MergeWithImported(restored.CopyWhere(origin => origin == GlossaryOrigin.Analysis), imported, discarded);
+        }
+
+        /// <summary>
+        /// Glossario senza le voci caricate, con le proposte dell'analisi scartate dal caricamento rimesse al loro posto e i testi
+        /// proposti al posto di quelli del file
+        /// </summary>
+        /// <param name="current">Glossario corrente, che resta com'è</param>
+        /// <param name="discarded">Proposte dell'analisi scartate dal caricamento</param>
+        /// <returns>Glossario nuovo</returns>
+        public Glossary RestoreProposals(Glossary current, List<GlossaryDiscard> discarded)
+        {
+            Glossary restored = current.CopyWhere(origin => origin != GlossaryOrigin.Import);
+            restored.Revision = current.Revision;
+            restored.SourceLanguage = current.SourceLanguage;
+            restored.TargetLanguage = current.TargetLanguage;
+
+            // Una proposta torna solo se la sua voce non c'è già, ad esempio aggiunta a mano dopo il caricamento
+            foreach (GlossaryDiscard discard in discarded)
+            {
+                if (discard.Term != null && !this.HasEntry(restored, discard.Term, null))
+                {
+                    restored.Terms.Add(discard.Term);
+                }
+                else if (discard.Character != null && !this.HasEntry(restored, discard.Character, null))
+                {
+                    restored.Characters.Add(discard.Character);
+                }
+                else if (discard.Addressing != null && !this.HasEntry(restored, discard.Addressing, null))
+                {
+                    restored.Addressing.Add(discard.Addressing);
+                }
+                else if (discard.Kind == GlossaryEntryKind.Series)
+                {
+                    restored.Series = discard.Delivered;
+                }
+                else if (discard.Kind == GlossaryEntryKind.Tone)
+                {
+                    restored.Tone = discard.Delivered;
+                }
+                else if (discard.Kind == GlossaryEntryKind.RegisterRules)
+                {
+                    restored.RegisterRules = discard.Delivered;
+                }
+            }
+
+            return restored;
+        }
+
+        /// <summary>
+        /// True se il glossario ha già un termine con la chiave di quello dato
+        /// </summary>
+        /// <param name="glossary">Glossario</param>
+        /// <param name="term">Termine da cercare</param>
+        /// <param name="except">Voce del glossario da non contare, null se nessuna</param>
+        /// <returns>True con un altro termine della stessa chiave</returns>
+        public bool HasEntry(Glossary glossary, GlossaryTerm term, object except)
+        {
+            return glossary.Terms.Exists(t => !ReferenceEquals(t, except) && this.TermKey(t.Source) == this.TermKey(term.Source));
+        }
+
+        /// <summary>
+        /// True se il glossario ha già un personaggio con la chiave di quello dato
+        /// </summary>
+        /// <param name="glossary">Glossario</param>
+        /// <param name="character">Personaggio da cercare</param>
+        /// <param name="except">Voce del glossario da non contare, null se nessuna</param>
+        /// <returns>True con un altro personaggio della stessa chiave</returns>
+        public bool HasEntry(Glossary glossary, GlossaryCharacter character, object except)
+        {
+            return glossary.Characters.Exists(c => !ReferenceEquals(c, except) && CharacterKey(c.Name) == CharacterKey(character.Name));
+        }
+
+        /// <summary>
+        /// True se il glossario ha già una coppia di forme di cortesia con la chiave di quella data
+        /// </summary>
+        /// <param name="glossary">Glossario</param>
+        /// <param name="pair">Coppia da cercare</param>
+        /// <param name="except">Voce del glossario da non contare, null se nessuna</param>
+        /// <returns>True con un'altra coppia della stessa chiave</returns>
+        public bool HasEntry(Glossary glossary, GlossaryAddressing pair, object except)
+        {
+            return glossary.Addressing.Exists(a => !ReferenceEquals(a, except) && AddressingKey(a.Speaker, a.Addressee) == AddressingKey(pair.Speaker, pair.Addressee));
+        }
+
+        /// <summary>
         /// Ricalcola i file in cui compare ogni termine, con la parola intera senza articolo e senza distinguere maiuscole, e
         /// precompila «Maiuscole esatte» delle voci che non l'hanno ancora quando le battute hanno già i tipi riconosciuti
         /// </summary>

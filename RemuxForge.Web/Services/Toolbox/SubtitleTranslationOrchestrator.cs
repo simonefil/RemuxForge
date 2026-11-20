@@ -509,32 +509,12 @@ namespace RemuxForge.Web.Services.Toolbox
                     return result;
 
                 GlossaryBuilder builder = new GlossaryBuilder(this._project.SourceLanguage, this._project.TargetLanguage);
-                Glossary basis = result.Glossary;
-                bool analyzed = this._project.Glossary != null && this._project.Analysis != null && this._project.Analysis.Status == TranslationAnalysisStatus.Completed;
-                Glossary current = analyzed ? this.RestoreAnalysisProposals(builder) : null;
-
-                // Le voci dell'utente restano, tranne quelle che il file porta con la stessa chiave: vince la voce caricata
-                if (current != null)
+                Glossary next = result.Glossary;
+                if (this._project.Glossary != null && this._project.Analysis != null && this._project.Analysis.Status == TranslationAnalysisStatus.Completed)
                 {
-                    basis.Terms.AddRange(current.Terms.FindAll(t => t.Origin == GlossaryOrigin.User && !basis.Terms.Exists(b => builder.TermKey(b.Source) == builder.TermKey(t.Source))));
-                    basis.Characters.AddRange(current.Characters.FindAll(c => c.Origin == GlossaryOrigin.User &&
-                        !basis.Characters.Exists(b => GlossaryBuilder.CharacterKey(b.Name) == GlossaryBuilder.CharacterKey(c.Name))));
-                    basis.Addressing.AddRange(current.Addressing.FindAll(a => a.Origin == GlossaryOrigin.User &&
-                        !basis.Addressing.Exists(b => GlossaryBuilder.AddressingKey(b.Speaker, b.Addressee) == GlossaryBuilder.AddressingKey(a.Speaker, a.Addressee))));
-                }
-
-                Glossary next = basis;
-                if (current != null)
-                {
-                    Glossary delivered = new Glossary();
-                    delivered.Series = current.Series;
-                    delivered.Tone = current.Tone;
-                    delivered.RegisterRules = current.RegisterRules;
-                    delivered.Terms.AddRange(current.Terms.FindAll(t => t.Origin == GlossaryOrigin.Analysis));
-                    delivered.Characters.AddRange(current.Characters.FindAll(c => c.Origin == GlossaryOrigin.Analysis));
-                    delivered.Addressing.AddRange(current.Addressing.FindAll(a => a.Origin == GlossaryOrigin.Analysis));
+                    Glossary restored = builder.RestoreProposals(this._project.Glossary, this._project.Analysis.DiscardedForImport);
                     this._project.Analysis.DiscardedForImport = new List<GlossaryDiscard>();
-                    next = builder.MergeWithImported(delivered, basis, this._project.Analysis.DiscardedForImport);
+                    next = builder.ReplaceImported(result.Glossary, restored, this._project.Analysis.DiscardedForImport);
                     discarded = this._project.Analysis.DiscardedForImport.FindAll(d => d.Kind == GlossaryEntryKind.Term || d.Kind == GlossaryEntryKind.Character ||
                         d.Kind == GlossaryEntryKind.Addressing).Count;
                 }
@@ -582,7 +562,7 @@ namespace RemuxForge.Web.Services.Toolbox
                 else
                 {
                     GlossaryBuilder builder = new GlossaryBuilder(this._project.SourceLanguage, this._project.TargetLanguage);
-                    Glossary restored = this.RestoreAnalysisProposals(builder);
+                    Glossary restored = builder.RestoreProposals(this._project.Glossary, this._project.Analysis.DiscardedForImport);
                     restored.Status = GlossaryStatus.Draft;
                     builder.SetEpisodes(restored, this.GetEpisodes(), this.KindsSettled);
                     this._project.Glossary = restored;
@@ -2124,15 +2104,7 @@ namespace RemuxForge.Web.Services.Toolbox
 
             // Il glossario caricato arriva al modello come già deciso: solo le sue voci, con i testi del file
             if (project.ImportedGlossary != null && project.Glossary != null)
-            {
-                plan.Loaded = new Glossary();
-                plan.Loaded.Series = project.Glossary.Series;
-                plan.Loaded.Tone = project.Glossary.Tone;
-                plan.Loaded.RegisterRules = project.Glossary.RegisterRules;
-                plan.Loaded.Terms.AddRange(project.Glossary.Terms.FindAll(t => t.Origin == GlossaryOrigin.Import));
-                plan.Loaded.Characters.AddRange(project.Glossary.Characters.FindAll(c => c.Origin == GlossaryOrigin.Import));
-                plan.Loaded.Addressing.AddRange(project.Glossary.Addressing.FindAll(a => a.Origin == GlossaryOrigin.Import));
-            }
+                plan.Loaded = project.Glossary.CopyWhere(origin => origin == GlossaryOrigin.Import);
 
             string allMessage = builder.CreateAnalysisMessage(project.Context, plan.Loaded, plan.Candidates, episodes, episodes);
             if (episodes.Count == 1 || TranslationRequestBuilder.EstimateTokens(builder.AnalysisInstructions + allMessage) < GlossaryBuilder.SINGLE_ANALYSIS_TOKENS)
@@ -2376,59 +2348,6 @@ namespace RemuxForge.Web.Services.Toolbox
         }
 
         /// <summary>
-        /// Glossario del progetto senza le voci caricate, con le proposte dell'analisi scartate dal caricamento rimesse al loro
-        /// posto e i testi proposti al posto di quelli del file; chiamato sotto StateLock
-        /// </summary>
-        /// <param name="builder">Chiavi delle voci</param>
-        /// <returns>Glossario nuovo, quello del progetto resta com'è</returns>
-        private Glossary RestoreAnalysisProposals(GlossaryBuilder builder)
-        {
-            Glossary current = this._project.Glossary;
-            Glossary restored = new Glossary();
-            restored.Revision = current.Revision;
-            restored.SourceLanguage = current.SourceLanguage;
-            restored.TargetLanguage = current.TargetLanguage;
-            restored.Series = current.Series;
-            restored.Tone = current.Tone;
-            restored.RegisterRules = current.RegisterRules;
-            restored.Terms.AddRange(current.Terms.FindAll(t => t.Origin != GlossaryOrigin.Import));
-            restored.Characters.AddRange(current.Characters.FindAll(c => c.Origin != GlossaryOrigin.Import));
-            restored.Addressing.AddRange(current.Addressing.FindAll(a => a.Origin != GlossaryOrigin.Import));
-
-            // Una proposta torna solo se la sua voce non c'è già, ad esempio aggiunta a mano dopo il caricamento
-            foreach (GlossaryDiscard discard in this._project.Analysis.DiscardedForImport)
-            {
-                if (discard.Term != null && !restored.Terms.Exists(t => builder.TermKey(t.Source) == builder.TermKey(discard.Term.Source)))
-                {
-                    restored.Terms.Add(discard.Term);
-                }
-                else if (discard.Character != null && !restored.Characters.Exists(c => GlossaryBuilder.CharacterKey(c.Name) == GlossaryBuilder.CharacterKey(discard.Character.Name)))
-                {
-                    restored.Characters.Add(discard.Character);
-                }
-                else if (discard.Addressing != null &&
-                    !restored.Addressing.Exists(a => GlossaryBuilder.AddressingKey(a.Speaker, a.Addressee) == GlossaryBuilder.AddressingKey(discard.Addressing.Speaker, discard.Addressing.Addressee)))
-                {
-                    restored.Addressing.Add(discard.Addressing);
-                }
-                else if (discard.Kind == GlossaryEntryKind.Series)
-                {
-                    restored.Series = discard.Delivered;
-                }
-                else if (discard.Kind == GlossaryEntryKind.Tone)
-                {
-                    restored.Tone = discard.Delivered;
-                }
-                else if (discard.Kind == GlossaryEntryKind.RegisterRules)
-                {
-                    restored.RegisterRules = discard.Delivered;
-                }
-            }
-
-            return restored;
-        }
-
-        /// <summary>
         /// Prepara un file del progetto coi tipi riconosciuti e ne tiene il documento; un file bloccato tiene le impronte salvate
         /// </summary>
         /// <param name="file">File del progetto</param>
@@ -2629,7 +2548,7 @@ namespace RemuxForge.Web.Services.Toolbox
                 {
                     return this._project != null && !this.IsBusy && this._project.Analysis != null && this._project.Analysis.Status == TranslationAnalysisStatus.Completed &&
                         this._project.Glossary != null && !this.GlossaryLocked && (this._job == null || this._project.Glossary.Status == GlossaryStatus.Draft) &&
-                        !this._project.Glossary.Terms.Exists(t => string.IsNullOrWhiteSpace(t.Source) || string.IsNullOrWhiteSpace(t.Target));
+                        !this._project.Glossary.Terms.Exists(t => t.IsIncomplete());
                 }
             }
         }

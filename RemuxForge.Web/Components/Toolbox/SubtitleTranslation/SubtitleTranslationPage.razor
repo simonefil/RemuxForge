@@ -1665,12 +1665,12 @@
 
         if (candidate is GlossaryTerm term)
         {
-            incomplete = string.IsNullOrWhiteSpace(term.Source) || string.IsNullOrWhiteSpace(term.Target);
+            incomplete = term.IsIncomplete();
             if (incomplete)
             {
                 error = AppText.T("web.toolbox.subtitleTranslation.editTermEmpty");
             }
-            else if (glossary.Terms.Exists(t => !ReferenceEquals(t, entry) && builder.TermKey(t.Source) == builder.TermKey(term.Source)))
+            else if (builder.HasEntry(glossary, term, entry))
             {
                 error = AppText.F("web.toolbox.subtitleTranslation.editDuplicate", term.Source);
             }
@@ -1678,12 +1678,12 @@
         }
         else if (candidate is GlossaryCharacter character)
         {
-            incomplete = string.IsNullOrWhiteSpace(character.Name);
+            incomplete = character.IsIncomplete();
             if (incomplete)
             {
                 error = AppText.T("web.toolbox.subtitleTranslation.editCharacterEmpty");
             }
-            else if (glossary.Characters.Exists(c => !ReferenceEquals(c, entry) && GlossaryBuilder.CharacterKey(c.Name) == GlossaryBuilder.CharacterKey(character.Name)))
+            else if (builder.HasEntry(glossary, character, entry))
             {
                 error = AppText.F("web.toolbox.subtitleTranslation.editDuplicate", character.Name);
             }
@@ -1691,12 +1691,12 @@
         }
         else if (candidate is GlossaryAddressing pair)
         {
-            incomplete = string.IsNullOrWhiteSpace(pair.Speaker) || string.IsNullOrWhiteSpace(pair.Addressee);
+            incomplete = pair.IsIncomplete();
             if (incomplete)
             {
                 error = AppText.T("web.toolbox.subtitleTranslation.editAddressingEmpty");
             }
-            else if (glossary.Addressing.Exists(a => !ReferenceEquals(a, entry) && GlossaryBuilder.AddressingKey(a.Speaker, a.Addressee) == GlossaryBuilder.AddressingKey(pair.Speaker, pair.Addressee)))
+            else if (builder.HasEntry(glossary, pair, entry))
             {
                 error = AppText.F("web.toolbox.subtitleTranslation.editDuplicate", pair.Speaker + " → " + pair.Addressee);
             }

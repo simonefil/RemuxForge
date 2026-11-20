@@ -99,6 +99,27 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 
         #endregion
 
+        #region Metodi pubblici
+
+        /// <summary>
+        /// Glossario nuovo coi testi di questo e le sole voci di una provenienza; le voci sono le stesse, non copie
+        /// </summary>
+        /// <param name="origin">Provenienze delle voci da tenere</param>
+        /// <returns>Glossario in bozza, senza revisione né lingue</returns>
+        public Glossary CopyWhere(Predicate<GlossaryOrigin> origin)
+        {
+            Glossary copy = new Glossary();
+            copy.Series = this.Series;
+            copy.Tone = this.Tone;
+            copy.RegisterRules = this.RegisterRules;
+            copy.Terms.AddRange(this.Terms.FindAll(t => origin(t.Origin)));
+            copy.Characters.AddRange(this.Characters.FindAll(c => origin(c.Origin)));
+            copy.Addressing.AddRange(this.Addressing.FindAll(a => origin(a.Origin)));
+            return copy;
+        }
+
+        #endregion
+
         #region Proprietà
 
         /// <summary>
@@ -183,6 +204,19 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 
         #endregion
 
+        #region Metodi pubblici
+
+        /// <summary>
+        /// True se manca il termine o la resa
+        /// </summary>
+        /// <returns>True per il termine incompleto</returns>
+        public bool IsIncomplete()
+        {
+            return string.IsNullOrWhiteSpace(this.Source) || string.IsNullOrWhiteSpace(this.Target);
+        }
+
+        #endregion
+
         #region Proprietà
 
         /// <summary>
@@ -250,6 +284,19 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 
         #endregion
 
+        #region Metodi pubblici
+
+        /// <summary>
+        /// True se manca il nome
+        /// </summary>
+        /// <returns>True per il personaggio incompleto</returns>
+        public bool IsIncomplete()
+        {
+            return string.IsNullOrWhiteSpace(this.Name);
+        }
+
+        #endregion
+
         #region Proprietà
 
         /// <summary>
@@ -297,6 +344,19 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             this.Form = "";
             this.Note = "";
             this.Origin = GlossaryOrigin.User;
+        }
+
+        #endregion
+
+        #region Metodi pubblici
+
+        /// <summary>
+        /// True se manca chi parla o a chi
+        /// </summary>
+        /// <returns>True per la coppia incompleta</returns>
+        public bool IsIncomplete()
+        {
+            return string.IsNullOrWhiteSpace(this.Speaker) || string.IsNullOrWhiteSpace(this.Addressee);
         }
 
         #endregion
